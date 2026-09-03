@@ -12,7 +12,20 @@ export interface RunParams {
   reserveUsd: number;
 }
 
-export interface CandidateInput { numbers: string[]; differences: string[]; note: string; }
+export interface CandidateInput {
+  numbers: string[];
+  differences: string[];
+  note: string;
+}
+
+export type JobParameter = string | number | null;
+
+export interface ProposedJob {
+  jobType: 'divisor_completion' | 'family_scan' | 'boundary_scan';
+  params: Record<string, JobParameter>;
+  reason: string;
+}
+
 export interface ResearchReport {
   headline: string;
   thesis: string;
@@ -21,7 +34,7 @@ export interface ResearchReport {
   citations: string[];
   failedAvenues: string[];
   candidates: CandidateInput[];
-  proposedJobs: { jobType: 'divisor_completion' | 'family_scan' | 'boundary_scan'; params: Record<string, string | number>; reason: string }[];
+  proposedJobs: ProposedJob[];
   nextQuestions: string[];
 }
 
@@ -39,12 +52,18 @@ export interface Usage {
   outputTokens: number;
 }
 
+export interface UsageRecord {
+  responseId: string;
+  usage: Usage;
+}
+
 export interface AgentResult<T> {
   agentId: AgentId;
   ok: boolean;
   responseId?: string;
   value?: T;
   usage: Usage;
+  usageRecords?: UsageRecord[];
   error?: string;
 }
 

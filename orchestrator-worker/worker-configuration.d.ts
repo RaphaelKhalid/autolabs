@@ -3,11 +3,12 @@
 // Runtime types generated with workerd@1.20260515.1 2026-09-03 nodejs_compat
 interface __BaseEnv_Env {
 	DB: D1Database;
-	PUBLIC_SITE_ORIGIN: "https://autolabs.vercel.app";
+	PUBLIC_SITE_ORIGIN: "https://autolabs-ebon.vercel.app";
 	GITHUB_REPOSITORY: "RaphaelKhalid/autolabs";
 	MODEL_NAME: "gpt-5.6-luna";
 	PUBLIC_WORKER_URL: "https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev";
 	OPENAI_API_KEY: string;
+	EXA_API_KEY: string;
 	ADMIN_TOKEN: string;
 	GITHUB_TOKEN: string;
 	CALLBACK_SECRET: string;
@@ -24,7 +25,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PUBLIC_SITE_ORIGIN" | "GITHUB_REPOSITORY" | "MODEL_NAME" | "PUBLIC_WORKER_URL" | "OPENAI_API_KEY" | "ADMIN_TOKEN" | "GITHUB_TOKEN" | "CALLBACK_SECRET">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PUBLIC_SITE_ORIGIN" | "GITHUB_REPOSITORY" | "MODEL_NAME" | "PUBLIC_WORKER_URL" | "OPENAI_API_KEY" | "EXA_API_KEY" | "ADMIN_TOKEN" | "GITHUB_TOKEN" | "CALLBACK_SECRET">> {}
 }
 
 // Begin runtime types

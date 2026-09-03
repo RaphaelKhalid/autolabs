@@ -9,16 +9,21 @@ permissions:
 
 jobs:
   exact-search:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
-    container: node:22-bookworm
+    container: node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
     env:
       JOB_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+      CALLBACK_URL: https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev
       CALLBACK_SECRET: ${{ secrets.AUTOLABS_CALLBACK_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.client_payload.sourceSha }}
       - name: Run bounded deterministic search
+        id: search
+        continue-on-error: true
         run: node math-worker/run.mjs
-      - name: Return signed result to ledger
+      - name: Return HMAC-signed result to ledger
         if: always()
         run: node math-worker/callback.mjs
