@@ -187,6 +187,7 @@ export function LivingLab() {
         <AnimatePresence>
           {state.agents.map((agent, index) => {
             const target = meeting ? tessellation[index] : stations[index];
+            const liveBubble = phase === 'idle' ? 'Waiting for the ribbon.' : phase === 'research' && agent.bubble.startsWith('Dormant') ? 'Working privately—report sealed until the simultaneous reveal.' : agent.bubble;
             return (
               <motion.button
                 key={agent.id}
@@ -200,7 +201,7 @@ export function LivingLab() {
                 aria-label={`Open ${agent.name}'s complete research record`}
               >
                 <motion.span className="living-bubble" layoutId={`bubble-${agent.id}`}>
-                  <i>0{index + 1}</i><span>{phase === 'idle' ? 'Waiting for the ribbon.' : agent.bubble}</span>
+                  <i>0{index + 1}</i><span>{liveBubble}</span>
                 </motion.span>
                 <AlienForm agent={agent} index={index} meeting={meeting} />
                 <span className="living-name"><b>{agent.name}</b><small>{meeting ? 'TESSELLATING' : agent.epithet}</small></span>
@@ -215,7 +216,7 @@ export function LivingLab() {
         <button className="queue-toggle" onClick={() => setQueueOpen(!queueOpen)}><FlaskConical size={14}/><span>COMPUTE QUEUE</span><b>{visibleJobs.filter((job) => ['queued','dispatching','running'].includes(job.status)).length}</b></button>
         {queueOpen && <div className="queue-body">
           <header><span>ASYNCHRONOUS EXACT JOBS</span><small>Jobs may outlive the round that proposed them.</small></header>
-          {visibleJobs.length ? visibleJobs.slice(0, 7).map((job) => <JobRow key={job.id} job={job} onOpen={() => setSelectedId(job.agentId)} />) : <div className="queue-empty"><Radio size={14}/><p>No computations dispatched yet.<small>The queue opens after the first simultaneous reveal.</small></p></div>}
+          {visibleJobs.length ? visibleJobs.slice(0, 7).map((job) => <JobRow key={job.id} job={job} onOpen={() => setSelectedId(job.agentId)} />) : <div className="queue-empty"><Radio size={14}/><p>{phase === 'research' ? 'Five research calls are running.' : 'No exact jobs proposed yet.'}<small>{phase === 'research' ? 'Calculator jobs appear after the sealed reports reveal.' : 'New jobs appear here as agents dispatch them.'}</small></p></div>}
           <footer><span><CircleDollarSign size={11}/> OPENAI ${state.spentUsd.toFixed(2)} / $50</span><span>EXA ${(state.exaSpentUsd ?? 0).toFixed(2)} / $40</span></footer>
         </div>}
       </aside>
