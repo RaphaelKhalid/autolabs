@@ -55,7 +55,7 @@ export default {
         const row = await currentRun(env);
         if (!row) return json({ error: 'No experiment has started.' }, { status: 404 }, corsHeaders);
         const state = JSON.parse(row.public_state_json) as Record<string, unknown>;
-        state.events = await recentEvents(env.DB, row.id, 5_000);
+        state.events = await recentEvents(env.DB, row.id, 250);
         state.jobs = await publicJobs(env.DB, row.id);
         return json(state, {}, corsHeaders);
       }
@@ -67,7 +67,13 @@ export default {
 
       const eventMatch = url.pathname.match(/^\/api\/experiments\/([a-zA-Z0-9-]+)\/events$/);
       if (request.method === 'GET' && eventMatch) {
-        return json({ runId: eventMatch[1], events: await recentEvents(env.DB, eventMatch[1], 5_000) }, {}, corsHeaders);
+        const requestedLimit = Number(url.searchParams.get('limit') ?? 250);
+        const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(500, Math.floor(requestedLimit))) : 250;
+        const requestedBefore = Number(url.searchParams.get('before'));
+        const before = Number.isSafeInteger(requestedBefore) && requestedBefore > 0 ? requestedBefore : undefined;
+        const events = await recentEvents(env.DB, eventMatch[1], limit, before);
+        const nextBefore = events.length === limit ? Number(events[0]?.seq ?? 0) || null : null;
+        return json({ runId: eventMatch[1], events, nextBefore }, {}, corsHeaders);
       }
 
       const reportMatch = url.pathname.match(/^\/api\/experiments\/([a-zA-Z0-9-]+)\/report$/);

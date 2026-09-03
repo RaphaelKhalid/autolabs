@@ -437,7 +437,7 @@ export function AutolabsObservatory() {
           <li><span>03</span>Immediate stop on an exact k = 5 certificate</li>
           <li><span>04</span>$50 API ceiling with a protected reserve</li>
         </ol>
-        <div className="prize-note"><Trophy size={19} /><p><b>$50 victory project</b><small>$25 for every credited collaborator · supplied later by Raphael</small></p></div>
+        <div className="prize-note"><Trophy size={19} /><p><b>$50 victory project</b><small>$10 for every credited collaborator · supplied later by Raphael</small></p></div>
       </section>
 
       <footer><span>AUTOLABS / EXPERIMENT 885</span><p>Public observation. Deterministic verification. Reproducible research.</p><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer"><Github size={14} /> Inspect the source</a></footer>

@@ -28,6 +28,11 @@ differences)` / `(3 integers, 5 differences)` frontier: at least `6×4` or `4×5
   with `high` reasoning effort.
 - Distinct alien personas alter idea-generation, not access to human mathematics.
 - Reports are sealed and revealed simultaneously; one reaction per agent follows.
+- Round 25 is a real midpoint town hall. The second half uses five rotating method
+  lanes, a balanced row-and-column progress metric, and divisor completion only
+  as one rotating validation slot rather than a shared default.
+- Collaboration credit is non-self, capped at two peers per reaction, and audited
+  for systematic under-recognition of Solvi and Tess.
 - Next-round plans stay private from peers and observers until the experiment ends.
 - One failed call is retried and isolated; the other agents continue.
 - A real one-round dress rehearsal uses the production prompts, model, exact tools,
@@ -39,7 +44,7 @@ differences)` / `(3 integers, 5 differences)` frontier: at least `6×4` or `4×5
   token usage. API secrets exist only in Cloudflare/Vercel secret stores.
 
 The k=5 winner may later use a `$50` project budget supplied by Raphael. Each
-credited collaborator receives a separate `$25`. A verified SOTA-frontier
+credited collaborator receives a separate `$10`. A verified SOTA-frontier
 improvement earns `$25`; otherwise there is no consolation prize.
 
 ## Architecture

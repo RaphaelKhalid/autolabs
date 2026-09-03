@@ -6,6 +6,8 @@ export interface RectangleCheck {
   numbers: string[];
   differences: string[];
   support: number[];
+  columnSupport: number[];
+  progressMetric: number[];
   totalSupport: number;
   exactCells: number;
   missing: { number: string; difference: string }[];
@@ -22,7 +24,7 @@ export function verifyRectangle(candidate: CandidateInput): RectangleCheck {
   const numbers = candidate.numbers.slice(0, 12);
   const differences = candidate.differences.slice(0, 12);
   if (!numbers.length || !differences.length || !uniquePositive(numbers) || !uniquePositive(differences)) {
-    return { accepted: false, numbers, differences, support: [], totalSupport: 0, exactCells: 0, missing: [], isK5: false, improvesSota: false, rejection: 'Values must be distinct positive decimal integers.' };
+    return { accepted: false, numbers, differences, support: [], columnSupport: [], progressMetric: [], totalSupport: 0, exactCells: 0, missing: [], isK5: false, improvesSota: false, rejection: 'Values must be distinct positive decimal integers.' };
   }
   const support: number[] = [];
   const missing: { number: string; difference: string }[] = [];
@@ -39,12 +41,20 @@ export function verifyRectangle(candidate: CandidateInput): RectangleCheck {
     support.push(hits);
   }
   const exactCells = support.reduce((sum, value) => sum + value, 0);
+  const missingKeys = new Set(missing.map((cell) => `${cell.number}:${cell.difference}`));
+  const columnSupport = differences.map((difference) => numbers.reduce(
+    (hits, number) => hits + (missingKeys.has(`${number}:${difference}`) ? 0 : 1),
+    0,
+  ));
+  const progressMetric = rectangleProgressMetric(support, columnSupport, exactCells);
   const complete = exactCells === numbers.length * differences.length;
   return {
     accepted: true,
     numbers,
     differences,
     support: [...support].sort((a, b) => a - b),
+    columnSupport: [...columnSupport].sort((a, b) => a - b),
+    progressMetric,
     totalSupport: exactCells,
     exactCells,
     missing,
@@ -53,7 +63,21 @@ export function verifyRectangle(candidate: CandidateInput): RectangleCheck {
   };
 }
 
-export function compareSupport(a: readonly number[], b: readonly number[]) {
+function supportFloor(values: readonly number[], size: number) {
+  if (values.length < size) return 0;
+  return [...values].sort((a, b) => b - a)[size - 1];
+}
+
+export function rectangleProgressMetric(rowSupport: readonly number[], columnSupport: readonly number[], exactCells: number) {
+  const metric: number[] = [];
+  for (let size = 5; size >= 1; size -= 1) {
+    metric.push(Math.min(size, supportFloor(rowSupport, size), supportFloor(columnSupport, size)));
+  }
+  metric.push(exactCells);
+  return metric;
+}
+
+export function compareProgressMetric(a: readonly number[], b: readonly number[]) {
   const length = Math.max(a.length, b.length);
   for (let index = 0; index < length; index += 1) {
     const av = a[index] ?? -1;

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { callStructured } from '../src/openai';
 import { reapStaleJobs } from '../src/github-jobs';
+import { readFileSync } from 'node:fs';
+
+const indexSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 
 describe('final launch integrity', () => {
   it('rejects an oversized model prompt before issuing a billable request', async () => {
@@ -38,5 +41,11 @@ describe('final launch integrity', () => {
 
     await reapStaleJobs(db, 'run-1');
     expect(sql).toContain("julianday(created_at) < julianday('now','-55 minutes')");
+  });
+
+  it('keeps the live state payload bounded while preserving paginated history', () => {
+    expect(indexSource).toContain('recentEvents(env.DB, row.id, 250)');
+    expect(indexSource).toContain("url.searchParams.get('before')");
+    expect(indexSource).toContain('nextBefore');
   });
 });

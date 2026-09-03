@@ -11,8 +11,8 @@ describe('workflow phase waits', () => {
   });
 
   it('keeps the research attempt and retry inside Cloudflare\'s five-minute step wall', () => {
-    expect(workflowSource).toContain('timeoutMs: 165_000');
-    expect(workflowSource).toContain('timeoutMs: 105_000');
-    expect(165_000 + 105_000).toBeLessThan(5 * 60_000);
+    expect(workflowSource).toContain('timeoutMs: 150_000');
+    expect(workflowSource).toContain('timeoutMs: 75_000');
+    expect(150_000 + 75_000).toBeLessThan(4 * 60_000);
   });
 });

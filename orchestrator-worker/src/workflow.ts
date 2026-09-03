@@ -4,9 +4,10 @@ import { addEvent, addEvents, addEventsAndPatchState, getState, globalExaSpend, 
 import { EXA_BUDGET_USD, EXA_REQUEST_AUTHORIZATION_USD, retrievalContext, searchExa, type ExaRetrieval } from './exa';
 import { reapStaleJobs, scheduleJobs } from './github-jobs';
 import { callStructured, mergeAttempts } from './openai';
-import { MEETING_SCHEMA, RESEARCH_SCHEMA, meetingPrompt, researchPrompt } from './prompts';
+import { MEETING_SCHEMA, RESEARCH_SCHEMA, meetingPrompt, midpointTownHallPrompt, researchPrompt } from './prompts';
+import { SECOND_HALF_POLICY_SUMMARY, balancedCollaborationCredits, secondHalfPolicy } from './second-half-policy';
 import type { AgentId, AgentResult, MeetingReport, PublicEvent, ResearchReport, RunParams } from './types';
-import { compareSupport, verifyRectangle, type RectangleCheck } from './verifier';
+import { compareProgressMetric, verifyRectangle, type RectangleCheck } from './verifier';
 
 const MODEL = 'gpt-5.6-luna' as const;
 const AGENT_INDEX: Record<AgentId, number> = { mira: 0, pip: 1, orum: 2, solvi: 3, tess: 4 };
@@ -95,7 +96,7 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     webSearch: false,
     // A Cloudflare Workflow step can be terminated at the five-minute wall.
     // Leave enough room for the structured retry and step bookkeeping.
-    timeoutMs: 165_000,
+    timeoutMs: 150_000,
   });
   if (first.ok) return first;
   const second = await callStructured<ResearchReport>({
@@ -109,7 +110,7 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     maxOutputTokens: 16_000,
     maxInputBytes: 64_000,
     webSearch: false,
-    timeoutMs: 105_000,
+    timeoutMs: 75_000,
   });
   return mergeAttempts(first, second);
 }
@@ -127,7 +128,7 @@ async function meetingOne(env: Env, round: number, agentId: AgentId, reports: un
     maxOutputTokens: 8_000,
     maxInputBytes: 128_000,
     webSearch: false,
-    timeoutMs: 135_000,
+    timeoutMs: 120_000,
   });
   if (first.ok) return first;
   const second = await callStructured<MeetingReport>({
@@ -141,7 +142,39 @@ async function meetingOne(env: Env, round: number, agentId: AgentId, reports: un
     maxOutputTokens: 6_000,
     maxInputBytes: 128_000,
     webSearch: false,
+    timeoutMs: 60_000,
+  });
+  return mergeAttempts(first, second);
+}
+
+async function townHallOne(env: Env, agentId: AgentId, briefing: unknown): Promise<AgentResult<MeetingReport>> {
+  const profile = AGENTS[AGENT_INDEX[agentId]];
+  const prompt = midpointTownHallPrompt(profile, briefing);
+  const first = await callStructured<MeetingReport>({
+    apiKey: env.OPENAI_API_KEY,
+    model: MODEL,
+    agentId,
+    ...prompt,
+    schemaName: 'erdos_885_midpoint_town_hall',
+    schema: MEETING_SCHEMA,
+    maxOutputTokens: 8_000,
+    maxInputBytes: 96_000,
+    webSearch: false,
     timeoutMs: 120_000,
+  });
+  if (first.ok) return first;
+  const second = await callStructured<MeetingReport>({
+    apiKey: env.OPENAI_API_KEY,
+    model: MODEL,
+    agentId,
+    system: prompt.system,
+    user: `${prompt.user}\nReturn a shorter valid retrospective and round-26 plan now.`,
+    schemaName: 'erdos_885_midpoint_town_hall_retry',
+    schema: MEETING_SCHEMA,
+    maxOutputTokens: 5_000,
+    maxInputBytes: 96_000,
+    webSearch: false,
+    timeoutMs: 60_000,
   });
   return mergeAttempts(first, second);
 }
@@ -155,6 +188,18 @@ function agentCards(state: Record<string, unknown>, status: string, reports?: Re
       status: report?.ok ? status : report ? 'recovering' : status,
       bubble: report?.value?.headline ?? (report ? 'Call failed; isolated from the other researchers.' : agent.bubble),
       citations: report?.value?.citations.length ?? agent.citations,
+    };
+  });
+}
+
+function meetingCards(state: Record<string, unknown>, status: string, reports: AgentResult<MeetingReport>[]) {
+  const current = state.agents as Record<string, unknown>[];
+  return current.map((agent) => {
+    const report = reports.find((item) => item.agentId === agent.id);
+    return {
+      ...agent,
+      status: report?.ok ? status : report ? 'recovering' : status,
+      bubble: report?.value?.reaction ?? (report ? 'Town-hall call failed; the other researchers continue.' : agent.bubble),
     };
   });
 }
@@ -177,8 +222,8 @@ function bestRectangle(results: AgentResult<ResearchReport>[]): BestCandidate | 
     for (const candidate of result.value?.candidates ?? []) {
       const check = verifyRectangle(candidate);
       if (!check.accepted) continue;
-      if (!best || compareSupport(check.support, best.check.support) > 0 || (
-        compareSupport(check.support, best.check.support) === 0 && check.totalSupport > best.check.totalSupport
+      if (!best || compareProgressMetric(check.progressMetric, best.check.progressMetric) > 0 || (
+        compareProgressMetric(check.progressMetric, best.check.progressMetric) === 0 && check.totalSupport > best.check.totalSupport
       )) {
         best = { agentId: result.agentId, check, note: candidate.note };
       }
@@ -206,19 +251,105 @@ async function chargeResults<T extends ResearchReport | MeetingReport>(
 
 async function persistBest(env: Env, params: RunParams, best: BestCandidate | undefined, state: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!best) return {};
-  const current = state.bestSupport as number[];
-  if (compareSupport(best.check.support, current) <= 0) return {};
+  const current = Array.isArray(state.bestMetric) ? state.bestMetric.map(Number) : [];
+  if (compareProgressMetric(best.check.progressMetric, current) <= 0) return {};
   const sotaImproved = Boolean(state.sotaImproved) || best.check.improvesSota;
   await env.DB.prepare(`UPDATE runs SET best_support_json=?,best_label=?,best_verified=1,sota_improved=?,updated_at=? WHERE id=?`)
     .bind(JSON.stringify(best.check.support), best.note, sotaImproved ? 1 : 0, nowIso(), params.runId)
     .run();
   return {
     bestSupport: best.check.support,
+    bestShape: [best.check.numbers.length, best.check.differences.length],
+    bestMetric: best.check.progressMetric,
     bestLabel: best.note,
     bestVerified: true,
     sotaImproved,
   };
 }
+
+async function midpointBriefing(db: D1Database, runId: string) {
+  const state = await getState(db, runId);
+  const events = await db.prepare(`SELECT round,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson
+      FROM events WHERE run_id=? AND round<=25 AND visible=1
+      AND kind IN ('research','meeting','candidate','error') ORDER BY seq`)
+    .bind(runId)
+    .all<{ round: number; agentId: AgentId | null; kind: string; title: string; summary: string; payloadJson: string }>();
+  const jobs = await db.prepare(`SELECT agent_id AS agentId,job_type AS jobType,status,COUNT(*) AS count
+      FROM jobs WHERE run_id=? AND round<=25 GROUP BY agent_id,job_type,status ORDER BY agent_id,job_type,status`)
+    .bind(runId)
+    .all<Record<string, unknown>>();
+  const rounds = new Map<number, Array<{ agentId: AgentId | null; title: string; summary: string }>>();
+  const objections = new Set<string>();
+  const failedAvenues = new Set<string>();
+  const creditCounts = new Map<AgentId, number>();
+  let selfAttributions = 0;
+  let divisorAtlasMentions = 0;
+
+  for (const event of events.results) {
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(event.payloadJson) as Record<string, unknown>; } catch { payload = {}; }
+    const encoded = `${event.title} ${event.summary} ${event.payloadJson}`.toLowerCase();
+    if (encoded.includes('divisor') || encoded.includes('atlas')) divisorAtlasMentions += 1;
+    if (event.kind === 'research') {
+      const batch = rounds.get(event.round) ?? [];
+      batch.push({ agentId: event.agentId, title: event.title, summary: event.summary.slice(0, 500) });
+      rounds.set(event.round, batch);
+      for (const failure of stringList(payload.failedAvenues)) failedAvenues.add(failure.slice(0, 500));
+    }
+    if (event.kind === 'meeting') {
+      for (const objection of stringList(payload.objections)) objections.add(objection.slice(0, 500));
+      for (const credit of stringList(payload.collaborationCredits)) {
+        if (!(credit in AGENT_INDEX)) continue;
+        if (credit === event.agentId) selfAttributions += 1;
+        else creditCounts.set(credit as AgentId, (creditCounts.get(credit as AgentId) ?? 0) + 1);
+      }
+    }
+  }
+
+  return {
+    scope: 'Completed public record for rounds 1–24 plus the interrupted, unrevealed sealed calls of round 25.',
+    currentFrontier: {
+      bestSupport: Array.isArray(state.bestSupport) ? state.bestSupport.map(Number) : [],
+      bestLabel: String(state.bestLabel ?? ''),
+      sotaImproved: Boolean(state.sotaImproved),
+    },
+    observedMetricFailure: 'The old row-only comparator ranked isolated 1×n anchors above balanced rectangles; this is being replaced by a symmetric row-and-column k=5 progress metric.',
+    roundHeadlines: [...rounds.entries()].map(([round, reports]) => ({ round, reports })),
+    recurringObjections: [...objections].slice(-80),
+    failedAvenues: [...failedAvenues].slice(-80),
+    jobStats: jobs.results.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value == null ? null : typeof value === 'number' ? value : String(value)]))),
+    collaborationAudit: {
+      nonSelfCredits: Object.fromEntries(AGENTS.map((agent) => [agent.id, creditCounts.get(agent.id) ?? 0])),
+      selfAttributions,
+    },
+    divisorAtlasMentions,
+    interruption: 'Round 25 was deliberately terminated before reveal to install this town hall. Its five billed sealed responses are not treated as public scientific evidence.',
+    requiredCriticalReview: [
+      'Divisor-atlas convergence and repeated smooth-factor variants',
+      'Confusing high support in one column with progress toward five shared columns',
+      'Repeating completed negative scans under superficial rescalings',
+      'Sampling scans described too strongly despite non-unit stride or bounded limits',
+      'Under-crediting Solvi and Tess and allowing self-attribution',
+    ],
+  };
+}
+
+function creditMap(round: number, meeting: AgentResult<MeetingReport>[], contributors: readonly AgentId[]) {
+  return balancedCollaborationCredits(
+    round,
+    meeting.filter((result) => result.value).map((result) => ({
+      agentId: result.agentId,
+      credits: result.value?.collaborationCredits ?? [],
+    })),
+    contributors,
+  );
+}
+
+const BREMNER_BASELINE = verifyRectangle({
+  numbers: ['26128575', '291722431', '561117375', '713526975'],
+  differences: ['126', '16110', '33390', '75390'],
+  note: 'Known exact 4×4 baseline',
+});
 
 function researchEvents(round: number, research: ResearchResult[], phase: PublicEvent['phase']): { seq: number; event: PublicEvent }[] {
   return research.map((result) => {
@@ -349,7 +480,7 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
   for (const event of events.filter((item) => item.kind === 'meeting')) {
     const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
     for (const id of stringList(payload.collaborationCredits)) {
-      if (id in AGENT_INDEX) creditCounts.set(id as AgentId, (creditCounts.get(id as AgentId) ?? 0) + 1);
+      if (id in AGENT_INDEX && id !== event.agentId) creditCounts.set(id as AgentId, (creditCounts.get(id as AgentId) ?? 0) + 1);
     }
   }
   const winner = candidateCertificates.find((certificate) => certificate.title.startsWith('Eureka'));
@@ -391,7 +522,7 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
       openAiExperimentBudgetUsd: params.budgetUsd,
       participationRewardUsdPerAgent: 25,
       victoryProjectBudgetUsd: terminal === 'eureka' ? 50 : 0,
-      collaborationRewardUsdPerCreditedAgent: terminal === 'eureka' ? 25 : 0,
+      collaborationRewardUsdPerCreditedAgent: terminal === 'eureka' ? 10 : 0,
       sotaRewardUsd: terminal !== 'eureka' && Boolean(state.sotaImproved) ? 25 : 0,
       creditedCollaborators,
     },
@@ -448,7 +579,125 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
     await step.sleep('researchers enter the field', '20 seconds');
     }
 
-    for (let round = startRound; round <= Math.min(startRound, params.targetRounds); round += 1) {
+    if (startRound === 26) {
+      const townHallAllowed = await step.do('midpoint town hall budget preflight', async () => {
+        const spent = await globalSpend(this.env.DB);
+        return spent + MEETING_AUTHORIZATION_USD <= params.budgetUsd - params.reserveUsd;
+      });
+      if (!townHallAllowed) {
+        terminal = 'budget-stop';
+        await step.do('midpoint town hall budget stop', async () => {
+          await patchState(this.env.DB, params.runId, { phase: 'budget-stop', phaseEndsAt: null });
+          await addEvent(this.env.DB, params.runId, 25980, {
+            at: nowIso(), round: 25, phase: 'budget-stop', kind: 'budget', title: 'Town hall authorization withheld',
+            summary: 'The protected reserve could not authorize five retrospective calls, so the run stopped safely.',
+            visible: true,
+          });
+        });
+      } else {
+        const townHallDeadline = await step.do('open midpoint town hall', async () => {
+          const deadline = Date.now() + params.phaseMinutes * 60_000;
+          const state = await getState(this.env.DB, params.runId);
+          await patchState(this.env.DB, params.runId, {
+            phase: 'meeting',
+            round: 25,
+            phaseEndsAt: new Date(deadline).toISOString(),
+            agents: (state.agents as Record<string, unknown>[]).map((agent) => ({
+              ...agent,
+              status: 'meeting',
+              bubble: 'Auditing the first half and designing a genuinely diverse second half.',
+            })),
+          });
+          await addEvent(this.env.DB, params.runId, 25950, {
+            at: nowIso(), round: 25, phase: 'meeting', kind: 'meeting', title: 'Round 25 midpoint town hall',
+            summary: 'All five researchers are reviewing the first-half ledger, failure modes, incentives and method convergence before round 26.',
+            visible: true,
+            payload: { retrospectiveRounds: [1, 25], resumeRound: 26, simultaneous: true },
+          });
+          return deadline;
+        });
+        const briefing = await step.do('compile first-half evidence', { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, () => midpointBriefing(this.env.DB, params.runId));
+        const townHall = await Promise.all(AGENTS.map((agent) => step.do(
+          `midpoint town hall · ${agent.id}`,
+          { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '4 minutes' },
+          () => townHallOne(this.env, agent.id, briefing),
+        )));
+        await step.do('publish midpoint town hall', { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
+          await chargeResults(this.env, params, 25, 'meeting', townHall);
+          const successful = townHall.filter((result) => result.ok).map((result) => result.agentId);
+          const credits = creditMap(25, townHall, successful);
+          const state = await getState(this.env.DB, params.runId);
+          const resetBiasedFrontier = !Boolean(state.sotaImproved);
+          const bestPatch = resetBiasedFrontier ? {
+            bestSupport: BREMNER_BASELINE.support,
+            bestShape: [BREMNER_BASELINE.numbers.length, BREMNER_BASELINE.differences.length],
+            bestMetric: BREMNER_BASELINE.progressMetric,
+            bestLabel: 'Known exact 4×4 baseline; balanced metric rejects isolated 1×n anchors.',
+            bestVerified: true,
+          } : {};
+          if (resetBiasedFrontier) {
+            await this.env.DB.prepare('UPDATE runs SET best_support_json=?,best_label=?,best_verified=1,updated_at=? WHERE id=?')
+              .bind(JSON.stringify(BREMNER_BASELINE.support), bestPatch.bestLabel, nowIso(), params.runId)
+              .run();
+          }
+          const events: { seq: number; event: PublicEvent }[] = townHall.map((result) => {
+            const index = AGENT_INDEX[result.agentId];
+            const nominated = result.value?.collaborationCredits ?? [];
+            return {
+              seq: 25960 + index,
+              event: {
+                at: nowIso(), round: 25, phase: 'meeting' as const, agentId: result.agentId,
+                kind: result.ok ? 'meeting' as const : 'error' as const,
+                title: `${AGENTS[index].name} audits the first half`,
+                summary: result.value?.reaction ?? 'The retrospective call failed; the other four audits remain valid.',
+                visible: true,
+                payload: result.value ? {
+                  agreements: result.value.agreements,
+                  objections: result.value.objections,
+                  collaborationCredits: credits.get(result.agentId) ?? [],
+                  agentNominatedCredits: nominated,
+                  round26Lane: secondHalfPolicy(result.agentId, 26).primaryMethod,
+                } : { error: result.error ?? 'Town-hall call failed.' },
+              },
+            };
+          });
+          events.push({
+            seq: 25970,
+            event: {
+              at: nowIso(), round: 25, phase: 'meeting' as const, kind: 'system' as const,
+              title: 'Second-half research policy ratified',
+              summary: 'Divisor atlases are validation-only; five distinct methods rotate, the metric now rewards balanced 5×5 structure, and collaboration credit excludes self-attribution.',
+              visible: true,
+              payload: {
+                ...SECOND_HALF_POLICY_SUMMARY,
+                laneAssignments: AGENTS.map((agent) => ({ agentId: agent.id, method: secondHalfPolicy(agent.id, 26).primaryMethod })),
+              },
+            },
+          });
+          await addEventsAndPatchState(this.env.DB, params.runId, events, {
+            ...bestPatch,
+            phase: 'meeting',
+            round: 25,
+            phaseEndsAt: new Date(townHallDeadline).toISOString(),
+            agents: meetingCards(state, 'meeting', townHall),
+            midpointReview: { completed: true, policy: SECOND_HALF_POLICY_SUMMARY },
+          });
+          for (const result of townHall) {
+            if (!result.value) continue;
+            await this.env.DB.batch([
+              this.env.DB.prepare(`INSERT INTO agent_memory(run_id,agent_id,public_summary_json,private_plan_json,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,agent_id) DO UPDATE SET public_summary_json=excluded.public_summary_json,private_plan_json=excluded.private_plan_json,updated_at=excluded.updated_at`)
+                .bind(params.runId, result.agentId, JSON.stringify({ midpointRetrospective: result.value.reaction }), JSON.stringify(result.value.privateNextPlan), nowIso()),
+              this.env.DB.prepare(`INSERT OR IGNORE INTO private_plans(run_id,round,agent_id,plan_json,created_at) VALUES(?,?,?,?,?)`)
+                .bind(params.runId, 25, result.agentId, JSON.stringify(result.value.privateNextPlan), nowIso()),
+            ]);
+          }
+        });
+        const townHallWaitMs = await step.do('calculate midpoint town hall wait', async () => Math.max(0, townHallDeadline - Date.now()));
+        if (townHallWaitMs > 0) await step.sleep('finish midpoint town hall', townHallWaitMs);
+      }
+    }
+
+    for (let round = startRound; terminal === 'complete' && round <= Math.min(startRound, params.targetRounds); round += 1) {
       const allowed = await step.do(`budget preflight round ${round}`, async () => {
         const spent = await globalSpend(this.env.DB);
         return spent + ROUND_AUTHORIZATION_USD <= params.budgetUsd - params.reserveUsd;
@@ -517,7 +766,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         break;
       }
 
-      const researchWaitMs = await step.do(`calculate private research wait ${round}`, () => Math.max(0, researchDeadline - Date.now()));
+      const researchWaitMs = await step.do(`calculate private research wait ${round}`, async () => Math.max(0, researchDeadline - Date.now()));
       if (researchWaitMs > 0) await step.sleep(`finish private research ${round}`, researchWaitMs);
       const meetingDeadline = await step.do(`atomic simultaneous reveal ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
         const deadline = Date.now() + params.phaseMinutes * 60_000;
@@ -538,6 +787,8 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
 
       await step.do(`publish meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
         await chargeResults(this.env, params, round, 'meeting', meeting);
+        const successful = publicReports.filter((report) => report.ok).map((report) => report.agentId);
+        const credits = creditMap(round, meeting, successful);
         await addEvents(this.env.DB, params.runId, meeting.map((result) => {
           const index = AGENT_INDEX[result.agentId];
           return {
@@ -551,7 +802,8 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
               payload: result.value ? {
                 agreements: result.value.agreements,
                 objections: result.value.objections,
-                collaborationCredits: result.value.collaborationCredits,
+                collaborationCredits: credits.get(result.agentId) ?? [],
+                agentNominatedCredits: result.value.collaborationCredits,
               } : { error: result.error ?? 'Meeting call failed.' },
             },
           };
@@ -569,7 +821,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         }
       });
 
-      const meetingWaitMs = await step.do(`calculate round table wait ${round}`, () => Math.max(0, meetingDeadline - Date.now()));
+      const meetingWaitMs = await step.do(`calculate round table wait ${round}`, async () => Math.max(0, meetingDeadline - Date.now()));
       if (meetingWaitMs > 0) await step.sleep(`finish round table ${round}`, meetingWaitMs);
       completedRound = round;
     }
