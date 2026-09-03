@@ -1,5 +1,6 @@
 import type { AgentId, ResearchReport } from './types';
 import { addEvent, nowIso } from './db';
+import { secondHalfPolicy } from './second-half-policy';
 
 const MAX_ACTIVE_JOBS = 8;
 // At eight dispatched jobs per round, a 50-round competition can legitimately
@@ -48,7 +49,15 @@ export async function scheduleJobs(options: {
     .first<{ active: number | null; total: number }>();
   const activeCapacity = Math.max(0, MAX_ACTIVE_JOBS - Number(counts?.active ?? 0));
   const totalCapacity = Math.max(0, MAX_RUN_JOBS - Number(counts?.total ?? 0));
-  const jobs = options.reports.slice(0, Math.min(3, activeCapacity, totalCapacity));
+  const permitted = options.round < 26
+    ? options.reports
+    : options.reports.filter((job, index, reports) => {
+      if (job.jobType !== 'divisor_completion') return true;
+      const policy = secondHalfPolicy(options.agentId, options.round);
+      return policy.designatedDivisorVerifier === options.agentId
+        && reports.findIndex((candidate) => candidate.jobType === 'divisor_completion') === index;
+    });
+  const jobs = permitted.slice(0, Math.min(3, activeCapacity, totalCapacity));
   const sourceSha = jobs.length ? await resolveSourceRevision(options.repository, options.githubToken) : null;
 
   for (let index = 0; index < jobs.length; index += 1) {

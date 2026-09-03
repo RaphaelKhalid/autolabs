@@ -27,6 +27,8 @@ export function publicAgent(id: AgentId, status = 'ready', bubble = 'Dormant geo
     project: profile.prizeProject,
     approach: profile.style,
     bestSupport: [0, 0, 0, 0, 0],
+    bestShape: [0, 0],
+    bestMetric: [],
     citations: 0,
     tools: visuals[id].tools,
   };
@@ -138,15 +140,30 @@ export async function globalSpend(db: D1Database) {
   return row?.spent ?? 0;
 }
 
-export async function recentEvents(db: D1Database, runId: string, limit = 5_000) {
-  const result = await db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson,visible FROM events WHERE run_id=? AND visible=1 ORDER BY seq DESC LIMIT ?`)
-    .bind(runId, limit)
-    .all<Record<string, unknown> & { payloadJson: string }>();
+export async function recentEvents(db: D1Database, runId: string, limit = 250, beforeSeq?: number): Promise<Array<PublicEvent & { seq: number }>> {
+  const boundedLimit = Math.max(1, Math.min(5_000, Math.floor(limit)));
+  const statement = beforeSeq === undefined
+    ? db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson,visible FROM events WHERE run_id=? AND visible=1 ORDER BY seq DESC LIMIT ?`)
+      .bind(runId, boundedLimit)
+    : db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson,visible FROM events WHERE run_id=? AND visible=1 AND seq<? ORDER BY seq DESC LIMIT ?`)
+      .bind(runId, beforeSeq, boundedLimit);
+  const result = await statement.all<{
+    seq: number;
+    at: string;
+    round: number;
+    phase: Phase;
+    agentId?: AgentId;
+    kind: PublicEvent['kind'];
+    title: string;
+    summary: string;
+    payloadJson: string;
+    visible: number;
+  }>();
   return result.results.reverse().map(({ payloadJson, ...event }) => {
     try {
-      return { ...event, payload: JSON.parse(payloadJson) as unknown };
+      return { ...event, visible: Boolean(event.visible), payload: JSON.parse(payloadJson) as unknown };
     } catch {
-      return { ...event, payload: {} };
+      return { ...event, visible: Boolean(event.visible), payload: {} };
     }
   });
 }
