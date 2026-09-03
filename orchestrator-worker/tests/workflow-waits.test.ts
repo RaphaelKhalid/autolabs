@@ -9,4 +9,10 @@ describe('workflow phase waits', () => {
     expect(workflowSource).toContain('Math.max(0, researchDeadline - Date.now())');
     expect(workflowSource).toContain('Math.max(0, meetingDeadline - Date.now())');
   });
+
+  it('keeps the research attempt and retry inside Cloudflare\'s five-minute step wall', () => {
+    expect(workflowSource).toContain('timeoutMs: 165_000');
+    expect(workflowSource).toContain('timeoutMs: 105_000');
+    expect(165_000 + 105_000).toBeLessThan(5 * 60_000);
+  });
 });
