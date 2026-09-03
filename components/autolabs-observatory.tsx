@@ -262,10 +262,10 @@ export function AutolabsObservatory() {
               onClick={() => { setSelected(agent); setTab('stream'); }}
               aria-label={`Open ${agent.name}'s research record`}
             >
-              <span className="research-note"><i>0{index + 1}</i><span>{isMeeting ? 'Report sealed; entering shared review.' : agent.bubble}</span></span>
+              <span className="research-note"><i>0{index + 1}</i><span>{phase === 'idle' ? 'Dormant geometry; waiting for the ribbon.' : isMeeting ? 'Report sealed; entering shared review.' : agent.bubble}</span></span>
               <AlienForm agent={agent} index={index} meeting={isMeeting} />
               <span className="researcher__identity"><b>{agent.name}</b><small>{agent.epithet}</small></span>
-              <span className="researcher__state"><i /> {isMeeting ? 'CONVENING' : formatCountdown(state.phaseEndsAt, now)}</span>
+              <span className="researcher__state"><i /> {phase === 'idle' ? 'READY' : isMeeting ? 'CONVENING' : formatCountdown(state.phaseEndsAt, now)}</span>
             </button>
           );
         })}
