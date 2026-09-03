@@ -2,7 +2,9 @@ import type { AgentId, ResearchReport } from './types';
 import { addEvent, nowIso } from './db';
 
 const MAX_ACTIVE_JOBS = 8;
-const MAX_RUN_JOBS = 100;
+// At eight dispatched jobs per round, a 50-round competition can legitimately
+// need 400 jobs. Keep concurrency bounded while allowing every round to compute.
+const MAX_RUN_JOBS = 400;
 const AGENT_ORDER: Record<AgentId, number> = { mira: 0, pip: 1, orum: 2, solvi: 3, tess: 4 };
 
 async function resolveSourceRevision(repository: string, githubToken: string) {
