@@ -10,7 +10,7 @@
     "traces": { "enabled": true, "head_sampling_rate": 0.05 }
   },
   "vars": {
-    "PUBLIC_SITE_ORIGIN": "https://autolabs.vercel.app",
+    "PUBLIC_SITE_ORIGIN": "https://autolabs-ebon.vercel.app",
     "GITHUB_REPOSITORY": "RaphaelKhalid/autolabs",
     "MODEL_NAME": "gpt-5.6-luna",
     "PUBLIC_WORKER_URL": "https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev"
