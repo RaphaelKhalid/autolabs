@@ -17,6 +17,6 @@ Last updated: 2026-09-03
 - [x] Production D1 provisioned and migration applied
 - [x] Cloudflare Worker and Workflow deployed
 - [ ] Store production secrets with explicit credential-storage approval
-- [ ] Deploy the redesigned Vercel observatory
+- [x] Deploy the redesigned Vercel observatory
 - [ ] Run the real dress rehearsal from the public control room
 - [ ] Start the 25–50 round competition
