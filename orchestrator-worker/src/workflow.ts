@@ -515,7 +515,8 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         break;
       }
 
-      await step.sleepUntil(`finish private research ${round}`, researchDeadline);
+      const researchWaitMs = await step.do(`calculate private research wait ${round}`, () => Math.max(0, researchDeadline - Date.now()));
+      if (researchWaitMs > 0) await step.sleep(`finish private research ${round}`, researchWaitMs);
       const meetingDeadline = await step.do(`atomic simultaneous reveal ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
         const deadline = Date.now() + params.phaseMinutes * 60_000;
         await revealResearch(this.env, params, round, research, best, 'meeting', new Date(deadline).toISOString());
@@ -566,7 +567,8 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         }
       });
 
-      await step.sleepUntil(`finish round table ${round}`, meetingDeadline);
+      const meetingWaitMs = await step.do(`calculate round table wait ${round}`, () => Math.max(0, meetingDeadline - Date.now()));
+      if (meetingWaitMs > 0) await step.sleep(`finish round table ${round}`, meetingWaitMs);
       completedRound = round;
     }
 
