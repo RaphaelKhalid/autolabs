@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Geist_Mono, STIX_Two_Text } from 'next/font/google';
 import './globals.css';
+import './report.css';
+import './lab.css';
 
 const serif = STIX_Two_Text({
   subsets: ['latin'],

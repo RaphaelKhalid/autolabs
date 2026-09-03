@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchExperiment } from '@/lib/api';
 import {
   formatCountdown, initialExperiment, supportLabel,
-  type ExperimentEvent, type ExperimentState, type ResearchAgent,
+  type ExperimentEvent, type ExperimentState, type ResearchAgent, type ScientificReport,
 } from '@/lib/experiment';
 
 declare global {
@@ -43,6 +43,8 @@ function phaseTitle(state: ExperimentState) {
   if (state.phase === 'ribbon') return 'Opening ceremony';
   if (state.phase === 'eureka') return 'Exact certificate discovered';
   if (state.phase === 'complete') return 'Experiment concluded';
+  if (state.phase === 'budget-stop') return 'Budget reserve reached';
+  if (state.phase === 'error') return 'Engine paused by an error';
   return 'Awaiting the ribbon';
 }
 
@@ -54,7 +56,98 @@ function EventIcon({ event }: { event: ExperimentEvent }) {
   return <Activity size={14} />;
 }
 
-function AlienForm({ agent, index, meeting, compact = false }: {
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asItems(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function readable(value: unknown) {
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+}
+
+function supportFrom(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length !== 5 || !value.every((item) => typeof item === 'number' && Number.isFinite(item))) return null;
+  return value as number[];
+}
+
+function strongerSupport(left: number[], right: number[]) {
+  const leftSorted = [...left].sort((a, b) => a - b);
+  const rightSorted = [...right].sort((a, b) => a - b);
+  for (let index = 0; index < 5; index += 1) {
+    if (leftSorted[index] !== rightSorted[index]) return leftSorted[index] > rightSorted[index];
+  }
+  return false;
+}
+
+function EvidenceList({ label, values }: { label: string; values: unknown[] }) {
+  if (!values.length) return null;
+  return <section><span>{label}</span><ul>{values.map((value, index) => <li key={`${label}-${index}`}>{readable(value)}</li>)}</ul></section>;
+}
+
+function EventEvidence({ event }: { event: ExperimentEvent }) {
+  const payload = asRecord(event.payload);
+  if (!Object.keys(payload).length) return null;
+  const structured = event.kind === 'research' || event.kind === 'meeting';
+  return (
+    <details className="event-evidence">
+      <summary>Open evidence</summary>
+      {structured ? <div>
+        <EvidenceList label="CLAIMS" values={asItems(payload.claims)} />
+        <EvidenceList label="EQUATIONS" values={asItems(payload.equations)} />
+        <EvidenceList label="SOURCE ANCHORS" values={asItems(payload.citations)} />
+        <EvidenceList label="FAILED AVENUES" values={asItems(payload.failedAvenues)} />
+        <EvidenceList label="EXACT CHECKS" values={asItems(payload.verifiedCandidates)} />
+        <EvidenceList label="COMPUTE JOBS" values={asItems(payload.proposedJobs)} />
+        <EvidenceList label="NEXT QUESTIONS" values={asItems(payload.nextQuestions)} />
+        <EvidenceList label="AGREEMENTS" values={asItems(payload.agreements)} />
+        <EvidenceList label="OBJECTIONS" values={asItems(payload.objections)} />
+        <EvidenceList label="COLLABORATION CREDIT" values={asItems(payload.collaborationCredits)} />
+      </div> : <pre>{readable(payload)}</pre>}
+    </details>
+  );
+}
+
+function ScientificReportView({ report, workerUrl }: { report: ScientificReport; workerUrl?: string }) {
+  const outcome = report.result.k5Proved ? 'k = 5 proved' : report.result.sotaImproved ? 'frontier improved' : report.outcome === 'budget-stop' ? 'budget-safe stop' : 'search completed';
+  const base = workerUrl?.replace(/\/$/, '');
+  return (
+    <section id="report" className="scientific-report">
+      <div className="record-heading">
+        <p className="section-index">03 / TERMINAL REPORT</p>
+        <h2>The sealed record,<br /><em>opened in full.</em></h2>
+        <p>Every public claim, exact certificate, failed path, compute job and formerly private plan is retained as a reproducible scientific object.</p>
+      </div>
+      <div className="report-outcome">
+        <span>OUTCOME</span><strong>{outcome}</strong>
+        <p>{report.roundsCompleted} of {report.targetRounds} rounds completed · best support {supportLabel(report.result.bestSupport)}</p>
+        <div><i className={report.result.k5Proved ? 'is-yes' : ''}>k = 5 {report.result.k5Proved ? 'certified' : 'not certified'}</i><i className={report.result.sotaImproved ? 'is-yes' : ''}>SOTA {report.result.sotaImproved ? 'improved' : 'unchanged'}</i></div>
+      </div>
+      <div className="report-grid">
+        <section><span>SOURCE ANCHORS</span><strong>{report.scientificRecord.citations.length}</strong><ul>{report.scientificRecord.citations.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
+        <section><span>FAILED AVENUES</span><strong>{report.scientificRecord.failedAvenues.length}</strong><ul>{report.scientificRecord.failedAvenues.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
+        <section><span>EXACT CERTIFICATES</span><strong>{report.result.candidateCertificates.length}</strong><details><summary>Inspect certificates</summary><pre>{readable(report.result.candidateCertificates)}</pre></details></section>
+        <section><span>DETERMINISTIC JOBS</span><strong>{report.codeJobs.length}</strong><details><summary>Inspect job record</summary><pre>{readable(report.codeJobs)}</pre></details></section>
+      </div>
+      <div className="report-agents">
+        <header><span>RESEARCHER</span><span>PROPOSED PROJECT</span><span>CREDIT</span></header>
+        {report.agents.map((agent) => <div key={agent.id}><b>{agent.name}</b><p>{agent.proposedPrizeProject}</p><strong>{agent.collaborationCredits}</strong></div>)}
+      </div>
+      <details className="report-disclosure"><summary>Release all private next-round plans ({report.privatePlansReleased.length})</summary><pre>{readable(report.privatePlansReleased)}</pre></details>
+      <details className="report-disclosure"><summary>OpenAI usage ledger ({report.usage.length} entries)</summary><pre>{readable(report.usage)}</pre></details>
+      <div className="report-links">
+        {base && <a href={`${base}/api/experiments/${report.runId}/report`} target="_blank" rel="noreferrer">Scientific report JSON <ArrowUpRight size={12} /></a>}
+        {base && <a href={`${base}${report.scientificRecord.completeEventLedger}`} target="_blank" rel="noreferrer">Complete event ledger <ArrowUpRight size={12} /></a>}
+        <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Verifier source <ArrowUpRight size={12} /></a>
+      </div>
+    </section>
+  );
+}
+export function AlienForm({ agent, index, meeting, compact = false }: {
   agent: ResearchAgent;
   index: number;
   meeting: boolean;
@@ -152,11 +245,6 @@ export function AutolabsObservatory() {
     return () => { window.clearInterval(clock); window.clearInterval(poll); };
   }, [reload]);
 
-  useEffect(() => {
-    if (!replayPlaying || !replay) return;
-    const timer = window.setInterval(() => setReplayIndex((value) => value >= state.events.length - 1 ? 0 : value + 1), 1200);
-    return () => window.clearInterval(timer);
-  }, [replay, replayPlaying, state.events.length]);
 
   useEffect(() => {
     const context = document.modelContext;
@@ -180,8 +268,41 @@ export function AutolabsObservatory() {
   const replayEvent = visibleEvents[replayPosition];
   const phase = replay && replayEvent ? replayEvent.phase : state.phase;
   const isMeeting = phase === 'meeting';
+  const displayRound = replay && replayEvent ? replayEvent.round : state.round;
+  const displaySupport = useMemo(() => {
+    if (!replay) return state.bestSupport;
+    let best = [0, 0, 0, 0, 0];
+    for (const event of visibleEvents.slice(0, replayPosition + 1)) {
+      const support = supportFrom(asRecord(event.payload).support);
+      if (support && strongerSupport(support, best)) best = support;
+    }
+    return best;
+  }, [replay, replayPosition, state.bestSupport, visibleEvents]);
+  const selectedToolEvents = useMemo(() => selected ? visibleEvents.filter((event) => event.agentId === selected.id && (event.kind === 'tool' || asItems(asRecord(event.payload).proposedJobs).length > 0)) : [], [selected, visibleEvents]);
+  const workerUrl = process.env.NEXT_PUBLIC_ORCHESTRATOR_URL;
   const budgetPercent = Math.min(100, (state.spentUsd / state.budgetUsd) * 100);
-  const supportPercent = Math.min(100, (state.bestSupport.reduce((sum, n) => sum + n, 0) / 25) * 100);
+  const supportPercent = Math.min(100, (displaySupport.reduce((sum, n) => sum + n, 0) / 25) * 100);
+
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = state.agents.find((agent) => agent.id === selected.id);
+    if (fresh && fresh !== selected) setSelected(fresh);
+  }, [selected, state.agents]);
+
+  useEffect(() => {
+    if (!replay) setReplayIndex(replayMax);
+  }, [replay, replayMax]);
+
+  useEffect(() => {
+    if (!replay || !replayPlaying || visibleEvents.length === 0) return;
+    if (replayPosition >= replayMax) {
+      setReplayPlaying(false);
+      return;
+    }
+    const stepMs = Math.max(150, Math.min(1200, Math.floor(300_000 / visibleEvents.length)));
+    const timer = window.setTimeout(() => setReplayIndex((value) => Math.min(replayMax, value + 1)), stepMs);
+    return () => window.clearTimeout(timer);
+  }, [replay, replayMax, replayPlaying, replayPosition, visibleEvents.length]);
 
   async function startRun(mode: 'rehearsal' | 'competition') {
     setStartMessage('Opening the laboratory…');
@@ -202,12 +323,14 @@ export function AutolabsObservatory() {
     <main className={`observatory ${isMeeting ? 'is-meeting' : ''}`}>
       <div className="paper-noise" aria-hidden="true" />
       <header className="masthead">
-        <a className="wordmark" href="#field" aria-label="Autolabs home">
+        <a className="wordmark" href="/" aria-label="Return to the living lab">
           <span className="wordmark__sigil">A</span>
           <span><b>AUTOLABS</b><small>Computational mathematics, observed</small></span>
         </a>
         <nav className="masthead__nav" aria-label="Primary">
+          <a href="/">Lab</a>
           <a href="#ledger">Ledger</a>
+          {state.report && <a href="#report">Report</a>}
           <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={11} /></a>
         </nav>
         <div className="masthead__actions">
@@ -221,22 +344,22 @@ export function AutolabsObservatory() {
         <div className="score-ribbon__title"><span>ERDŐS PROBLEM</span><strong>885</strong></div>
         <div className="score-ribbon__measure">
           <span>BEST EXACT SUPPORT</span>
-          <b>{supportLabel(state.bestSupport)}</b>
+          <b>{supportLabel(displaySupport)}</b>
           <div className="score-line"><i style={{ width: `${supportPercent}%` }} /></div>
           <small>target&nbsp; (5, 5, 5, 5, 5)</small>
         </div>
         <div className="score-ribbon__datum"><span>INTERVAL</span><b>{phaseTitle({ ...state, phase })}</b></div>
-        <div className="score-ribbon__datum"><span>ROUND</span><b>{String(state.round).padStart(2, '0')}<em> / {state.targetRounds}</em></b></div>
-        <div className="score-ribbon__datum score-ribbon__clock"><span>NEXT TRANSITION</span><b>{formatCountdown(state.phaseEndsAt, now)}</b></div>
+        <div className="score-ribbon__datum"><span>ROUND</span><b>{String(displayRound).padStart(2, '0')}<em> / {state.targetRounds}</em></b></div>
+        <div className="score-ribbon__datum score-ribbon__clock"><span>NEXT TRANSITION</span><b>{formatCountdown(replay ? null : state.phaseEndsAt, now)}</b></div>
       </section>
 
       <section id="field" className="research-intro">
         <p className="section-index">01 / LIVE FIELD</p>
         <div>
           <h1>An exact search,<br /><em>observed in motion.</em></h1>
-          <p>Five independent mathematical intelligences search for a common five-by-five difference-of-squares rectangle. Their forms are not portraits; they are live instruments—shape, tempo and convergence follow the work.</p>
+
         </div>
-        <button className="replay-link" onClick={() => { setReplay(!replay); setReplayPlaying(false); }}><TimerReset size={14} /> {replay ? 'Return to the present' : 'Replay the experiment'}</button>
+        <button className="replay-link" onClick={() => { setReplayPlaying(false); if (replay) setReplay(false); else { setReplay(true); setReplayIndex(0); } }}><TimerReset size={14} /> {replay ? 'Return to the present' : 'Replay the experiment'}</button>
       </section>
 
       <section className="research-field" aria-label="Five live autonomous researchers">
@@ -292,6 +415,7 @@ export function AutolabsObservatory() {
         </div>
         <div className="event-ledger">
           <header><span>EVENT</span><span>RESEARCH RECORD</span><span>TIME</span></header>
+          {visibleEvents.length === 0 && <div className="ledger-empty"><Radio size={15} /><p><b>The instrument is ready.</b><small>The public ledger begins at the ribbon cutting.</small></p></div>}
           {visibleEvents.slice().reverse().map((event) => (
             <button key={event.seq} onClick={() => event.agentId && setSelected(state.agents.find((agent) => agent.id === event.agentId) ?? null)}>
               <span className={`event-glyph event-glyph--${event.kind}`}><EventIcon event={event} /></span>
@@ -302,9 +426,11 @@ export function AutolabsObservatory() {
         </div>
       </section>
 
+      {state.report && <ScientificReportView report={state.report} workerUrl={workerUrl} />}
+
       <section className="covenant">
-        <p className="section-index">03 / COVENANT</p>
-        <div className="covenant__statement"><span>δ</span><p>Human mathematics,<br /><em>alien search instincts.</em></p></div>
+        <p className="section-index">{state.report ? '04' : '03'} / COVENANT</p>
+        <div className="covenant__statement"><span>δ</span><p>Human mathematics,<br /><em>exact evidence.</em></p></div>
         <ol>
           <li><span>01</span>Five unrestricted expert mathematicians</li>
           <li><span>02</span>Simultaneous reports; private plans embargoed</li>
@@ -347,10 +473,10 @@ export function AutolabsObservatory() {
               <nav>{(['stream', 'profile', 'tools'] as const).map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}</nav>
               {tab === 'stream' && <div className="drawer-content research-stream">
                 <div className="transparency-note"><BrainCircuit size={15} /><p><b>Auditable research record.</b> Hypotheses, evidence, tool inputs, outputs and conclusions are shown here—not hidden chain-of-thought.</p></div>
-                {visibleEvents.filter((event) => !event.agentId || event.agentId === selected.id).slice().reverse().map((event) => <article key={event.seq}><time>ROUND {event.round} · {event.kind.toUpperCase()}</time><h3>{event.title}</h3><p>{event.summary}</p>{event.kind === 'candidate' && <code>support = {supportLabel(selected.bestSupport)} · EXACT</code>}</article>)}
+                {visibleEvents.filter((event) => !event.agentId || event.agentId === selected.id).slice().reverse().map((event) => <article key={event.seq}><time>ROUND {event.round} · {event.kind.toUpperCase()}</time><h3>{event.title}</h3><p>{event.summary}</p>{event.kind === 'candidate' && <code>support = {supportLabel(supportFrom(asRecord(event.payload).support) ?? selected.bestSupport)} · EXACT</code>}<EventEvidence event={event} /></article>)}
               </div>}
               {tab === 'profile' && <div className="drawer-content profile-view"><span>COGNITIVE GEOMETRY</span><h3>{selected.approach}</h3><p>Every researcher may use every branch of human mathematics. Its morphology expresses how it generates, selects and attacks ideas—not a limitation on knowledge.</p><span>PROPOSED PRIZE PROJECT</span><blockquote>{selected.project}</blockquote><span>CURRENT VERIFIED SUPPORT</span><strong>{supportLabel(selected.bestSupport)}</strong></div>}
-              {tab === 'tools' && <div className="drawer-content tool-view"><span>EXACT TOOLKIT</span>{selected.tools.map((tool) => <div key={tool}><FlaskConical size={15} /><p><b>{tool}</b><small>Inputs and outputs retained in the ledger.</small></p><ShieldCheck size={14} /></div>)}<div><BookOpen size={15} /><p><b>{selected.citations} source anchors</b><small>Known searches checked before compute is scheduled.</small></p><ShieldCheck size={14} /></div></div>}
+              {tab === 'tools' && <div className="drawer-content tool-view"><span>EXACT TOOLKIT</span>{selected.tools.map((tool) => <div key={tool}><FlaskConical size={15} /><p><b>{tool}</b><small>Inputs and outputs retained in the ledger.</small></p><ShieldCheck size={14} /></div>)}<div><BookOpen size={15} /><p><b>{selected.citations} source anchors</b><small>Known searches checked before compute is scheduled.</small></p><ShieldCheck size={14} /></div><span>RECORDED TOOL EVENTS</span>{selectedToolEvents.length === 0 ? <p className="tool-empty">No deterministic job has been revealed for this researcher yet.</p> : selectedToolEvents.slice().reverse().map((event) => <article className="tool-event" key={event.seq}><b>{event.title}</b><small>{event.summary}</small><EventEvidence event={event} /></article>)}</div>}
             </aside>
           </div>
         );

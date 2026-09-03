@@ -1,5 +1,5 @@
-import { AutolabsObservatory } from '@/components/autolabs-observatory';
+import { LivingLab } from '@/components/living-lab';
 
 export default function Home() {
-  return <AutolabsObservatory />;
+  return <LivingLab />;
 }
