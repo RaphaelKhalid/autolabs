@@ -11,3 +11,4 @@ coverage/
 .DS_Store
 orchestrator-worker/.dev.vars*
 orchestrator-worker/.wrangler/
+.vercel
