@@ -90,7 +90,7 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     user: prompt.user,
     schemaName: 'erdos_885_research',
     schema: RESEARCH_SCHEMA,
-    maxOutputTokens: 5_000,
+    maxOutputTokens: 12_000,
     maxInputBytes: 64_000,
     webSearch: false,
     timeoutMs: 135_000,
@@ -104,7 +104,7 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     user: `${prompt.user}\nThe prior attempt failed. Return a smaller valid report now.`,
     schemaName: 'erdos_885_research_retry',
     schema: RESEARCH_SCHEMA,
-    maxOutputTokens: 3_000,
+    maxOutputTokens: 8_000,
     maxInputBytes: 64_000,
     webSearch: false,
     timeoutMs: 120_000,
@@ -122,7 +122,7 @@ async function meetingOne(env: Env, round: number, agentId: AgentId, reports: un
     ...prompt,
     schemaName: 'erdos_885_meeting',
     schema: MEETING_SCHEMA,
-    maxOutputTokens: 2_500,
+    maxOutputTokens: 8_000,
     maxInputBytes: 128_000,
     webSearch: false,
     timeoutMs: 135_000,
@@ -136,7 +136,7 @@ async function meetingOne(env: Env, round: number, agentId: AgentId, reports: un
     user: `${prompt.user}\nReturn a shorter valid reaction and private plan.`,
     schemaName: 'erdos_885_meeting_retry',
     schema: MEETING_SCHEMA,
-    maxOutputTokens: 1_800,
+    maxOutputTokens: 6_000,
     maxInputBytes: 128_000,
     webSearch: false,
     timeoutMs: 120_000,
@@ -507,7 +507,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         break;
       }
 
-      await step.sleepUntil(`finish private research ${round}`, researchDeadline);
+      if (Date.now() < researchDeadline) await step.sleepUntil(`finish private research ${round}`, researchDeadline);
       const meetingDeadline = Date.now() + params.phaseMinutes * 60_000;
       await step.do(`atomic simultaneous reveal ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, () => revealResearch(this.env, params, round, research, best, 'meeting', new Date(meetingDeadline).toISOString()));
 
@@ -551,7 +551,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         }
       });
 
-      await step.sleepUntil(`finish round table ${round}`, meetingDeadline);
+      if (Date.now() < meetingDeadline) await step.sleepUntil(`finish round table ${round}`, meetingDeadline);
       completedRound = round;
     }
 
@@ -562,6 +562,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
     } catch (error) {
       const failureAt = nowIso();
       await step.do('record terminal workflow failure', { retries: { limit: 5, delay: '15 seconds', backoff: 'linear' } }, async () => {
+        await patchState(this.env.DB, params.runId, { phase: 'error', phaseEndsAt: null });
         await this.env.DB.prepare(`UPDATE runs SET status='error',phase='error',phase_ends_at=NULL,completed_at=?,updated_at=? WHERE id=? AND status='running'`)
           .bind(failureAt, failureAt, params.runId)
           .run();

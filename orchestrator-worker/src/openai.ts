@@ -95,6 +95,7 @@ export async function callStructured<T extends ResearchReport | MeetingReport>(o
           { role: 'user', content: [{ type: 'input_text', text: options.user }] },
         ],
         text: {
+          verbosity: 'low',
           format: {
             type: 'json_schema',
             name: options.schemaName,
