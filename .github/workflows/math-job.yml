@@ -1,0 +1,24 @@
+name: Autolabs exact math job
+
+on:
+  repository_dispatch:
+    types: [autolabs_math_job]
+
+permissions:
+  contents: read
+
+jobs:
+  exact-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container: node:22-bookworm
+    env:
+      JOB_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+      CALLBACK_SECRET: ${{ secrets.AUTOLABS_CALLBACK_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run bounded deterministic search
+        run: node math-worker/run.mjs
+      - name: Return signed result to ledger
+        if: always()
+        run: node math-worker/callback.mjs

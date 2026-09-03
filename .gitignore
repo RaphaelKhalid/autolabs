@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.vercel/
+.env*
+!.env.example
+.wrangler/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+orchestrator-worker/.dev.vars*
+orchestrator-worker/.wrangler/

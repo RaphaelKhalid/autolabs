@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "autolabs-orchestrator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  },
+  "vars": {
+    "PUBLIC_SITE_ORIGIN": "https://autolabs.vercel.app",
+    "GITHUB_REPOSITORY": "RaphaelKhalid/autolabs",
+    "MODEL_NAME": "gpt-5.6-luna",
+    "PUBLIC_WORKER_URL": "https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "autolabs-ledger",
+      "database_id": "798ce4dd-2954-497a-b7ba-b29ae47a5445",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "workflows": [
+    {
+      "binding": "AUTOLABS_WORKFLOW",
+      "name": "autolabs-competition",
+      "class_name": "AutolabsWorkflow"
+    }
+  ]
+}
