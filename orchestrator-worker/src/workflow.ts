@@ -90,10 +90,10 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     user: prompt.user,
     schemaName: 'erdos_885_research',
     schema: RESEARCH_SCHEMA,
-    maxOutputTokens: 12_000,
+    maxOutputTokens: 24_000,
     maxInputBytes: 64_000,
     webSearch: false,
-    timeoutMs: 135_000,
+    timeoutMs: 240_000,
   });
   if (first.ok) return first;
   const second = await callStructured<ResearchReport>({
@@ -104,10 +104,10 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     user: `${prompt.user}\nThe prior attempt failed. Return a smaller valid report now.`,
     schemaName: 'erdos_885_research_retry',
     schema: RESEARCH_SCHEMA,
-    maxOutputTokens: 8_000,
+    maxOutputTokens: 16_000,
     maxInputBytes: 64_000,
     webSearch: false,
-    timeoutMs: 120_000,
+    timeoutMs: 180_000,
   });
   return mergeAttempts(first, second);
 }
@@ -479,7 +479,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       });
 
       const prepared = await step.do(`prepare research context ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, () => prepareResearchPrompts(this.env, params, round));
-      const research = await step.do(`five sealed research calls ${round}`, { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' }, () => Promise.all(prepared.map(async (prompt): Promise<ResearchResult> => ({
+      const research = await step.do(`five sealed research calls ${round}`, { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '10 minutes' }, () => Promise.all(prepared.map(async (prompt): Promise<ResearchResult> => ({
         ...await researchOne(this.env, prompt),
         retrieval: prompt.retrieval,
       }))));
