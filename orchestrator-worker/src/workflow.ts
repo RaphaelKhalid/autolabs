@@ -93,7 +93,9 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     maxOutputTokens: 24_000,
     maxInputBytes: 64_000,
     webSearch: false,
-    timeoutMs: 240_000,
+    // A Cloudflare Workflow step can be terminated at the five-minute wall.
+    // Leave enough room for the structured retry and step bookkeeping.
+    timeoutMs: 165_000,
   });
   if (first.ok) return first;
   const second = await callStructured<ResearchReport>({
@@ -107,7 +109,7 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     maxOutputTokens: 16_000,
     maxInputBytes: 64_000,
     webSearch: false,
-    timeoutMs: 180_000,
+    timeoutMs: 105_000,
   });
   return mergeAttempts(first, second);
 }
@@ -485,7 +487,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       const prepared = await step.do(`prepare research context ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, () => prepareResearchPrompts(this.env, params, round));
       const research = await Promise.all(prepared.map((prompt) => step.do(
         `sealed research call ${round} · ${prompt.agentId}`,
-        { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '10 minutes' },
+        { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
         async (): Promise<ResearchResult> => ({
           ...await researchOne(this.env, prompt),
           retrieval: prompt.retrieval,
