@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowUpRight, ChevronLeft, ChevronRight, CircleDollarSign, Clock3,
-  FlaskConical, Github, Pause, Play, Radio, ShieldCheck, TimerReset, X, Zap,
+  FlaskConical, Github, Pause, Play, Radio, RefreshCw, ShieldCheck, TimerReset, X, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchExperiment } from '@/lib/api';
@@ -79,6 +79,7 @@ export function LivingLab() {
   const [startMessage, setStartMessage] = useState('');
   const [queueOpen, setQueueOpen] = useState(true);
   const [live, setLive] = useState(Boolean(process.env.NEXT_PUBLIC_ORCHESTRATOR_URL));
+  const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -86,6 +87,11 @@ export function LivingLab() {
       setLive(Boolean(process.env.NEXT_PUBLIC_ORCHESTRATOR_URL));
     } catch { setLive(false); }
   }, []);
+
+  const refreshNow = useCallback(async () => {
+    setRefreshing(true);
+    try { await reload(); } finally { setRefreshing(false); }
+  }, [reload]);
 
   useEffect(() => {
     void reload();
@@ -155,7 +161,14 @@ export function LivingLab() {
       <header className="lab-header">
         <a className="lab-mark" href="/"><i>A</i><span>AUTOLABS<small>EXPERIMENT 885</small></span></a>
         <nav><a href="/journal">Journal</a><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={10} /></a></nav>
-        <div><span className={`lab-live ${live ? '' : 'is-offline'}`}><i />{live ? 'LIVE' : 'PREVIEW'}</span><button onClick={() => setControlOpen(true)}>Owner</button></div>
+        <div>
+          <span className={`lab-live ${live ? '' : 'is-offline'}`}><i />{live ? 'LIVE' : 'PREVIEW'}</span>
+          <button className="lab-refresh" type="button" onClick={() => void refreshNow()} disabled={refreshing} aria-label="Refresh live laboratory">
+            <RefreshCw size={10} className={refreshing ? 'is-spinning' : ''} />
+            <span>{refreshing ? 'Refreshing' : 'Refresh'}</span>
+          </button>
+          <button type="button" onClick={() => setControlOpen(true)}>Owner</button>
+        </div>
       </header>
 
       <section className="lab-score" aria-label="Live score">
