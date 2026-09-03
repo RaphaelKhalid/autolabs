@@ -427,10 +427,12 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
 export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
   async run(event: WorkflowEvent<RunParams>, step: WorkflowStep) {
     const params = event.payload;
+    const startRound = params.startRound ?? 1;
     let terminal: 'complete' | 'eureka' | 'budget-stop' = 'complete';
-    let completedRound = 0;
+    let completedRound = startRound - 1;
 
     try {
+    if (startRound === 1) {
     await step.do('ribbon cutting', async () => {
       await addEvent(this.env.DB, params.runId, 1, {
         at: nowIso(), round: 0, phase: 'ribbon', kind: 'system', title: 'Ribbon cut',
@@ -442,8 +444,9 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       return { opened: true };
     });
     await step.sleep('researchers enter the field', '20 seconds');
+    }
 
-    for (let round = 1; round <= params.targetRounds; round += 1) {
+    for (let round = startRound; round <= Math.min(startRound, params.targetRounds); round += 1) {
       const allowed = await step.do(`budget preflight round ${round}`, async () => {
         const spent = await globalSpend(this.env.DB);
         return spent + ROUND_AUTHORIZATION_USD <= params.budgetUsd - params.reserveUsd;
@@ -561,6 +564,35 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
 
       if (Date.now() < meetingDeadline) await step.sleepUntil(`finish round table ${round}`, meetingDeadline);
       completedRound = round;
+    }
+
+    if (terminal === 'complete' && completedRound < params.targetRounds) {
+      const nextRound = completedRound + 1;
+      const nextWorkflowId = `${params.runId}-round-${nextRound}`;
+      const continuation = await step.do(`schedule workflow round ${nextRound}`, async () => {
+        const instance = await this.env.AUTOLABS_WORKFLOW.create({
+          id: nextWorkflowId,
+          params: { ...params, startRound: nextRound },
+          retention: { successRetention: '3 days', errorRetention: '3 days' },
+        });
+        return { workflowId: instance.id };
+      });
+      await step.do(`publish workflow continuation ${nextRound}`, async () => {
+        await this.env.DB.prepare('UPDATE runs SET workflow_id=?,updated_at=? WHERE id=? AND status=?')
+          .bind(continuation.workflowId, nowIso(), params.runId, 'running')
+          .run();
+        await addEvent(this.env.DB, params.runId, completedRound * 1000 + 900, {
+          at: nowIso(),
+          round: completedRound,
+          phase: 'meeting',
+          kind: 'system',
+          title: `Round ${completedRound} committed`,
+          summary: `A fresh free-plan Workflow instance was scheduled for round ${nextRound}.`,
+          visible: true,
+          payload: { workflowId: continuation.workflowId, nextRound },
+        });
+      });
+      return { continued: true, round: completedRound, nextRound, workflowId: continuation.workflowId };
     }
 
     return await step.do('publish terminal scientific report', { retries: { limit: 3, delay: '10 seconds', backoff: 'linear' } }, async () => {
