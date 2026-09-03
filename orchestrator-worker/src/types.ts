@@ -10,6 +10,7 @@ export interface RunParams {
   phaseMinutes: number;
   budgetUsd: number;
   reserveUsd: number;
+  startRound?: number;
 }
 
 export interface CandidateInput {
