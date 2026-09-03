@@ -5,7 +5,7 @@ import {
   ArrowUpRight, ChevronLeft, ChevronRight, CircleDollarSign, Clock3,
   FlaskConical, Github, Pause, Play, Radio, RefreshCw, ShieldCheck, TimerReset, X, Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchExperiment } from '@/lib/api';
 import {
   formatCountdown, initialExperiment, supportLabel,
@@ -80,12 +80,27 @@ export function LivingLab() {
   const [queueOpen, setQueueOpen] = useState(true);
   const [live, setLive] = useState(Boolean(process.env.NEXT_PUBLIC_ORCHESTRATOR_URL));
   const [refreshing, setRefreshing] = useState(false);
+  const [connection, setConnection] = useState<'loading' | 'retrying' | 'ready'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const requestInFlight = useRef(false);
 
   const reload = useCallback(async () => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    setLoadAttempt((attempt) => attempt + 1);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
-      setState(await fetchExperiment());
+      setState(await fetchExperiment(controller.signal));
       setLive(Boolean(process.env.NEXT_PUBLIC_ORCHESTRATOR_URL));
-    } catch { setLive(false); }
+      setConnection('ready');
+    } catch {
+      setLive(false);
+      setConnection((current) => current === 'ready' ? current : 'retrying');
+    } finally {
+      window.clearTimeout(timeout);
+      requestInFlight.current = false;
+    }
   }, []);
 
   const refreshNow = useCallback(async () => {
@@ -96,7 +111,7 @@ export function LivingLab() {
   useEffect(() => {
     void reload();
     const clock = window.setInterval(() => setNow(Date.now()), 1_000);
-    const poll = window.setInterval(() => void reload(), 5_000);
+    const poll = window.setInterval(() => void reload(), 3_000);
     return () => { window.clearInterval(clock); window.clearInterval(poll); };
   }, [reload]);
 
@@ -151,6 +166,30 @@ export function LivingLab() {
 
   return (
     <main className={`living-lab phase-${phase} ${meeting ? 'is-tessellating' : ''}`}>
+      <AnimatePresence>
+        {connection !== 'ready' && (
+          <motion.section
+            className="lab-boot"
+            role="status"
+            aria-live="polite"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: .55 } }}
+          >
+            <div className="lab-boot__mark"><i>A</i><span>AUTOLABS<small>EXPERIMENT 885</small></span></div>
+            <div className="lab-boot__formation" aria-hidden="true">
+              {[0, 1, 2, 3, 4].map((index) => <i key={index} style={{ '--boot-index': index } as React.CSSProperties} />)}
+            </div>
+            <div className="lab-boot__copy">
+              <span>{connection === 'retrying' ? 'COLD START / RECONNECTING' : 'LIVE LEDGER / CONNECTING'}</span>
+              <h1>{connection === 'retrying' ? 'Waking the observatory.' : 'Opening the observatory.'}</h1>
+              <p>Synchronizing the researchers, computation queue and public record. The lab will appear automatically.</p>
+              <div className="lab-boot__progress"><i /></div>
+              <small>CONNECTION ATTEMPT {String(loadAttempt).padStart(2, '0')}</small>
+              {connection === 'retrying' && <button type="button" onClick={() => void reload()}>Try now</button>}
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
       <div className="world-sky" aria-hidden="true"><i /><i /><i /></div>
       <div className="world-rain" aria-hidden="true" />
       <div className="world-canopy world-canopy--left" aria-hidden="true" />
