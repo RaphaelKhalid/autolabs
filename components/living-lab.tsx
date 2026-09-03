@@ -213,7 +213,7 @@ export function LivingLab() {
       </section>
 
       <aside className={`compute-queue ${queueOpen ? 'is-open' : ''}`}>
-        <button className="queue-toggle" onClick={() => setQueueOpen(!queueOpen)}><FlaskConical size={14}/><span>COMPUTE QUEUE</span><b>{visibleJobs.filter((job) => ['queued','dispatching','running'].includes(job.status)).length}</b></button>
+        <button className="queue-toggle" onClick={() => setQueueOpen(!queueOpen)}><FlaskConical size={14}/><span>COMPUTE QUEUE</span><b>{visibleJobs.length}</b></button>
         {queueOpen && <div className="queue-body">
           <header><span>ASYNCHRONOUS EXACT JOBS</span><small>Jobs may outlive the round that proposed them.</small></header>
           {visibleJobs.length ? visibleJobs.slice(0, 7).map((job) => <JobRow key={job.id} job={job} onOpen={() => setSelectedId(job.agentId)} />) : <div className="queue-empty"><Radio size={14}/><p>{phase === 'research' ? 'Five research calls are running.' : 'No exact jobs proposed yet.'}<small>{phase === 'research' ? 'Calculator jobs appear after the sealed reports reveal.' : 'New jobs appear here as agents dispatch them.'}</small></p></div>}
