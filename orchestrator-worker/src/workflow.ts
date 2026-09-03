@@ -479,10 +479,14 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       });
 
       const prepared = await step.do(`prepare research context ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, () => prepareResearchPrompts(this.env, params, round));
-      const research = await step.do(`five sealed research calls ${round}`, { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '10 minutes' }, () => Promise.all(prepared.map(async (prompt): Promise<ResearchResult> => ({
-        ...await researchOne(this.env, prompt),
-        retrieval: prompt.retrieval,
-      }))));
+      const research = await Promise.all(prepared.map((prompt) => step.do(
+        `sealed research call ${round} · ${prompt.agentId}`,
+        { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '10 minutes' },
+        async (): Promise<ResearchResult> => ({
+          ...await researchOne(this.env, prompt),
+          retrieval: prompt.retrieval,
+        }),
+      )));
       const best = await step.do(`charge and verify research ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
         await chargeResults(this.env, params, round, 'research', research);
         return bestRectangle(research);
@@ -516,7 +520,11 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         ok: result.ok,
         report: verifiedReport(result) ?? { headline: 'Agent recovering', thesis: result.error ?? 'Call failed.' },
       }));
-      const meeting = await step.do(`five meeting reactions ${round}`, { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' }, () => Promise.all(AGENTS.map((agent) => meetingOne(this.env, round, agent.id, publicReports))));
+      const meeting = await Promise.all(AGENTS.map((agent) => step.do(
+        `meeting reaction ${round} · ${agent.id}`,
+        { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
+        () => meetingOne(this.env, round, agent.id, publicReports),
+      )));
 
       await step.do(`publish meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
         await chargeResults(this.env, params, round, 'meeting', meeting);
