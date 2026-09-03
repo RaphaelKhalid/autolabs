@@ -175,7 +175,9 @@ export function AutolabsObservatory() {
   }, [state]);
 
   const visibleEvents = useMemo(() => state.events.filter((event) => event.visible), [state.events]);
-  const replayEvent = visibleEvents[Math.min(replayIndex, visibleEvents.length - 1)];
+  const replayMax = Math.max(0, visibleEvents.length - 1);
+  const replayPosition = Math.min(Math.max(0, replayIndex), replayMax);
+  const replayEvent = visibleEvents[replayPosition];
   const phase = replay && replayEvent ? replayEvent.phase : state.phase;
   const isMeeting = phase === 'meeting';
   const budgetPercent = Math.min(100, (state.spentUsd / state.budgetUsd) * 100);
@@ -209,7 +211,7 @@ export function AutolabsObservatory() {
           <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={11} /></a>
         </nav>
         <div className="masthead__actions">
-          <span className={`live-signal ${live ? '' : 'is-preview'}`}><i /> {live ? 'Live experiment' : 'Preview state'}</span>
+          <span className={`live-signal ${live ? '' : 'is-preview'}`}><i /> {live ? (state.phase === 'idle' ? 'Engine online · idle' : 'Live experiment') : 'Preview state'}</span>
           <button className="bare-button" onClick={() => setSound(!sound)} aria-label={sound ? 'Mute atmosphere' : 'Enable atmosphere'}>{sound ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
           <button className="control-link" onClick={() => setControlOpen(true)}>Owner control</button>
         </div>
@@ -358,9 +360,9 @@ export function AutolabsObservatory() {
         <section className="replay-console">
           <button onClick={() => setReplayPlaying(!replayPlaying)} aria-label={replayPlaying ? 'Pause replay' : 'Play replay'}>{replayPlaying ? <Pause size={16} /> : <Play size={16} />}</button>
           <button onClick={() => setReplayIndex(Math.max(0, replayIndex - 1))} aria-label="Previous event"><ChevronLeft size={16} /></button>
-          <input type="range" min="0" max={Math.max(0, visibleEvents.length - 1)} value={Math.min(replayIndex, visibleEvents.length - 1)} onChange={(event) => setReplayIndex(Number(event.target.value))} aria-label="Replay timeline" />
-          <button onClick={() => setReplayIndex(Math.min(visibleEvents.length - 1, replayIndex + 1))} aria-label="Next event"><ChevronRight size={16} /></button>
-          <div><span>EVENT {replayIndex + 1} / {visibleEvents.length}</span><b>{replayEvent?.title ?? 'No events yet'}</b></div>
+          <input type="range" min="0" max={replayMax} value={replayPosition} onChange={(event) => setReplayIndex(Number(event.target.value))} aria-label="Replay timeline" />
+          <button onClick={() => setReplayIndex(Math.min(replayMax, replayIndex + 1))} aria-label="Next event"><ChevronRight size={16} /></button>
+          <div><span>EVENT {visibleEvents.length ? replayPosition + 1 : 0} / {visibleEvents.length}</span><b>{replayEvent?.title ?? 'No events yet'}</b></div>
           <button className="replay-close" onClick={() => setReplay(false)} aria-label="Close replay"><X size={16} /></button>
         </section>
       )}
