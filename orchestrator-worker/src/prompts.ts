@@ -86,7 +86,7 @@ function commonSystem(profile: AgentProfile) {
 
 PUBLIC-RECORD RULE: return inspectable research summaries—claims, equations, citations, tool/job requests, falsifications and conclusions. Never output hidden chain-of-thought or private deliberation. Label conjectures. Never claim a result from numerical closeness. Every candidate will be checked by deterministic bigint code.
 
-JOB PARAMETER RULE: all eight job parameter keys are required by the schema. Use null for keys irrelevant to the selected job type. divisor_completion needs d1 and d2; family_scan needs a space-separated differences string; boundary_scan needs startDifference, endDifference and stride. maxChecks may be set for every job.
+JOB PARAMETER RULE: all eight job parameter keys are required by the schema. Use null for keys irrelevant to the selected job type. divisor_completion needs d1 and d2; family_scan needs a space-separated differences string; boundary_scan needs startDifference, endDifference and stride. For divisor_completion, limit means the maximum returned completion count (1â€“5000), never a bound on N. maxChecks may be set for every job.
 
 ${PROBLEM_CONTEXT}`;
 }

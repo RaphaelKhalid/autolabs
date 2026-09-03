@@ -30,6 +30,12 @@ function boundedInteger(value, label, fallback, minimum, maximum) {
   return number;
 }
 
+function completionLimit(value, fallback = 2_000) {
+  if (value === null || value === undefined) return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) throw new Error('limit must be a positive number');
+  return Math.min(5_000, Math.max(1, Math.floor(number)));
+}
 function consumeCheck() {
   if (checks >= maxChecks || Date.now() >= deadline) return false;
   checks += 1;
@@ -68,7 +74,7 @@ function exactCell(n, d) {
 function completions(rawD1, rawD2, requestedLimit = 2_000) {
   const d1 = rawD1 < rawD2 ? rawD1 : rawD2;
   const d2 = rawD1 < rawD2 ? rawD2 : rawD1;
-  const limit = boundedInteger(requestedLimit, 'limit', 2_000, 1, 5_000);
+  const limit = completionLimit(requestedLimit);
   const delta = d2 * d2 - d1 * d1;
   if (delta <= 0n) return { numbers: [], complete: true, truncatedBy: null };
   const results = new Map();
@@ -147,7 +153,7 @@ function divisorJob(params) {
   const d1 = positiveDecimal(params.d1, 'd1');
   const d2 = positiveDecimal(params.d2, 'd2');
   if (d1 === d2) throw new Error('d1 and d2 must be distinct');
-  const found = completions(d1, d2, boundedInteger(params.limit, 'limit', 2_000, 1, 5_000));
+  const found = completions(d1, d2, params.limit);
   return {
     d1: d1.toString(),
     d2: d2.toString(),
