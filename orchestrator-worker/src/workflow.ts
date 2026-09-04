@@ -1,9 +1,9 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
 import { AGENTS } from './agents';
-import { addEvent, addEvents, addEventsAndPatchState, getState, globalExaSpend, globalSpend, nowIso, patchState, recentEvents, recordExaBatch, recordUsage } from './db';
+import { addEvent, addEvents, addEventsAndPatchState, getState, globalExaSpend, globalSpend, nowIso, patchState, recentEvents, recordExaBatch, recordUsage, updateLiveTrace } from './db';
 import { EXA_BUDGET_USD, EXA_REQUEST_AUTHORIZATION_USD, retrievalContext, searchExa, type ExaRetrieval } from './exa';
 import { reapStaleJobs, scheduleJobs } from './github-jobs';
-import { callStructured, mergeAttempts } from './openai';
+import { callStructured, mergeAttempts, type ModelProgress } from './openai';
 import { MEETING_SCHEMA, RESEARCH_SCHEMA, meetingPrompt, midpointTownHallPrompt, researchPrompt } from './prompts';
 import { SECOND_HALF_POLICY_SUMMARY, balancedCollaborationCredits, secondHalfPolicy } from './second-half-policy';
 import type { AgentId, AgentResult, MeetingReport, PublicEvent, ResearchReport, RunParams } from './types';
@@ -30,6 +30,18 @@ interface BestCandidate {
   agentId: AgentId;
   check: RectangleCheck;
   note: string;
+}
+
+function traceProgress(env: Env, params: RunParams, round: number, phase: 'research' | 'meeting', attempt: number, agentId: AgentId) {
+  return (progress: ModelProgress) => updateLiveTrace(env.DB, params.runId, {
+    agentId,
+    round,
+    phase,
+    attempt,
+    status: progress.status,
+    outputCharacters: progress.outputCharacters,
+    updatedAt: nowIso(),
+  });
 }
 
 async function agentMemory(db: D1Database, runId: string, agentId: AgentId) {
@@ -82,7 +94,7 @@ async function prepareResearchPrompts(env: Env, params: RunParams, round: number
   return prepared;
 }
 
-async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResult<ResearchReport>> {
+async function researchOne(env: Env, params: RunParams, round: number, prompt: PreparedPrompt): Promise<AgentResult<ResearchReport>> {
   const first = await callStructured<ResearchReport>({
     apiKey: env.OPENAI_API_KEY,
     model: MODEL,
@@ -97,6 +109,7 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     // A Cloudflare Workflow step can be terminated at the five-minute wall.
     // Leave enough room for the structured retry and step bookkeeping.
     timeoutMs: 150_000,
+    onProgress: traceProgress(env, params, round, 'research', 1, prompt.agentId),
   });
   if (first.ok) return first;
   const second = await callStructured<ResearchReport>({
@@ -111,11 +124,12 @@ async function researchOne(env: Env, prompt: PreparedPrompt): Promise<AgentResul
     maxInputBytes: 64_000,
     webSearch: false,
     timeoutMs: 75_000,
+    onProgress: traceProgress(env, params, round, 'research', 2, prompt.agentId),
   });
   return mergeAttempts(first, second);
 }
 
-async function meetingOne(env: Env, round: number, agentId: AgentId, reports: unknown): Promise<AgentResult<MeetingReport>> {
+async function meetingOne(env: Env, params: RunParams, round: number, agentId: AgentId, reports: unknown): Promise<AgentResult<MeetingReport>> {
   const profile = AGENTS[AGENT_INDEX[agentId]];
   const prompt = meetingPrompt(profile, round, reports);
   const first = await callStructured<MeetingReport>({
@@ -129,6 +143,7 @@ async function meetingOne(env: Env, round: number, agentId: AgentId, reports: un
     maxInputBytes: 128_000,
     webSearch: false,
     timeoutMs: 120_000,
+    onProgress: traceProgress(env, params, round, 'meeting', 1, agentId),
   });
   if (first.ok) return first;
   const second = await callStructured<MeetingReport>({
@@ -143,11 +158,12 @@ async function meetingOne(env: Env, round: number, agentId: AgentId, reports: un
     maxInputBytes: 128_000,
     webSearch: false,
     timeoutMs: 60_000,
+    onProgress: traceProgress(env, params, round, 'meeting', 2, agentId),
   });
   return mergeAttempts(first, second);
 }
 
-async function townHallOne(env: Env, agentId: AgentId, briefing: unknown): Promise<AgentResult<MeetingReport>> {
+async function townHallOne(env: Env, params: RunParams, agentId: AgentId, briefing: unknown): Promise<AgentResult<MeetingReport>> {
   const profile = AGENTS[AGENT_INDEX[agentId]];
   const prompt = midpointTownHallPrompt(profile, briefing);
   const first = await callStructured<MeetingReport>({
@@ -161,6 +177,7 @@ async function townHallOne(env: Env, agentId: AgentId, briefing: unknown): Promi
     maxInputBytes: 96_000,
     webSearch: false,
     timeoutMs: 120_000,
+    onProgress: traceProgress(env, params, 25, 'meeting', 1, agentId),
   });
   if (first.ok) return first;
   const second = await callStructured<MeetingReport>({
@@ -175,6 +192,7 @@ async function townHallOne(env: Env, agentId: AgentId, briefing: unknown): Promi
     maxInputBytes: 96_000,
     webSearch: false,
     timeoutMs: 60_000,
+    onProgress: traceProgress(env, params, 25, 'meeting', 2, agentId),
   });
   return mergeAttempts(first, second);
 }
@@ -412,6 +430,7 @@ async function revealResearch(
     phase: terminal,
     round,
     phaseEndsAt,
+    liveTraces: {},
     agents: agentCards({ ...state, ...bestPatch }, terminal === 'meeting' ? 'meeting' : 'complete', research),
   });
 
@@ -543,7 +562,7 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
   await env.DB.prepare(`UPDATE runs SET status=?,phase=?,completed_at=?,report_json=?,updated_at=? WHERE id=?`)
     .bind(terminal, terminal, report.completedAt, JSON.stringify(report), report.completedAt, params.runId)
     .run();
-  await patchState(env.DB, params.runId, { phase: terminal, phaseEndsAt: null, report });
+  await patchState(env.DB, params.runId, { phase: terminal, phaseEndsAt: null, liveTraces: {}, report });
   await addEvent(env.DB, params.runId, (completedRound + 1) * 1000 + 990, {
     at: nowIso(),
     round: completedRound,
@@ -602,6 +621,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
             phase: 'meeting',
             round: 25,
             phaseEndsAt: new Date(deadline).toISOString(),
+            liveTraces: {},
             agents: (state.agents as Record<string, unknown>[]).map((agent) => ({
               ...agent,
               status: 'meeting',
@@ -620,7 +640,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         const townHall = await Promise.all(AGENTS.map((agent) => step.do(
           `midpoint town hall · ${agent.id}`,
           { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '4 minutes' },
-          () => townHallOne(this.env, agent.id, briefing),
+          () => townHallOne(this.env, params, agent.id, briefing),
         )));
         await step.do('publish midpoint town hall', { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
           await chargeResults(this.env, params, 25, 'meeting', townHall);
@@ -721,6 +741,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         const state = await getState(this.env.DB, params.runId);
         await patchState(this.env.DB, params.runId, {
           phase: 'research', round,
+          liveTraces: {},
           phaseEndsAt: new Date(deadline).toISOString(),
           agents: agentCards(state, 'researching'),
         });
@@ -738,7 +759,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         `sealed research call ${round} · ${prompt.agentId}`,
         { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
         async (): Promise<ResearchResult> => ({
-          ...await researchOne(this.env, prompt),
+          ...await researchOne(this.env, params, round, prompt),
           retrieval: prompt.retrieval,
         }),
       )));
@@ -782,7 +803,7 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       const meeting = await Promise.all(AGENTS.map((agent) => step.do(
         `meeting reaction ${round} · ${agent.id}`,
         { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
-        () => meetingOne(this.env, round, agent.id, publicReports),
+        () => meetingOne(this.env, params, round, agent.id, publicReports),
       )));
 
       await step.do(`publish meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {

@@ -27,7 +27,7 @@ declare global {
   }
 }
 
-const pigments = ['#9a4f36', '#657a4e', '#60528b', '#27747a', '#a14f59'];
+const pigments = ['#f27a4f', '#a6d879', '#b39af4', '#42d6df', '#f47b91'];
 const researchPositions = [
   { x: 13, y: 34 }, { x: 32, y: 66 }, { x: 51, y: 31 },
   { x: 71, y: 66 }, { x: 87, y: 36 },

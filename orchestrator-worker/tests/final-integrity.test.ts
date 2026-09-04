@@ -44,7 +44,7 @@ describe('final launch integrity', () => {
   });
 
   it('keeps the live state payload bounded while preserving paginated history', () => {
-    expect(indexSource).toContain('recentEvents(env.DB, row.id, 250)');
+    expect(indexSource).toContain('recentEventSummaries(env.DB, row.id, 500)');
     expect(indexSource).toContain("url.searchParams.get('before')");
     expect(indexSource).toContain('nextBefore');
   });
