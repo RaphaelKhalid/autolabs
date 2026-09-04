@@ -6,14 +6,14 @@ import {
   FlaskConical, Github, Pause, Play, Radio, RefreshCw, ShieldCheck, TimerReset, X, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchExperiment } from '@/lib/api';
+import { fetchAgentEvents, fetchExperiment } from '@/lib/api';
 import {
   formatCountdown, initialExperiment, supportLabel,
   type ComputeJob, type ExperimentEvent, type ExperimentState,
 } from '@/lib/experiment';
 import { AlienForm } from './autolabs-observatory';
 
-const pigments = ['#9a4f36', '#657a4e', '#60528b', '#27747a', '#a14f59'];
+const pigments = ['#f27a4f', '#a6d879', '#b39af4', '#42d6df', '#f47b91'];
 const stations = [
   { x: 16, y: 31, rotate: -3 }, { x: 30, y: 70, rotate: 2 },
   { x: 50, y: 26, rotate: -1 }, { x: 70, y: 70, rotate: -2 },
@@ -23,6 +23,16 @@ const tessellation = [
   { x: 45, y: 46, rotate: -31 }, { x: 48, y: 55, rotate: 41 },
   { x: 50, y: 42, rotate: 2 }, { x: 53, y: 55, rotate: -42 },
   { x: 56, y: 46, rotate: 31 },
+];
+const phoneStations = [
+  { x: 26, y: 18, rotate: -3 }, { x: 74, y: 18, rotate: 2 },
+  { x: 26, y: 49, rotate: -1 }, { x: 74, y: 49, rotate: -2 },
+  { x: 50, y: 78, rotate: 3 },
+];
+const phoneTessellation = [
+  { x: 29, y: 43, rotate: -31 }, { x: 39, y: 60, rotate: 41 },
+  { x: 50, y: 31, rotate: 2 }, { x: 61, y: 60, rotate: -42 },
+  { x: 71, y: 43, rotate: 31 },
 ];
 
 function phaseLabel(phase: ExperimentState['phase']) {
@@ -77,7 +87,9 @@ export function LivingLab() {
   const [controlOpen, setControlOpen] = useState(false);
   const [ownerKey, setOwnerKey] = useState('');
   const [startMessage, setStartMessage] = useState('');
-  const [queueOpen, setQueueOpen] = useState(true);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const [detailedEvents, setDetailedEvents] = useState<{ runId: string; agentId: string; events: ExperimentEvent[] } | null>(null);
   const [live, setLive] = useState(Boolean(process.env.NEXT_PUBLIC_ORCHESTRATOR_URL));
   const [refreshing, setRefreshing] = useState(false);
   const [connection, setConnection] = useState<'loading' | 'retrying' | 'ready'>('loading');
@@ -115,6 +127,14 @@ export function LivingLab() {
     return () => { window.clearInterval(clock); window.clearInterval(poll); };
   }, [reload]);
 
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 620px)');
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
   const events = useMemo(() => state.events.filter((event) => event.visible), [state.events]);
   const replayMax = Math.max(0, events.length - 1);
   const replayPosition = Math.min(replayMax, Math.max(0, replayIndex));
@@ -123,7 +143,9 @@ export function LivingLab() {
   const round = replay && replayEvent ? replayEvent.round : state.round;
   const meeting = phase === 'meeting';
   const selected = state.agents.find((agent) => agent.id === selectedId) ?? null;
-  const agentEvents = selected ? events.filter((event) => !event.agentId || event.agentId === selected.id).slice().reverse() : [];
+  const selectedTrace = selected ? state.liveTraces?.[selected.id] : undefined;
+  const detailedAgentEvents = selected && detailedEvents?.runId === state.id && detailedEvents.agentId === selected.id ? detailedEvents.events : null;
+  const agentEvents = selected ? (detailedAgentEvents ?? events.filter((event) => !event.agentId || event.agentId === selected.id)).slice().reverse() : [];
   const visibleJobs = useMemo(() => {
     const cutoff = replay && replayEvent ? new Date(replayEvent.at).getTime() : Number.POSITIVE_INFINITY;
     return (state.jobs ?? []).filter((job) => new Date(job.createdAt).getTime() <= cutoff);
@@ -148,6 +170,15 @@ export function LivingLab() {
 
   useEffect(() => { if (!replay) setReplayIndex(replayMax); }, [replay, replayMax]);
 
+  useEffect(() => {
+    if (!selectedId) return;
+    const controller = new AbortController();
+    void fetchAgentEvents(state.id, selectedId, controller.signal)
+      .then((items) => setDetailedEvents({ runId: state.id, agentId: selectedId, events: items }))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedId, state.id, state.phase, state.round]);
+
   async function startRun(mode: 'rehearsal' | 'competition') {
     setStartMessage('Opening the laboratory…');
     try {
@@ -166,6 +197,7 @@ export function LivingLab() {
 
   return (
     <main className={`living-lab phase-${phase} ${meeting ? 'is-tessellating' : ''}`}>
+      <h1 className="lab-sr-only">Autolabs live Erdős 885 research laboratory</h1>
       <AnimatePresence>
         {connection !== 'ready' && (
           <motion.section
@@ -238,8 +270,19 @@ export function LivingLab() {
         <div className="world-lamp world-lamp--two" aria-hidden="true"><i /></div>
         <AnimatePresence>
           {state.agents.map((agent, index) => {
-            const target = meeting ? tessellation[index] : stations[index];
-            const liveBubble = phase === 'idle' ? 'Waiting for the ribbon.' : phase === 'research' && agent.bubble.startsWith('Dormant') ? 'Working privately—report sealed until the simultaneous reveal.' : agent.bubble;
+            const target = compact
+              ? (meeting ? phoneTessellation[index] : phoneStations[index])
+              : (meeting ? tessellation[index] : stations[index]);
+            const trace = state.liveTraces?.[agent.id];
+            const activeTrace = trace?.round === round && trace.phase === phase ? trace : undefined;
+            const traceRunning = activeTrace?.status === 'connecting' || activeTrace?.status === 'streaming';
+            const liveBubble = traceRunning
+              ? `Live API · ${activeTrace.outputCharacters.toLocaleString()} response characters received. Content sealed until reveal.`
+              : phase === 'idle'
+                ? 'Waiting for the ribbon.'
+                : phase === 'research' && agent.bubble.startsWith('Dormant')
+                  ? 'Working privately—report sealed until the simultaneous reveal.'
+                  : agent.bubble;
             return (
               <motion.button
                 key={agent.id}
@@ -256,6 +299,7 @@ export function LivingLab() {
                   <i>0{index + 1}</i><span>{liveBubble}</span>
                 </motion.span>
                 <AlienForm agent={agent} index={index} meeting={meeting} />
+                {activeTrace && <span className={`model-trace is-${activeTrace.status}`}><i />LIVE API · {activeTrace.status}{activeTrace.outputCharacters ? ` · ${activeTrace.outputCharacters.toLocaleString()} chars` : ''}</span>}
                 <span className="living-name"><b>{agent.name}</b><small>{meeting ? 'TESSELLATING' : agent.epithet}</small></span>
               </motion.button>
             );
@@ -264,7 +308,7 @@ export function LivingLab() {
         <div className="world-weather"><span>AUTUMN RAIN / RESEARCH WEATHER</span><i /></div>
       </section>
 
-      <aside className={`compute-queue ${queueOpen ? 'is-open' : ''}`}>
+      <aside className={`compute-queue ${queueOpen ? 'is-open' : ''}`} aria-label="Live computation queue">
         <button className="queue-toggle" onClick={() => setQueueOpen(!queueOpen)}><FlaskConical size={14}/><span>COMPUTE QUEUE</span><b>{visibleJobs.length}</b></button>
         {queueOpen && <div className="queue-body">
           <header><span>ASYNCHRONOUS EXACT JOBS</span><small>Jobs may outlive the round that proposed them.</small></header>
@@ -279,9 +323,13 @@ export function LivingLab() {
       </div>
 
       {selected && <div className="lab-drawer-backdrop" onMouseDown={() => setSelectedId(null)}>
-        <motion.aside className="lab-drawer" initial={{ x: 80, opacity: 0 }} animate={{ x: 0, opacity: 1 }} onMouseDown={(event) => event.stopPropagation()} style={{ '--pigment': selected.accent } as React.CSSProperties}>
+        <motion.aside className="lab-drawer" initial={{ x: 80, opacity: 0 }} animate={{ x: 0, opacity: 1 }} onMouseDown={(event) => event.stopPropagation()} style={{ '--pigment': pigments[state.agents.indexOf(selected)] } as React.CSSProperties}>
           <header><div><AlienForm agent={selected} index={state.agents.indexOf(selected)} meeting={meeting} compact /></div><span>{selected.epithet}</span><h2>{selected.name}</h2><button onClick={() => setSelectedId(null)} aria-label="Close record"><X size={18}/></button></header>
-          <section className="lab-drawer-profile"><p>{selected.approach}</p><b>PROPOSED PROJECT</b><blockquote>{selected.project}</blockquote></section>
+          <section className="lab-drawer-profile">
+            <p>{selected.approach}</p>
+            {selectedTrace && <div className={`drawer-trace is-${selectedTrace.status}`}><span><i />LIVE API TRACE</span><b>{selectedTrace.outputCharacters.toLocaleString()} response characters · {selectedTrace.status}</b><small>Real response-stream activity. Research text stays sealed until the synchronized reveal; hidden model reasoning is never exposed.</small></div>}
+            <b>PROPOSED PROJECT</b><blockquote>{selected.project}</blockquote>
+          </section>
           <section className="lab-chat-log">
             <h3>COMPLETE PUBLIC CHAT</h3>
             {agentEvents.length ? agentEvents.map((event) => <article key={event.seq}><time>ROUND {event.round} · {event.kind}</time><b>{event.title}</b><p>{event.summary}</p><Evidence event={event}/></article>) : <p className="drawer-empty">Its first public report will appear after the reveal.</p>}

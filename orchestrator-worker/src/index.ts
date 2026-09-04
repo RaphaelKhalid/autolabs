@@ -1,6 +1,6 @@
-import { initialPublicState, globalSpend, nowIso, publicJobs, recentEvents } from './db';
+import { initialPublicState, globalSpend, nowIso, publicJobs, recentEvents, recentEventSummaries } from './db';
 import { secretEquals, bearer, cors, verifyCallbackSignature } from './security';
-import type { AgentId, RunParams } from './types';
+import { AGENT_IDS, type AgentId, type RunParams } from './types';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -55,7 +55,7 @@ export default {
         const row = await currentRun(env);
         if (!row) return json({ error: 'No experiment has started.' }, { status: 404 }, corsHeaders);
         const state = JSON.parse(row.public_state_json) as Record<string, unknown>;
-        state.events = await recentEvents(env.DB, row.id, 250);
+        state.events = await recentEventSummaries(env.DB, row.id, 500);
         state.jobs = await publicJobs(env.DB, row.id);
         return json(state, {}, corsHeaders);
       }
@@ -71,7 +71,9 @@ export default {
         const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(500, Math.floor(requestedLimit))) : 250;
         const requestedBefore = Number(url.searchParams.get('before'));
         const before = Number.isSafeInteger(requestedBefore) && requestedBefore > 0 ? requestedBefore : undefined;
-        const events = await recentEvents(env.DB, eventMatch[1], limit, before);
+        const requestedAgent = url.searchParams.get('agentId');
+        const agentId = requestedAgent && AGENT_IDS.includes(requestedAgent as AgentId) ? requestedAgent as AgentId : undefined;
+        const events = await recentEvents(env.DB, eventMatch[1], limit, before, agentId);
         const nextBefore = events.length === limit ? Number(events[0]?.seq ?? 0) || null : null;
         return json({ runId: eventMatch[1], events, nextBefore }, {}, corsHeaders);
       }

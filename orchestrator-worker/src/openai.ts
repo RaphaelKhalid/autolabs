@@ -11,7 +11,22 @@ interface ResponsePayload {
   error?: { message?: string };
 }
 
+interface StreamingEvent {
+  type?: string;
+  delta?: string;
+  text?: string;
+  response?: ResponsePayload;
+  error?: { message?: string };
+}
+
+export interface ModelProgress {
+  status: 'connecting' | 'streaming' | 'complete' | 'error';
+  outputCharacters: number;
+}
+
 const EMPTY_USAGE: Usage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+const PROGRESS_INTERVAL_MS = 12_000;
+const PROGRESS_CHARACTER_STEP = 128;
 
 function outputText(payload: ResponsePayload) {
   for (const item of payload.output ?? []) {
@@ -32,6 +47,68 @@ function measuredUsage(payload: ResponsePayload): Usage {
 
 function usageRecords(responseId: string | undefined, usage: Usage): UsageRecord[] {
   return responseId ? [{ responseId, usage }] : [];
+}
+
+function boundary(buffer: string) {
+  const lf = buffer.indexOf('\n\n');
+  const crlf = buffer.indexOf('\r\n\r\n');
+  if (lf < 0 && crlf < 0) return null;
+  if (crlf >= 0 && (lf < 0 || crlf < lf)) return { index: crlf, length: 4 };
+  return { index: lf, length: 2 };
+}
+
+function eventData(block: string) {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+  if (!data || data === '[DONE]') return null;
+  return JSON.parse(data) as StreamingEvent;
+}
+
+async function readStream(
+  response: Response,
+  reportProgress: (progress: ModelProgress) => Promise<void>,
+) {
+  if (!response.body) throw new Error('OpenAI streaming response had no body.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let payload: ResponsePayload = {};
+  let lastProgressAt = Date.now();
+  let lastProgressCharacters = 0;
+
+  const acceptBlock = async (block: string) => {
+    const event = eventData(block);
+    if (!event) return;
+    if (event.response) payload = event.response;
+    if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') text += event.delta;
+    if (event.type === 'response.output_text.done' && !text && typeof event.text === 'string') text = event.text;
+    if (event.type === 'response.failed') throw new Error(event.response?.error?.message ?? event.error?.message ?? 'OpenAI response failed.');
+    const now = Date.now();
+    if (text.length - lastProgressCharacters >= PROGRESS_CHARACTER_STEP && now - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+      lastProgressAt = now;
+      lastProgressCharacters = text.length;
+      await reportProgress({ status: 'streaming', outputCharacters: text.length });
+    }
+  };
+
+  while (true) {
+    const chunk = await reader.read();
+    buffer += decoder.decode(chunk.value ?? new Uint8Array(), { stream: !chunk.done });
+    let marker = boundary(buffer);
+    while (marker) {
+      const block = buffer.slice(0, marker.index);
+      buffer = buffer.slice(marker.index + marker.length);
+      await acceptBlock(block);
+      marker = boundary(buffer);
+    }
+    if (chunk.done) break;
+  }
+  if (buffer.trim()) await acceptBlock(buffer);
+  return { payload, text };
 }
 
 export function addUsage(left: Usage, right: Usage): Usage {
@@ -71,14 +148,21 @@ export async function callStructured<T extends ResearchReport | MeetingReport>(o
   maxInputBytes: number;
   webSearch: boolean;
   timeoutMs?: number;
+  onProgress?: (progress: ModelProgress) => void | Promise<void>;
 }): Promise<AgentResult<T>> {
   let responseId: string | undefined;
   let usage = EMPTY_USAGE;
+  let outputCharacters = 0;
   const inputBytes = new TextEncoder().encode(`${options.system}\n${options.user}`).byteLength;
+  const reportProgress = async (progress: ModelProgress) => {
+    try { await options.onProgress?.(progress); } catch { /* Telemetry must never interrupt mathematics. */ }
+  };
   if (inputBytes > options.maxInputBytes) {
+    await reportProgress({ status: 'error', outputCharacters });
     return { agentId: options.agentId, ok: false, usage, usageRecords: [], error: `Prompt exceeded ${options.maxInputBytes} bytes.` };
   }
 
+  await reportProgress({ status: 'connecting', outputCharacters });
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -107,14 +191,17 @@ export async function callStructured<T extends ResearchReport | MeetingReport>(o
         max_output_tokens: options.maxOutputTokens,
         truncation: 'auto',
         store: true,
+        stream: true,
       }),
     });
 
-    const payload = await response.json<ResponsePayload>();
-    responseId = payload.id;
-    usage = measuredUsage(payload);
-
     if (!response.ok) {
+      const raw = await response.text();
+      let payload: ResponsePayload = {};
+      try { payload = JSON.parse(raw) as ResponsePayload; } catch { /* status below is enough */ }
+      responseId = payload.id;
+      usage = measuredUsage(payload);
+      await reportProgress({ status: 'error', outputCharacters });
       return {
         agentId: options.agentId,
         ok: false,
@@ -125,8 +212,15 @@ export async function callStructured<T extends ResearchReport | MeetingReport>(o
       };
     }
 
+    const streamed = await readStream(response, reportProgress);
+    responseId = streamed.payload.id;
+    usage = measuredUsage(streamed.payload);
+    const rawOutput = streamed.text || outputText(streamed.payload);
+    outputCharacters = rawOutput.length;
+
     try {
-      const value = JSON.parse(outputText(payload)) as T;
+      const value = JSON.parse(rawOutput) as T;
+      await reportProgress({ status: 'complete', outputCharacters });
       return {
         agentId: options.agentId,
         ok: true,
@@ -136,6 +230,7 @@ export async function callStructured<T extends ResearchReport | MeetingReport>(o
         usageRecords: usageRecords(responseId, usage),
       };
     } catch (error) {
+      await reportProgress({ status: 'error', outputCharacters });
       return {
         agentId: options.agentId,
         ok: false,
@@ -146,6 +241,7 @@ export async function callStructured<T extends ResearchReport | MeetingReport>(o
       };
     }
   } catch (error) {
+    await reportProgress({ status: 'error', outputCharacters });
     return {
       agentId: options.agentId,
       ok: false,

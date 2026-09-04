@@ -42,6 +42,16 @@ export interface ComputeJob {
   completedAt: string | null;
 }
 
+export interface ModelTrace {
+  agentId: string;
+  round: number;
+  phase: 'research' | 'meeting';
+  attempt: number;
+  status: 'connecting' | 'streaming' | 'complete' | 'error';
+  outputCharacters: number;
+  updatedAt: string;
+}
+
 export interface ScientificReport {
   schemaVersion: number;
   runId: string;
@@ -109,6 +119,7 @@ export interface ExperimentState {
   startedAt: string | null;
   agents: ResearchAgent[];
   events: ExperimentEvent[];
+  liveTraces?: Record<string, ModelTrace>;
   report?: ScientificReport;
 }
 
@@ -162,6 +173,7 @@ export const initialExperiment: ExperimentState = {
   exaSpentUsd: 0.12, exaBudgetUsd: 40, jobs: [],
   bestSupport: [4, 4, 4, 4, 4], bestLabel: 'five differences shared by four integers', bestVerified: true,
   sotaImproved: false, startedAt: new Date(demoNow - 18 * 60_000).toISOString(), agents: demoAgents, events: demoEvents,
+  liveTraces: {},
 };
 
 export function formatCountdown(end: string | null, now = Date.now()) {

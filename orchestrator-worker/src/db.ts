@@ -1,5 +1,5 @@
 import { AGENTS } from './agents';
-import type { AgentId, Phase, PublicEvent, RunParams, Usage } from './types';
+import type { AgentId, ModelTrace, Phase, PublicEvent, RunParams, Usage } from './types';
 import type { ExaRetrieval } from './exa';
 import { costUsd } from './openai';
 
@@ -10,11 +10,11 @@ export function nowIso() {
 export function publicAgent(id: AgentId, status = 'ready', bubble = 'Dormant geometry; waiting for the ribbon.') {
   const profile = AGENTS.find((agent) => agent.id === id)!;
   const visuals: Record<AgentId, { outfit: string; accent: string; tools: string[] }> = {
-    mira: { outfit: 'Folded amber manifold', accent: '#9a4f36', tools: ['family_mapper', 'exact_verify'] },
-    pip: { outfit: 'Moss divisor bloom', accent: '#657a4e', tools: ['divisor_completion', 'factor_sieve'] },
-    orum: { outfit: 'Violet counter-knot', accent: '#60528b', tools: ['saturation_probe', 'certificate_builder'] },
-    solvi: { outfit: 'Cyan refractive membrane', accent: '#27747a', tools: ['symmetry_reduce', 'curve_sampler'] },
-    tess: { outfit: 'Crimson eclipse filament', accent: '#a14f59', tools: ['frontier_scheduler', 'exact_verify'] },
+    mira: { outfit: 'Folded amber manifold', accent: '#f27a4f', tools: ['family_mapper', 'exact_verify'] },
+    pip: { outfit: 'Moss divisor bloom', accent: '#a6d879', tools: ['divisor_completion', 'factor_sieve'] },
+    orum: { outfit: 'Violet counter-knot', accent: '#b39af4', tools: ['saturation_probe', 'certificate_builder'] },
+    solvi: { outfit: 'Cyan refractive membrane', accent: '#42d6df', tools: ['symmetry_reduce', 'curve_sampler'] },
+    tess: { outfit: 'Crimson eclipse filament', accent: '#f47b91', tools: ['frontier_scheduler', 'exact_verify'] },
   };
   return {
     id,
@@ -57,6 +57,7 @@ export function initialPublicState(params: RunParams) {
     startedAt: nowIso(),
     agents: AGENTS.map((agent) => publicAgent(agent.id)),
     events: [],
+    liveTraces: {},
   };
 }
 
@@ -75,6 +76,21 @@ export async function patchState(db: D1Database, runId: string, patch: Record<st
     .bind(JSON.stringify(next), String(next.phase), Number(next.round), next.phaseEndsAt ?? null, nowIso(), runId)
     .run();
   return next;
+}
+
+export async function updateLiveTrace(db: D1Database, runId: string, trace: ModelTrace) {
+  const path = `$.liveTraces.${trace.agentId}`;
+  await db.prepare(`UPDATE runs
+      SET public_state_json=json_set(
+        CASE WHEN json_type(public_state_json, '$.liveTraces')='object'
+          THEN public_state_json
+          ELSE json_set(public_state_json, '$.liveTraces', json('{}'))
+        END,
+        ?, json(?)
+      ), updated_at=?
+      WHERE id=?`)
+    .bind(path, JSON.stringify(trace), nowIso(), runId)
+    .run();
 }
 
 function eventStatement(db: D1Database, runId: string, seq: number, event: PublicEvent) {
@@ -140,14 +156,42 @@ export async function globalSpend(db: D1Database) {
   return row?.spent ?? 0;
 }
 
-export async function recentEvents(db: D1Database, runId: string, limit = 250, beforeSeq?: number): Promise<Array<PublicEvent & { seq: number }>> {
+export async function recentEventSummaries(db: D1Database, runId: string, limit = 500): Promise<Array<PublicEvent & { seq: number }>> {
+  const boundedLimit = Math.max(1, Math.min(1_000, Math.floor(limit)));
+  const result = await db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,visible
+      FROM events WHERE run_id=? AND visible=1 ORDER BY seq DESC LIMIT ?`)
+    .bind(runId, boundedLimit)
+    .all<{
+      seq: number;
+      at: string;
+      round: number;
+      phase: Phase;
+      agentId?: AgentId;
+      kind: PublicEvent['kind'];
+      title: string;
+      summary: string;
+      visible: number;
+    }>();
+  return result.results.reverse().map((event) => ({ ...event, visible: Boolean(event.visible) }));
+}
+
+export async function recentEvents(
+  db: D1Database,
+  runId: string,
+  limit = 250,
+  beforeSeq?: number,
+  agentId?: AgentId,
+): Promise<Array<PublicEvent & { seq: number }>> {
   const boundedLimit = Math.max(1, Math.min(5_000, Math.floor(limit)));
-  const statement = beforeSeq === undefined
-    ? db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson,visible FROM events WHERE run_id=? AND visible=1 ORDER BY seq DESC LIMIT ?`)
-      .bind(runId, boundedLimit)
-    : db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson,visible FROM events WHERE run_id=? AND visible=1 AND seq<? ORDER BY seq DESC LIMIT ?`)
-      .bind(runId, beforeSeq, boundedLimit);
-  const result = await statement.all<{
+  const agentFilter = agentId ? ' AND (agent_id=? OR agent_id IS NULL)' : '';
+  const cursorFilter = beforeSeq === undefined ? '' : ' AND seq<?';
+  const statement = db.prepare(`SELECT seq,at,round,phase,agent_id AS agentId,kind,title,summary,payload_json AS payloadJson,visible
+      FROM events WHERE run_id=? AND visible=1${agentFilter}${cursorFilter} ORDER BY seq DESC LIMIT ?`);
+  const bindings: Array<string | number> = [runId];
+  if (agentId) bindings.push(agentId);
+  if (beforeSeq !== undefined) bindings.push(beforeSeq);
+  bindings.push(boundedLimit);
+  const result = await statement.bind(...bindings).all<{
     seq: number;
     at: string;
     round: number;
@@ -167,7 +211,6 @@ export async function recentEvents(db: D1Database, runId: string, limit = 250, b
     }
   });
 }
-
 export async function globalExaSpend(db: D1Database) {
   const row = await db.prepare('SELECT COALESCE(SUM(cost_usd),0) AS spent FROM exa_usage')
     .first<{ spent: number }>();

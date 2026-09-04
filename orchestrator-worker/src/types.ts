@@ -58,6 +58,16 @@ export interface UsageRecord {
   usage: Usage;
 }
 
+export interface ModelTrace {
+  agentId: AgentId;
+  round: number;
+  phase: 'research' | 'meeting';
+  attempt: number;
+  status: 'connecting' | 'streaming' | 'complete' | 'error';
+  outputCharacters: number;
+  updatedAt: string;
+}
+
 export interface AgentResult<T> {
   agentId: AgentId;
   ok: boolean;
