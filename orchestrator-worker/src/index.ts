@@ -55,7 +55,7 @@ export default {
         const row = await currentRun(env);
         if (!row) return json({ error: 'No experiment has started.' }, { status: 404 }, corsHeaders);
         const state = JSON.parse(row.public_state_json) as Record<string, unknown>;
-        state.events = await recentEventSummaries(env.DB, row.id, 500);
+        state.events = await recentEventSummaries(env.DB, row.id, 120);
         state.jobs = await publicJobs(env.DB, row.id);
         return json(state, {}, corsHeaders);
       }
