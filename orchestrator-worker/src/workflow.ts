@@ -1,5 +1,6 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
 import { AGENTS } from './agents';
+import { checkpointRoundsThrough, queueCheckpointSummariesThrough } from './checkpoint-outbox';
 import { addEvent, addEvents, addEventsAndPatchState, getState, globalExaSpend, globalSpend, nowIso, patchState, recentEvents, recordExaBatch, recordUsage, updateLiveTrace } from './db';
 import { EXA_BUDGET_USD, EXA_REQUEST_AUTHORIZATION_USD, retrievalContext, searchExa, type ExaRetrieval } from './exa';
 import { reapStaleJobs, scheduleJobs } from './github-jobs';
@@ -464,6 +465,7 @@ function stringList(value: unknown) {
 }
 
 async function finalReport(env: Env, params: RunParams, terminal: 'complete' | 'eureka' | 'budget-stop', completedRound: number) {
+  await queueCheckpointSummariesThrough(env.DB, params.runId, completedRound);
   const state = await getState(env.DB, params.runId);
   const events = await recentEvents(env.DB, params.runId, 5_000) as Array<PublicEvent & { seq: number }>;
   const privateRows = await env.DB.prepare(`SELECT round,agent_id AS agentId,plan_json AS plan
@@ -845,6 +847,10 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       const meetingWaitMs = await step.do(`calculate round table wait ${round}`, async () => Math.max(0, meetingDeadline - Date.now()));
       if (meetingWaitMs > 0) await step.sleep(`finish round table ${round}`, meetingWaitMs);
       completedRound = round;
+      if (checkpointRoundsThrough(completedRound).length) {
+        await step.do(`queue checkpoint summaries through round ${round}`, { retries: { limit: 3, delay: '5 seconds', backoff: 'linear' } },
+          () => queueCheckpointSummariesThrough(this.env.DB, params.runId, completedRound));
+      }
     }
 
     if (terminal === 'complete' && completedRound < params.targetRounds) {
