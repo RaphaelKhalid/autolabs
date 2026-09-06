@@ -12,6 +12,8 @@ describe('free-plan workflow chaining', () => {
 
   it('starts the next round as a new durable instance', () => {
     expect(workflowSource).toContain('this.env.AUTOLABS_WORKFLOW.create');
-    expect(workflowSource).toContain('params: { ...params, startRound: nextRound }');
+    expect(workflowSource).toContain('const continuationParams: RunParams = { ...params, startRound: nextRound };');
+    expect(workflowSource).toContain('delete continuationParams.resumeMeetingRound;');
+    expect(workflowSource).toContain('params: continuationParams');
   });
 });

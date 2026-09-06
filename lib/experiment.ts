@@ -1,4 +1,4 @@
-export type Phase = 'idle' | 'ribbon' | 'research' | 'meeting' | 'complete' | 'eureka' | 'budget-stop' | 'error';
+export type Phase = 'idle' | 'ribbon' | 'research' | 'meeting' | 'paused' | 'complete' | 'eureka' | 'budget-stop' | 'error';
 export type AgentStatus = 'ready' | 'researching' | 'meeting' | 'recovering' | 'complete';
 
 export interface ResearchAgent {

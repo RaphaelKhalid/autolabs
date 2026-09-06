@@ -1,9 +1,12 @@
-import { initialPublicState, globalSpend, nowIso, publicJobs, recentEvents, recentEventSummaries } from './db';
+import { addEvent, initialPublicState, globalSpend, nowIso, publicJobs, recentEvents, recentEventSummaries } from './db';
 import { secretEquals, bearer, cors, verifyCallbackSignature } from './security';
 import { AGENT_IDS, type AgentId, type RunParams } from './types';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
+const RESUME_TARGET_ROUNDS = 75;
+const MAX_TARGET_ROUNDS = 200;
+const MAX_SESSION_ROUNDS = 25;
 const MINIMUM_ROUNDS = 25;
 const PHASE_MINUTES = 5;
 const BUDGET_USD = 50;
@@ -23,6 +26,15 @@ function validStart(value: unknown): value is { mode: 'rehearsal' | 'competition
   if (!value || typeof value !== 'object') return false;
   const mode = (value as Record<string, unknown>).mode;
   return mode === 'rehearsal' || mode === 'competition';
+}
+
+function validResume(value: unknown): value is { runId: string; targetRounds?: number; sessionRounds?: number } {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as Record<string, unknown>;
+  if (typeof body.runId !== 'string' || !/^[a-zA-Z0-9-]+$/.test(body.runId)) return false;
+  if (body.targetRounds !== undefined && (!Number.isInteger(body.targetRounds) || Number(body.targetRounds) < 51 || Number(body.targetRounds) > MAX_TARGET_ROUNDS)) return false;
+  if (body.sessionRounds !== undefined && (!Number.isInteger(body.sessionRounds) || Number(body.sessionRounds) < 1 || Number(body.sessionRounds) > MAX_SESSION_ROUNDS)) return false;
+  return true;
 }
 
 function hasRuntimeSecrets(env: Env) {
@@ -145,6 +157,148 @@ export default {
         }
       }
 
+      if (request.method === 'POST' && url.pathname === '/api/experiments/resume') {
+        if (!hasRuntimeSecrets(env)) return json({ error: 'The research engine is not fully configured.' }, { status: 503 }, corsHeaders);
+        if (!await secretEquals(bearer(request), env.ADMIN_TOKEN)) return json({ error: 'Unauthorized.' }, { status: 401 }, corsHeaders);
+        const length = Number(request.headers.get('content-length') ?? 0);
+        if (!Number.isFinite(length) || length > 16_384) return json({ error: 'Payload too large.' }, { status: 413 }, corsHeaders);
+        const rawText = await request.text();
+        if (rawText.length > 16_384) return json({ error: 'Payload too large.' }, { status: 413 }, corsHeaders);
+        const raw = JSON.parse(rawText) as unknown;
+        if (!validResume(raw)) return json({ error: 'Invalid resume configuration.' }, { status: 400 }, corsHeaders);
+
+        const row = await env.DB.prepare(`SELECT id,workflow_id AS workflowId,status,mode,phase,round,target_rounds AS targetRounds,
+            minimum_rounds AS minimumRounds,phase_minutes AS phaseMinutes,budget_usd AS budgetUsd,reserve_usd AS reserveUsd,
+            public_state_json AS publicState
+            FROM runs WHERE id=?`)
+          .bind(raw.runId)
+          .first<{
+            id: string;
+            workflowId: string;
+            status: string;
+            mode: 'rehearsal' | 'competition';
+            phase: string;
+            round: number;
+            targetRounds: number;
+            minimumRounds: number;
+            phaseMinutes: number;
+            budgetUsd: number;
+            reserveUsd: number;
+            publicState: string;
+          }>();
+        if (!row) return json({ error: 'Unknown experiment.' }, { status: 404 }, corsHeaders);
+        if (row.mode !== 'competition' || (row.status !== 'error' && row.status !== 'paused')) {
+          return json({ error: 'Only a stopped competition can be resumed.' }, { status: 409 }, corsHeaders);
+        }
+
+        const completed = await env.DB.prepare(`SELECT MAX(round) AS completedRound
+            FROM events WHERE run_id=? AND visible=1 AND seq % 1000=514`)
+          .bind(row.id)
+          .first<{ completedRound: number | null }>();
+        const completedRound = Math.max(0, Number(completed?.completedRound ?? 0));
+        const interruptedRound = completedRound + 1;
+        const recoveryCounts = await env.DB.prepare(`SELECT
+            SUM(CASE WHEN seq BETWEEN ? AND ? THEN 1 ELSE 0 END) AS researchCount,
+            SUM(CASE WHEN seq BETWEEN ? AND ? THEN 1 ELSE 0 END) AS meetingCount
+            FROM events WHERE run_id=? AND visible=1`)
+          .bind(
+            interruptedRound * 1000 + 10,
+            interruptedRound * 1000 + 14,
+            interruptedRound * 1000 + 510,
+            interruptedRound * 1000 + 514,
+            row.id,
+          )
+          .first<{ researchCount: number | null; meetingCount: number | null }>();
+        const resumeMeetingRound = Number(recoveryCounts?.researchCount ?? 0) === AGENT_IDS.length
+          && Number(recoveryCounts?.meetingCount ?? 0) === 0
+          ? interruptedRound
+          : undefined;
+        const startRound = resumeMeetingRound ? resumeMeetingRound + 1 : completedRound + 1;
+        const requestedTarget = raw.targetRounds ?? RESUME_TARGET_ROUNDS;
+        const targetRounds = Math.max(requestedTarget, startRound);
+        const sessionRounds = raw.sessionRounds ?? MAX_SESSION_ROUNDS;
+        const sessionEndRound = Math.min(targetRounds, completedRound + sessionRounds);
+        const spent = await globalSpend(env.DB);
+        const authorization = resumeMeetingRound ? 0.65 : ROUND_AUTHORIZATION_USD;
+        if (spent + authorization > BUDGET_USD - RESERVE_USD) {
+          return json({ error: 'The protected OpenAI reserve cannot authorize the next phase.' }, { status: 409 }, corsHeaders);
+        }
+
+        const workflowId = `${row.id}-resume-${startRound}-${crypto.randomUUID()}`;
+        const params: RunParams = {
+          runId: row.id,
+          mode: 'competition',
+          targetRounds,
+          minimumRounds: row.minimumRounds,
+          phaseMinutes: row.phaseMinutes,
+          budgetUsd: BUDGET_USD,
+          reserveUsd: RESERVE_USD,
+          startRound,
+          resumeMeetingRound,
+          sessionEndRound,
+        };
+        const previousState = JSON.parse(row.publicState) as Record<string, unknown>;
+        const claimedState = {
+          ...previousState,
+          phase: 'paused',
+          round: resumeMeetingRound ?? completedRound,
+          targetRounds,
+          phaseEndsAt: null,
+          liveTraces: {},
+        };
+        const claimedAt = nowIso();
+        const claim = await env.DB.prepare(`UPDATE runs
+            SET workflow_id=?,status='running',phase='paused',round=?,target_rounds=?,phase_ends_at=NULL,completed_at=NULL,public_state_json=?,updated_at=?
+            WHERE id=? AND status IN ('error','paused')`)
+          .bind(workflowId, resumeMeetingRound ?? completedRound, targetRounds, JSON.stringify(claimedState), claimedAt, row.id)
+          .run();
+        if (Number(claim.meta.changes ?? 0) !== 1) {
+          return json({ error: 'The experiment was already resumed elsewhere.' }, { status: 409 }, corsHeaders);
+        }
+
+        let instance: WorkflowInstance;
+        try {
+          instance = await env.AUTOLABS_WORKFLOW.create({
+            id: workflowId,
+            params,
+            retention: { successRetention: '3 days', errorRetention: '3 days' },
+          });
+        } catch (error) {
+          await env.DB.prepare(`UPDATE runs
+              SET workflow_id=?,status=?,phase=?,round=?,target_rounds=?,public_state_json=?,completed_at=?,updated_at=?
+              WHERE id=? AND workflow_id=?`)
+            .bind(row.workflowId, row.status, row.phase, row.round, row.targetRounds, row.publicState, row.status === 'error' ? claimedAt : null, nowIso(), row.id, workflowId)
+            .run();
+          throw error;
+        }
+
+        try {
+          await addEvent(env.DB, row.id, (resumeMeetingRound ?? startRound) * 1000 + 999, {
+            at: nowIso(),
+            round: resumeMeetingRound ?? startRound,
+            phase: 'paused',
+            kind: 'system',
+            title: 'Research engine resumed',
+            summary: resumeMeetingRound
+              ? `Round ${resumeMeetingRound}'s research was preserved; its missing discussion will finish before round ${startRound} begins.`
+              : `The next research loop will begin at round ${startRound}.`,
+            visible: true,
+            payload: { workflowId: instance.id, startRound, resumeMeetingRound, sessionEndRound, targetRounds },
+          });
+        } catch (error) {
+          console.error(JSON.stringify({ message: 'resume event could not be recorded', runId: row.id, error: error instanceof Error ? error.message : String(error) }));
+        }
+        return json({
+          accepted: true,
+          runId: row.id,
+          workflowId: instance.id,
+          startRound,
+          resumeMeetingRound,
+          sessionEndRound,
+          targetRounds,
+          spentUsd: spent,
+        }, { status: 202 }, corsHeaders);
+      }
       if (request.method === 'POST' && url.pathname === '/api/jobs/result') {
         const length = Number(request.headers.get('content-length') ?? 0);
         if (!Number.isFinite(length) || length > 1_000_000) return json({ error: 'Payload too large.' }, { status: 413 }, corsHeaders);

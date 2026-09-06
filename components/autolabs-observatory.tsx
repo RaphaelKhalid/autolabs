@@ -44,6 +44,7 @@ function phaseTitle(state: ExperimentState) {
   if (state.phase === 'eureka') return 'Exact certificate discovered';
   if (state.phase === 'complete') return 'Experiment concluded';
   if (state.phase === 'budget-stop') return 'Budget reserve reached';
+  if (state.phase === 'paused') return 'Cloudflare safety pause';
   if (state.phase === 'error') return 'Engine paused by an error';
   return 'Awaiting the ribbon';
 }
