@@ -163,6 +163,16 @@ async function meetingOne(env: Env, params: RunParams, round: number, agentId: A
   });
   return mergeAttempts(first, second);
 }
+function isolatedMeetingFailure(agentId: AgentId, error: unknown): AgentResult<MeetingReport> {
+  return {
+    agentId,
+    ok: false,
+    usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+    error: error instanceof Error
+      ? `Cloudflare isolated this meeting step: ${error.message}`
+      : 'Cloudflare isolated this meeting step before its result could be persisted.',
+  };
+}
 
 async function townHallOne(env: Env, params: RunParams, agentId: AgentId, briefing: unknown): Promise<AgentResult<MeetingReport>> {
   const profile = AGENTS[AGENT_INDEX[agentId]];
@@ -825,11 +835,18 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
           return deadline;
         });
         const publicReports = await step.do(`load revealed research ${round}`, () => revealedResearchBatch(this.env.DB, params.runId, round));
-        const meeting = await Promise.all(AGENTS.map((agent) => step.do(
-          `resumed meeting reaction ${round} - ${agent.id}`,
-          { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
-          () => meetingOne(this.env, params, round, agent.id, publicReports),
-        )));
+        const meeting: AgentResult<MeetingReport>[] = [];
+        for (const agent of AGENTS) {
+          try {
+            meeting.push(await step.do(
+              `resumed meeting reaction ${round} - ${agent.id}`,
+              { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
+              () => meetingOne(this.env, params, round, agent.id, publicReports),
+            ));
+          } catch (error) {
+            meeting.push(isolatedMeetingFailure(agent.id, error));
+          }
+        }
         await step.do(`publish resumed meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } },
           () => publishMeetingResults(this.env, params, round, publicReports, meeting));
         const meetingWaitMs = await step.do(`calculate resumed round table wait ${round}`, async () => Math.max(0, meetingDeadline - Date.now()));
@@ -924,11 +941,18 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         ok: result.ok,
         report: verifiedReport(result) ?? { headline: 'Agent recovering', thesis: result.error ?? 'Call failed.' },
       }));
-      const meeting = await Promise.all(AGENTS.map((agent) => step.do(
-        `meeting reaction ${round} · ${agent.id}`,
-        { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
-        () => meetingOne(this.env, params, round, agent.id, publicReports),
-      )));
+      const meeting: AgentResult<MeetingReport>[] = [];
+      for (const agent of AGENTS) {
+        try {
+          meeting.push(await step.do(
+            `meeting reaction ${round} · ${agent.id}`,
+            { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
+            () => meetingOne(this.env, params, round, agent.id, publicReports),
+          ));
+        } catch (error) {
+          meeting.push(isolatedMeetingFailure(agent.id, error));
+        }
+      }
 
       await step.do(`publish meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } },
         () => publishMeetingResults(this.env, params, round, publicReports, meeting));
