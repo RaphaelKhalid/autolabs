@@ -363,6 +363,75 @@ function creditMap(round: number, meeting: AgentResult<MeetingReport>[], contrib
     contributors,
   );
 }
+interface PublicResearchBrief {
+  agentId: AgentId;
+  ok: boolean;
+  report: ResearchReport | { headline: string; thesis: string } | { error: string };
+}
+
+async function revealedResearchBatch(db: D1Database, runId: string, round: number): Promise<PublicResearchBrief[]> {
+  const rows = await db.prepare(`SELECT seq,agent_id AS agentId,kind,payload_json AS payload
+      FROM events
+      WHERE run_id=? AND seq BETWEEN ? AND ? AND visible=1
+      ORDER BY seq`)
+    .bind(runId, round * 1000 + 10, round * 1000 + 14)
+    .all<{ seq: number; agentId: AgentId | null; kind: string; payload: string }>();
+  const byAgent = new Map(rows.results
+    .filter((row): row is typeof row & { agentId: AgentId } => Boolean(row.agentId && row.agentId in AGENT_INDEX))
+    .map((row) => [row.agentId, row]));
+  if (byAgent.size !== AGENTS.length) throw new Error(`Round ${round} does not contain a complete revealed research batch.`);
+  return AGENTS.map((agent) => {
+    const row = byAgent.get(agent.id);
+    if (!row) throw new Error(`Round ${round} is missing ${agent.id}'s revealed report.`);
+    return {
+      agentId: agent.id,
+      ok: row.kind === 'research',
+      report: JSON.parse(row.payload) as ResearchReport | { error: string },
+    };
+  });
+}
+
+async function publishMeetingResults(
+  env: Env,
+  params: RunParams,
+  round: number,
+  publicReports: PublicResearchBrief[],
+  meeting: AgentResult<MeetingReport>[],
+) {
+  await chargeResults(env, params, round, 'meeting', meeting);
+  const successful = publicReports.filter((report) => report.ok).map((report) => report.agentId);
+  const credits = creditMap(round, meeting, successful);
+  await addEvents(env.DB, params.runId, meeting.map((result) => {
+    const index = AGENT_INDEX[result.agentId];
+    return {
+      seq: round * 1000 + 510 + index,
+      event: {
+        at: nowIso(), round, phase: 'meeting' as const, agentId: result.agentId,
+        kind: result.ok ? 'meeting' as const : 'error' as const,
+        title: `${AGENTS[index].name} reacts`,
+        summary: result.value?.reaction ?? 'Reaction call failed; this agent will rejoin next round.',
+        visible: true,
+        payload: result.value ? {
+          agreements: result.value.agreements,
+          objections: result.value.objections,
+          collaborationCredits: credits.get(result.agentId) ?? [],
+          agentNominatedCredits: result.value.collaborationCredits,
+        } : { error: result.error ?? 'Meeting call failed.' },
+      },
+    };
+  }));
+
+  for (const result of meeting) {
+    if (!result.value) continue;
+    const ownReport = publicReports.find((item) => item.agentId === result.agentId)?.report ?? {};
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO agent_memory(run_id,agent_id,public_summary_json,private_plan_json,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,agent_id) DO UPDATE SET public_summary_json=excluded.public_summary_json,private_plan_json=excluded.private_plan_json,updated_at=excluded.updated_at`)
+        .bind(params.runId, result.agentId, JSON.stringify(ownReport), JSON.stringify(result.value.privateNextPlan), nowIso()),
+      env.DB.prepare(`INSERT OR IGNORE INTO private_plans(run_id,round,agent_id,plan_json,created_at) VALUES(?,?,?,?,?)`)
+        .bind(params.runId, round, result.agentId, JSON.stringify(result.value.privateNextPlan), nowIso()),
+    ]);
+  }
+}
 
 const BREMNER_BASELINE = verifyRectangle({
   numbers: ['26128575', '291722431', '561117375', '713526975'],
@@ -719,6 +788,59 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       }
     }
 
+    if (terminal === 'complete' && params.resumeMeetingRound) {
+      const round = params.resumeMeetingRound;
+      const allowed = await step.do(`budget preflight resumed meeting ${round}`, async () => {
+        const spent = await globalSpend(this.env.DB);
+        return spent + MEETING_AUTHORIZATION_USD <= params.budgetUsd - params.reserveUsd;
+      });
+      if (!allowed) {
+        terminal = 'budget-stop';
+        await step.do(`budget stop resumed meeting ${round}`, async () => {
+          await patchState(this.env.DB, params.runId, { phase: 'budget-stop', phaseEndsAt: null });
+          await addEvent(this.env.DB, params.runId, round * 1000 + 980, {
+            at: nowIso(), round, phase: 'budget-stop', kind: 'budget', title: 'Resumed meeting authorization withheld',
+            summary: `Round ${round} research remains preserved, but no repeated or new calls were authorized after the protected reserve was reached.`,
+            visible: true,
+            payload: { authorizationUsd: MEETING_AUTHORIZATION_USD, reserveUsd: params.reserveUsd },
+          });
+        });
+      } else {
+        const meetingDeadline = await step.do(`open resumed round table ${round}`, async () => {
+          const deadline = Date.now() + params.phaseMinutes * 60_000;
+          const state = await getState(this.env.DB, params.runId);
+          await patchState(this.env.DB, params.runId, {
+            phase: 'meeting',
+            round,
+            liveTraces: {},
+            phaseEndsAt: new Date(deadline).toISOString(),
+            agents: agentCards(state, 'meeting'),
+          });
+          await addEvent(this.env.DB, params.runId, round * 1000 + 509, {
+            at: nowIso(), round, phase: 'meeting', kind: 'system', title: `Round-table recovery ${round}`,
+            summary: 'The five already revealed research reports were preserved. Only their missing reactions are being completed.',
+            visible: true,
+            payload: { preservedResearch: true, repeatedResearchCalls: 0 },
+          });
+          return deadline;
+        });
+        const publicReports = await step.do(`load revealed research ${round}`, () => revealedResearchBatch(this.env.DB, params.runId, round));
+        const meeting = await Promise.all(AGENTS.map((agent) => step.do(
+          `resumed meeting reaction ${round} - ${agent.id}`,
+          { retries: { limit: 0, delay: '1 second', backoff: 'constant' }, timeout: '5 minutes' },
+          () => meetingOne(this.env, params, round, agent.id, publicReports),
+        )));
+        await step.do(`publish resumed meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } },
+          () => publishMeetingResults(this.env, params, round, publicReports, meeting));
+        const meetingWaitMs = await step.do(`calculate resumed round table wait ${round}`, async () => Math.max(0, meetingDeadline - Date.now()));
+        if (meetingWaitMs > 0) await step.sleep(`finish resumed round table ${round}`, meetingWaitMs);
+        completedRound = round;
+        if (checkpointRoundsThrough(completedRound).length) {
+          await step.do(`queue checkpoint summaries through resumed round ${round}`, { retries: { limit: 3, delay: '5 seconds', backoff: 'linear' } },
+            () => queueCheckpointSummariesThrough(this.env.DB, params.runId, completedRound));
+        }
+      }
+    }
     for (let round = startRound; terminal === 'complete' && round <= Math.min(startRound, params.targetRounds); round += 1) {
       const allowed = await step.do(`budget preflight round ${round}`, async () => {
         const spent = await globalSpend(this.env.DB);
@@ -808,41 +930,8 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
         () => meetingOne(this.env, params, round, agent.id, publicReports),
       )));
 
-      await step.do(`publish meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } }, async () => {
-        await chargeResults(this.env, params, round, 'meeting', meeting);
-        const successful = publicReports.filter((report) => report.ok).map((report) => report.agentId);
-        const credits = creditMap(round, meeting, successful);
-        await addEvents(this.env.DB, params.runId, meeting.map((result) => {
-          const index = AGENT_INDEX[result.agentId];
-          return {
-            seq: round * 1000 + 510 + index,
-            event: {
-              at: nowIso(), round, phase: 'meeting' as const, agentId: result.agentId,
-              kind: result.ok ? 'meeting' as const : 'error' as const,
-              title: `${AGENTS[index].name} reacts`,
-              summary: result.value?.reaction ?? 'Reaction call failed; this agent will rejoin next round.',
-              visible: true,
-              payload: result.value ? {
-                agreements: result.value.agreements,
-                objections: result.value.objections,
-                collaborationCredits: credits.get(result.agentId) ?? [],
-                agentNominatedCredits: result.value.collaborationCredits,
-              } : { error: result.error ?? 'Meeting call failed.' },
-            },
-          };
-        }));
-
-        for (const result of meeting) {
-          if (!result.value) continue;
-          const ownReport = publicReports.find((item) => item.agentId === result.agentId)?.report ?? {};
-          await this.env.DB.batch([
-            this.env.DB.prepare(`INSERT INTO agent_memory(run_id,agent_id,public_summary_json,private_plan_json,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,agent_id) DO UPDATE SET public_summary_json=excluded.public_summary_json,private_plan_json=excluded.private_plan_json,updated_at=excluded.updated_at`)
-              .bind(params.runId, result.agentId, JSON.stringify(ownReport), JSON.stringify(result.value.privateNextPlan), nowIso()),
-            this.env.DB.prepare(`INSERT OR IGNORE INTO private_plans(run_id,round,agent_id,plan_json,created_at) VALUES(?,?,?,?,?)`)
-              .bind(params.runId, round, result.agentId, JSON.stringify(result.value.privateNextPlan), nowIso()),
-          ]);
-        }
-      });
+      await step.do(`publish meeting reactions ${round}`, { retries: { limit: 2, delay: '5 seconds', backoff: 'linear' } },
+        () => publishMeetingResults(this.env, params, round, publicReports, meeting));
 
       const meetingWaitMs = await step.do(`calculate round table wait ${round}`, async () => Math.max(0, meetingDeadline - Date.now()));
       if (meetingWaitMs > 0) await step.sleep(`finish round table ${round}`, meetingWaitMs);
@@ -853,13 +942,45 @@ export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
       }
     }
 
+    if (
+      terminal === 'complete'
+      && params.sessionEndRound
+      && completedRound >= params.sessionEndRound
+      && completedRound < params.targetRounds
+    ) {
+      return await step.do('publish Cloudflare safety pause', { retries: { limit: 3, delay: '10 seconds', backoff: 'linear' } }, async () => {
+        const pausedAt = nowIso();
+        await addEvent(this.env.DB, params.runId, completedRound * 1000 + 970, {
+          at: pausedAt,
+          round: completedRound,
+          phase: 'paused',
+          kind: 'system',
+          title: 'Cloudflare safety pause',
+          summary: `The planned session ended at round ${completedRound}. The record is safe and can resume after the platform-capacity check.`,
+          visible: true,
+          payload: { completedRound, targetRounds: params.targetRounds, sessionEndRound: params.sessionEndRound },
+        });
+        await patchState(this.env.DB, params.runId, {
+          phase: 'paused',
+          round: completedRound,
+          phaseEndsAt: null,
+          liveTraces: {},
+        });
+        await this.env.DB.prepare(`UPDATE runs SET status='paused',phase='paused',round=?,target_rounds=?,phase_ends_at=NULL,completed_at=NULL,updated_at=? WHERE id=? AND status='running'`)
+          .bind(completedRound, params.targetRounds, pausedAt, params.runId)
+          .run();
+        return { paused: true, round: completedRound, targetRounds: params.targetRounds };
+      });
+    }
     if (terminal === 'complete' && completedRound < params.targetRounds) {
       const nextRound = completedRound + 1;
       const nextWorkflowId = `${params.runId}-round-${nextRound}`;
+      const continuationParams: RunParams = { ...params, startRound: nextRound };
+      delete continuationParams.resumeMeetingRound;
       const continuation = await step.do(`schedule workflow round ${nextRound}`, async () => {
         const instance = await this.env.AUTOLABS_WORKFLOW.create({
           id: nextWorkflowId,
-          params: { ...params, startRound: nextRound },
+          params: continuationParams,
           retention: { successRetention: '3 days', errorRetention: '3 days' },
         });
         return { workflowId: instance.id };

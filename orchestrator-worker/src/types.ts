@@ -1,6 +1,6 @@
 export const AGENT_IDS = ['mira', 'pip', 'orum', 'solvi', 'tess'] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
-export type Phase = 'ribbon' | 'research' | 'meeting' | 'complete' | 'eureka' | 'budget-stop' | 'error';
+export type Phase = 'ribbon' | 'research' | 'meeting' | 'paused' | 'complete' | 'eureka' | 'budget-stop' | 'error';
 
 export interface RunParams {
   runId: string;
@@ -11,6 +11,8 @@ export interface RunParams {
   budgetUsd: number;
   reserveUsd: number;
   startRound?: number;
+  resumeMeetingRound?: number;
+  sessionEndRound?: number;
 }
 
 export interface CandidateInput {

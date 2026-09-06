@@ -42,6 +42,7 @@ function phaseLabel(phase: ExperimentState['phase']) {
   if (phase === 'eureka') return 'EUREKA';
   if (phase === 'complete') return 'COMPLETE';
   if (phase === 'budget-stop') return 'BUDGET-SAFE STOP';
+  if (phase === 'paused') return 'CLOUDFLARE SAFETY PAUSE';
   if (phase === 'error') return 'ENGINE PAUSED';
   return 'AWAITING THE RIBBON';
 }
