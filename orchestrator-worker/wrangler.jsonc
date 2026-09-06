@@ -9,9 +9,6 @@
     "logs": { "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.05 }
   },
-  "limits": {
-    "cpu_ms": 300000
-  },
   "vars": {
     "PUBLIC_SITE_ORIGIN": "https://autolabs-ebon.vercel.app",
     "GITHUB_REPOSITORY": "RaphaelKhalid/autolabs",
