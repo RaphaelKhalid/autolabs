@@ -3,9 +3,27 @@ import { addEvent, nowIso } from './db';
 import { secondHalfPolicy } from './second-half-policy';
 
 const MAX_ACTIVE_JOBS = 8;
+const MIN_JOB_CHECKS = 1_000;
+const HARD_JOB_CHECK_LIMIT = 5_000_000;
 // Eight active jobs stay bounded, while the ledger can cover the full 200-round safety ceiling.
 const MAX_RUN_JOBS = 1000;
 const AGENT_ORDER: Record<AgentId, number> = { mira: 0, pip: 1, orum: 2, solvi: 3, tess: 4 };
+
+export function normalizeJob(job: ResearchReport['proposedJobs'][number]) {
+  const requested = job.params.maxChecks;
+  if (typeof requested !== 'number' || !Number.isFinite(requested)) return job;
+  const maxChecks = Math.min(HARD_JOB_CHECK_LIMIT, Math.max(MIN_JOB_CHECKS, Math.trunc(requested)));
+  if (maxChecks === requested) return job;
+  return {
+    ...job,
+    params: { ...job.params, maxChecks },
+    reason: `${job.reason} Dispatcher adjusted maxChecks from ${requested} to the enforced ${maxChecks}.`,
+    manifest: {
+      ...job.manifest,
+      stopLoss: `${job.manifest.stopLoss} Dispatcher-enforced stop: ${maxChecks} exact checks (requested ${requested}).`,
+    },
+  };
+}
 
 function hasRound56Manifest(job: ResearchReport['proposedJobs'][number]) {
   const manifest = job.manifest;
@@ -65,9 +83,10 @@ export async function scheduleJobs(options: {
     .first<{ active: number | null; total: number }>();
   const activeCapacity = Math.max(0, MAX_ACTIVE_JOBS - Number(counts?.active ?? 0));
   const totalCapacity = Math.max(0, MAX_RUN_JOBS - Number(counts?.total ?? 0));
+  const normalizedReports = options.reports.map(normalizeJob);
   let permitted = options.round < 26
-    ? options.reports
-    : options.reports.filter((job, index, reports) => {
+    ? normalizedReports
+    : normalizedReports.filter((job, index, reports) => {
       if (job.jobType !== 'divisor_completion') return true;
       const policy = secondHalfPolicy(options.agentId, options.round);
       return policy.designatedDivisorVerifier === options.agentId
