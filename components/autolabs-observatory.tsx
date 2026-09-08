@@ -120,8 +120,8 @@ function ScientificReportView({ report, workerUrl }: { report: ScientificReport;
     <section id="report" className="scientific-report">
       <div className="record-heading">
         <p className="section-index">03 / TERMINAL REPORT</p>
-        <h2>The sealed record,<br /><em>opened in full.</em></h2>
-        <p>Every public claim, exact certificate, failed path, compute job and formerly private plan is retained as a reproducible scientific object.</p>
+        <h2>The pilot record,<br /><em>open for inspection.</em></h2>
+        <p>This compact report includes candidate checks, released plans and a job index. Source anchors and failed avenues are excerpted; raw job inputs and outputs are not bundled here. Claims require examination of their underlying evidence.</p>
       </div>
       <div className="report-outcome">
         <span>OUTCOME</span><strong>{outcome}</strong>
@@ -129,20 +129,20 @@ function ScientificReportView({ report, workerUrl }: { report: ScientificReport;
         <div><i className={report.result.k5Proved ? 'is-yes' : ''}>k = 5 {report.result.k5Proved ? 'certified' : 'not certified'}</i><i className={report.result.sotaImproved ? 'is-yes' : ''}>SOTA {report.result.sotaImproved ? 'improved' : 'unchanged'}</i></div>
       </div>
       <div className="report-grid">
-        <section><span>SOURCE ANCHORS</span><strong>{report.scientificRecord.citations.length}</strong><ul>{report.scientificRecord.citations.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
-        <section><span>FAILED AVENUES</span><strong>{report.scientificRecord.failedAvenues.length}</strong><ul>{report.scientificRecord.failedAvenues.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
+        <section><span>SOURCE ANCHORS · {report.scientificRecord.citations.length} SHOWN</span><strong>{report.scientificRecord.citationCount ?? report.scientificRecord.citations.length}</strong><ul>{report.scientificRecord.citations.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
+        <section><span>FAILED AVENUES · {report.scientificRecord.failedAvenues.length} SHOWN</span><strong>{report.scientificRecord.failedAvenueCount ?? report.scientificRecord.failedAvenues.length}</strong><ul>{report.scientificRecord.failedAvenues.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
         <section><span>EXACT CERTIFICATES</span><strong>{report.result.candidateCertificates.length}</strong><details><summary>Inspect certificates</summary><pre>{readable(report.result.candidateCertificates)}</pre></details></section>
-        <section><span>DETERMINISTIC JOBS</span><strong>{report.codeJobs.length}</strong><details><summary>Inspect job record</summary><pre>{readable(report.codeJobs)}</pre></details></section>
+        <section><span>COMPUTATION JOB INDEX</span><strong>{report.codeJobs.length}</strong><details><summary>Inspect job index (not raw inputs/outputs)</summary><pre>{readable(report.codeJobs)}</pre></details></section>
       </div>
       <div className="report-agents">
         <header><span>RESEARCHER</span><span>PROPOSED PROJECT</span><span>CREDIT</span></header>
         {report.agents.map((agent) => <div key={agent.id}><b>{agent.name}</b><p>{agent.proposedPrizeProject}</p><strong>{agent.collaborationCredits}</strong></div>)}
       </div>
       <details className="report-disclosure"><summary>Release all private next-round plans ({report.privatePlansReleased.length})</summary><pre>{readable(report.privatePlansReleased)}</pre></details>
-      <details className="report-disclosure"><summary>OpenAI usage ledger ({report.usage.length} entries)</summary><pre>{readable(report.usage)}</pre></details>
+      <details className="report-disclosure"><summary>Pilot OpenAI usage ({report.usage.length} agent/phase aggregates, not individual calls)</summary><pre>{readable(report.usage)}</pre></details>
       <div className="report-links">
         {base && <a href={`${base}/api/experiments/${report.runId}/report`} target="_blank" rel="noreferrer">Scientific report JSON <ArrowUpRight size={12} /></a>}
-        {base && <a href={`${base}${report.scientificRecord.completeEventLedger}`} target="_blank" rel="noreferrer">Complete event ledger <ArrowUpRight size={12} /></a>}
+        {base && <a href={`${base}${report.scientificRecord.completeEventLedger}`} target="_blank" rel="noreferrer">Event ledger API (paginated) <ArrowUpRight size={12} /></a>}
         <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Verifier source <ArrowUpRight size={12} /></a>
       </div>
     </section>
@@ -282,7 +282,7 @@ export function AutolabsObservatory() {
   const selectedToolEvents = useMemo(() => selected ? visibleEvents.filter((event) => event.agentId === selected.id && (event.kind === 'tool' || asItems(asRecord(event.payload).proposedJobs).length > 0)) : [], [selected, visibleEvents]);
   const workerUrl = process.env.NEXT_PUBLIC_ORCHESTRATOR_URL;
   const budgetPercent = Math.min(100, (state.spentUsd / state.budgetUsd) * 100);
-  const supportPercent = Math.min(100, (displaySupport.reduce((sum, n) => sum + n, 0) / 25) * 100);
+  const supportPercent = Math.min(100, displayRound / state.targetRounds * 100);
 
   useEffect(() => {
     if (!selected) return;
@@ -330,12 +330,13 @@ export function AutolabsObservatory() {
         </a>
         <nav className="masthead__nav" aria-label="Primary">
           <a href="/">Lab</a>
+          <a href="/experiments">Experiments</a>
           <a href="#ledger">Ledger</a>
           {state.report && <a href="#report">Report</a>}
           <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={11} /></a>
         </nav>
         <div className="masthead__actions">
-          <span className={`live-signal ${live ? '' : 'is-preview'}`}><i /> {live ? (state.phase === 'idle' ? 'Engine online · idle' : 'Live experiment') : 'Preview state'}</span>
+          <span className={`live-signal ${live ? '' : 'is-preview'}`}><i /> {live ? (state.report ? 'Experiment archive' : state.phase === 'idle' ? 'Engine online · idle' : 'Live experiment') : 'Offline / preview'}</span>
           <button className="bare-button" onClick={() => setSound(!sound)} aria-label={sound ? 'Mute atmosphere' : 'Enable atmosphere'}>{sound ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
           <button className="control-link" onClick={() => setControlOpen(true)}>Owner control</button>
         </div>
@@ -347,7 +348,7 @@ export function AutolabsObservatory() {
           <span>BEST EXACT SUPPORT</span>
           <b>{supportLabel(displaySupport)}</b>
           <div className="score-line"><i style={{ width: `${supportPercent}%` }} /></div>
-          <small>target&nbsp; (5, 5, 5, 5, 5)</small>
+          <small>bar: rounds completed, not distance to a proof</small>
         </div>
         <div className="score-ribbon__datum"><span>INTERVAL</span><b>{phaseTitle({ ...state, phase })}</b></div>
         <div className="score-ribbon__datum"><span>ROUND</span><b>{String(displayRound).padStart(2, '0')}<em> / {state.targetRounds}</em></b></div>
@@ -355,7 +356,7 @@ export function AutolabsObservatory() {
       </section>
 
       <section id="field" className="research-intro">
-        <p className="section-index">01 / LIVE FIELD</p>
+        <p className="section-index">01 / {state.report ? 'ARCHIVED FIELD' : 'LIVE FIELD'}</p>
         <div>
           <h1>An exact search,<br /><em>observed in motion.</em></h1>
 

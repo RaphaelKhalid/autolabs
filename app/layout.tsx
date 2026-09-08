@@ -4,6 +4,7 @@ import { Geist_Mono, STIX_Two_Text } from 'next/font/google';
 import './globals.css';
 import './report.css';
 import './lab.css';
+import './archive.css';
 
 const serif = STIX_Two_Text({
   subsets: ['latin'],
@@ -18,11 +19,11 @@ const mono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Autolabs · Luna High Erdős 885 Competition',
-  description: 'A public, exact and replayable autonomous mathematics experiment.',
+  title: 'AutoLabs · Observable agent experiments',
+  description: 'A public laboratory for agent experiments, with per-experiment models, methods, costs and evidence. Explore the completed Erdős 885 pilot.',
   openGraph: {
-    title: 'Autolabs · Experiment 885',
-    description: 'Five mathematical intelligences. One open Erdős problem. Every claim verified.',
+    title: 'AutoLabs · Observable agent experiments',
+    description: 'The animated lab, an open experiment register, and the results of our 100-round Erdős 885 pilot.',
     type: 'website',
   },
 };

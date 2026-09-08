@@ -12,6 +12,7 @@ import {
   type ComputeJob, type ExperimentEvent, type ExperimentState,
 } from '@/lib/experiment';
 import { AlienForm } from './autolabs-observatory';
+import { erdosPilot } from '@/lib/experiment-catalog';
 
 const pigments = ['#f27a4f', '#a6d879', '#b39af4', '#42d6df', '#f47b91'];
 const stations = [
@@ -96,6 +97,8 @@ export function LivingLab() {
   const [connection, setConnection] = useState<'loading' | 'retrying' | 'ready'>('loading');
   const [loadAttempt, setLoadAttempt] = useState(0);
   const requestInFlight = useRef(false);
+  const terminal = ['complete', 'eureka', 'budget-stop'].includes(state.phase);
+  const isPilot = state.id === erdosPilot.runId;
 
   const reload = useCallback(async () => {
     if (requestInFlight.current) return;
@@ -124,9 +127,9 @@ export function LivingLab() {
   useEffect(() => {
     void reload();
     const clock = window.setInterval(() => setNow(Date.now()), 1_000);
-    const poll = window.setInterval(() => void reload(), 3_000);
+    const poll = window.setInterval(() => void reload(), terminal ? 60_000 : 3_000);
     return () => { window.clearInterval(clock); window.clearInterval(poll); };
-  }, [reload]);
+  }, [reload, terminal]);
 
   useEffect(() => {
     const query = window.matchMedia('(max-width: 620px)');
@@ -198,7 +201,7 @@ export function LivingLab() {
 
   return (
     <main className={`living-lab phase-${phase} ${meeting ? 'is-tessellating' : ''}`}>
-      <h1 className="lab-sr-only">Autolabs live Erdős 885 research laboratory</h1>
+      <h1 className="lab-sr-only">AutoLabs · observable agent experiments</h1>
       <AnimatePresence>
         {connection !== 'ready' && (
           <motion.section
@@ -231,10 +234,10 @@ export function LivingLab() {
       <div className="world-floor" aria-hidden="true" />
 
       <header className="lab-header">
-        <a className="lab-mark" href="/"><i>A</i><span>AUTOLABS<small>EXPERIMENT 885</small></span></a>
-        <nav><a href="/journal">Journal</a><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={10} /></a></nav>
+        <a className="lab-mark" href="/"><i>A</i><span>AUTOLABS<small>{isPilot ? 'PILOT 001 · ERDŐS 885' : 'OBSERVABLE EXPERIMENTS'}</small></span></a>
+        <nav aria-label="Experiments"><a href="/experiments">Experiments</a><a href="/experiments/erdos-885">Pilot results</a><a href="/journal">Journal</a></nav>
         <div>
-          <span className={`lab-live ${live ? '' : 'is-offline'}`}><i />{live ? 'LIVE' : 'PREVIEW'}</span>
+          <span className={`lab-live ${live ? '' : 'is-offline'}`}><i />{live ? (terminal ? 'ARCHIVE' : 'LIVE') : 'OFFLINE'}</span>
           <button className="lab-refresh" type="button" onClick={() => void refreshNow()} disabled={refreshing} aria-label="Refresh live laboratory">
             <RefreshCw size={10} className={refreshing ? 'is-spinning' : ''} />
             <span>{refreshing ? 'Refreshing' : 'Refresh'}</span>
@@ -243,10 +246,10 @@ export function LivingLab() {
         </div>
       </header>
 
-      <section className="lab-score" aria-label="Live score">
-        <div><span>ERDŐS 885</span><b>{supportLabel(support)}</b></div>
-        <div className="lab-scoreline"><i style={{ width: `${Math.min(100, support.reduce((sum, n) => sum + n, 0) / 25 * 100)}%` }} /></div>
-        <div><span>{phaseLabel(phase)}</span><b>R{String(round).padStart(2, '0')} · {replay ? '--:--' : formatCountdown(state.phaseEndsAt, now)}</b></div>
+      <section className="lab-score" aria-label="Experiment status">
+        <div><span>{terminal && !replay ? 'PILOT RESULT' : 'EXACT ROW SUPPORT'}</span><b>{terminal && !replay ? (state.report?.result.k5Proved ? 'k = 5 certified' : 'No k = 5 certificate') : supportLabel(support)}</b></div>
+        <div className="lab-scoreline" title="Rounds completed, not mathematical proximity to a solution"><i style={{ width: `${Math.min(100, round / state.targetRounds * 100)}%` }} /></div>
+        <div><span>{replay ? 'REPLAY · RECENT EVENTS' : phaseLabel(phase)}</span><b>{terminal && !replay ? `${round} / ${state.targetRounds} rounds` : `R${String(round).padStart(2, '0')} · ${replay ? '--:--' : formatCountdown(state.phaseEndsAt, now)}`}</b></div>
       </section>
 
       <section className="lab-world" aria-label="Autonomous mathematics laboratory">
@@ -283,7 +286,7 @@ export function LivingLab() {
                 ? 'Waiting for the ribbon.'
                 : phase === 'research' && agent.bubble.startsWith('Dormant')
                   ? 'Working privately—report sealed until the simultaneous reveal.'
-                  : agent.bubble;
+                  : terminal && !replay ? 'Pilot complete. Open my published research record.' : agent.bubble;
             return (
               <motion.button
                 key={agent.id}
@@ -314,13 +317,13 @@ export function LivingLab() {
         {queueOpen && <div className="queue-body">
           <header><span>ASYNCHRONOUS EXACT JOBS</span><small>Jobs may outlive the round that proposed them.</small></header>
           {visibleJobs.length ? visibleJobs.slice(0, 7).map((job) => <JobRow key={job.id} job={job} onOpen={() => setSelectedId(job.agentId)} />) : <div className="queue-empty"><Radio size={14}/><p>{phase === 'research' ? 'Five research calls are running.' : 'No exact jobs proposed yet.'}<small>{phase === 'research' ? 'Calculator jobs appear after the sealed reports reveal.' : 'New jobs appear here as agents dispatch them.'}</small></p></div>}
-          <footer><span><CircleDollarSign size={11}/> OPENAI ${state.spentUsd.toFixed(2)} / $50</span><span>EXA ${(state.exaSpentUsd ?? 0).toFixed(2)} / $40</span></footer>
+          <footer title="Cumulative recorded estimates, including earlier runs"><span><CircleDollarSign size={11}/> OPENAI ${state.spentUsd.toFixed(2)} / ${state.budgetUsd}</span><span>EXA ${(state.exaSpentUsd ?? 0).toFixed(2)} / ${state.exaBudgetUsd}</span></footer>
         </div>}
       </aside>
 
       <div className="lab-actions">
         <button onClick={() => { if (replay) setReplay(false); else { setReplay(true); setReplayIndex(0); } setPlaying(false); }}><TimerReset size={13}/>{replay ? 'Present' : 'Replay'}</button>
-        <a href="/journal"><ShieldCheck size={13}/>Full record</a>
+        <a href={isPilot ? '/experiments/erdos-885' : '/journal'}><ShieldCheck size={13}/>{isPilot ? 'Pilot results' : 'Journal'}</a>
       </div>
 
       {selected && <div className="lab-drawer-backdrop" onMouseDown={() => setSelectedId(null)}>
@@ -328,11 +331,12 @@ export function LivingLab() {
           <header><div><AlienForm agent={selected} index={state.agents.indexOf(selected)} meeting={meeting} compact /></div><span>{selected.epithet}</span><h2>{selected.name}</h2><button onClick={() => setSelectedId(null)} aria-label="Close record"><X size={18}/></button></header>
           <section className="lab-drawer-profile">
             <p>{selected.approach}</p>
-            {selectedTrace && <div className={`drawer-trace is-${selectedTrace.status}`}><span><i />LIVE API TRACE</span><b>{selectedTrace.outputCharacters.toLocaleString()} response characters · {selectedTrace.status}</b><small>Real response-stream activity. Research text stays sealed until the synchronized reveal; hidden model reasoning is never exposed.</small></div>}
+            {selectedTrace && !terminal && <div className={`drawer-trace is-${selectedTrace.status}`}><span><i />LIVE API TRACE</span><b>{selectedTrace.outputCharacters.toLocaleString()} response characters · {selectedTrace.status}</b><small>Real response-stream activity. Research text stays sealed until the synchronized reveal; hidden model reasoning is never exposed.</small></div>}
             <b>PROPOSED PROJECT</b><blockquote>{selected.project}</blockquote>
           </section>
           <section className="lab-chat-log">
-            <h3>COMPLETE PUBLIC CHAT</h3>
+            <h3>RECENT PUBLIC CHAT · UP TO 500 EVENTS</h3>
+            {isPilot && <a href="/experiments/erdos-885#record">Browse the paginated pilot ledger ↗</a>}
             {agentEvents.length ? agentEvents.map((event) => <article key={event.seq}><time>ROUND {event.round} · {event.kind}</time><b>{event.title}</b><p>{event.summary}</p><Evidence event={event}/></article>) : <p className="drawer-empty">Its first public report will appear after the reveal.</p>}
           </section>
         </motion.aside>
@@ -350,11 +354,11 @@ export function LivingLab() {
       {controlOpen && <div className="lab-control-backdrop" onMouseDown={() => setControlOpen(false)}>
         <motion.section className="lab-control" initial={{ y: 25, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onMouseDown={(event) => event.stopPropagation()}>
           <button className="lab-control-close" onClick={() => setControlOpen(false)}><X size={18}/></button>
-          <span><Zap size={12}/>OWNER CONTROL</span><h2>Cut the ribbon.</h2><p>The real rehearsal uses the same agents, retrieval, calculators, public record and stopping rules.</p>
+          <span><Zap size={12}/>OWNER CONTROL</span><h2>{terminal ? 'Pilot complete.' : 'Cut the ribbon.'}</h2><p>{terminal ? 'This panel launches another Erdős 885 run with the existing engine. It does not configure a new problem or change the archived pilot.' : 'The real rehearsal uses the same agents, retrieval, calculators, public record and stopping rules.'}</p>
           <label>OWNER KEY<input type="password" value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} autoComplete="off"/></label>
           <div><button onClick={() => void startRun('rehearsal')}>Real rehearsal</button><button onClick={() => void startRun('competition')}>Competition</button></div>
           {startMessage && <output>{startMessage}</output>}
-          <small><Clock3 size={11}/>50 target · 25 guaranteed · 5+5 minute cadence</small>
+          <small><Clock3 size={11}/>New-run defaults: 50 target · 5+5 minute cadence</small>
         </motion.section>
       </div>}
     </main>
