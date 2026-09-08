@@ -5,22 +5,56 @@ import { secondHalfPolicy } from './second-half-policy';
 const MAX_ACTIVE_JOBS = 8;
 const MIN_JOB_CHECKS = 1_000;
 const HARD_JOB_CHECK_LIMIT = 5_000_000;
+const HARD_JOB_DIFFERENCE_LIMIT = 80;
+const MAX_DECIMAL_DIGITS = 120;
 // Eight active jobs stay bounded, while the ledger can cover the full 200-round safety ceiling.
 const MAX_RUN_JOBS = 1000;
 const AGENT_ORDER: Record<AgentId, number> = { mira: 0, pip: 1, orum: 2, solvi: 3, tess: 4 };
 
 export function normalizeJob(job: ResearchReport['proposedJobs'][number]) {
+  let normalized = job;
   const requested = job.params.maxChecks;
-  if (typeof requested !== 'number' || !Number.isFinite(requested)) return job;
-  const maxChecks = Math.min(HARD_JOB_CHECK_LIMIT, Math.max(MIN_JOB_CHECKS, Math.trunc(requested)));
-  if (maxChecks === requested) return job;
+  if (typeof requested === 'number' && Number.isFinite(requested)) {
+    const maxChecks = Math.min(HARD_JOB_CHECK_LIMIT, Math.max(MIN_JOB_CHECKS, Math.trunc(requested)));
+    if (maxChecks !== requested) {
+      normalized = {
+        ...normalized,
+        params: { ...normalized.params, maxChecks },
+        reason: `${normalized.reason} Dispatcher adjusted maxChecks from ${requested} to the enforced ${maxChecks}.`,
+        manifest: {
+          ...normalized.manifest,
+          stopLoss: `${normalized.manifest.stopLoss} Dispatcher-enforced stop: ${maxChecks} exact checks (requested ${requested}).`,
+        },
+      };
+    }
+  }
+
+  const rawDifferences = normalized.jobType === 'family_scan' ? normalized.params.differences : null;
+  if (typeof rawDifferences !== 'string') return normalized;
+  const submitted = rawDifferences.split(/[ ,]+/).filter(Boolean);
+  const unique: bigint[] = [];
+  const seen = new Set<string>();
+  for (const token of submitted) {
+    if (!/^[1-9][0-9]*$/.test(token) || token.length > MAX_DECIMAL_DIGITS) return normalized;
+    const value = BigInt(token);
+    const canonical = value.toString();
+    if (!seen.has(canonical)) {
+      seen.add(canonical);
+      unique.push(value);
+    }
+  }
+  if (unique.length <= HARD_JOB_DIFFERENCE_LIMIT) return normalized;
+
+  unique.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+  const differences = unique.slice(0, HARD_JOB_DIFFERENCE_LIMIT).map(String).join(' ');
   return {
-    ...job,
-    params: { ...job.params, maxChecks },
-    reason: `${job.reason} Dispatcher adjusted maxChecks from ${requested} to the enforced ${maxChecks}.`,
+    ...normalized,
+    params: { ...normalized.params, differences },
+    reason: `${normalized.reason} Dispatcher reduced ${unique.length} distinct differences to the numerically smallest ${HARD_JOB_DIFFERENCE_LIMIT}; ${unique.length - HARD_JOB_DIFFERENCE_LIMIT} were omitted.`,
     manifest: {
-      ...job.manifest,
-      stopLoss: `${job.manifest.stopLoss} Dispatcher-enforced stop: ${maxChecks} exact checks (requested ${requested}).`,
+      ...normalized.manifest,
+      domain: `${normalized.manifest.domain} Effective calculator domain is the numerically smallest ${HARD_JOB_DIFFERENCE_LIMIT} distinct positive decimal differences submitted, recorded in params.differences; ${unique.length - HARD_JOB_DIFFERENCE_LIMIT} larger values were omitted.`,
+      stopLoss: `${normalized.manifest.stopLoss} Dispatcher-enforced family ceiling: ${HARD_JOB_DIFFERENCE_LIMIT} distinct differences (requested ${unique.length}).`,
     },
   };
 }
