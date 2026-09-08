@@ -125,9 +125,18 @@ function parseDifferences(params) {
     unique.set(difference.toString(), difference);
   }
   const values = [...unique.values()].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-  if (values.length > MAX_DIFFERENCES) throw new Error(`At most ${MAX_DIFFERENCES} distinct differences are accepted`);
   if (values.length < 2) throw new Error('At least two distinct differences are required');
-  return values;
+  const requestedCount = values.length;
+  const effective = values.slice(0, MAX_DIFFERENCES);
+  return {
+    values: effective,
+    normalization: requestedCount > MAX_DIFFERENCES ? {
+      requestedCount,
+      effectiveCount: effective.length,
+      omittedCount: requestedCount - effective.length,
+      selection: 'numerically-smallest',
+    } : null,
+  };
 }
 
 function rank(numbers, differences) {
@@ -189,7 +198,8 @@ function divisorJob(params) {
 }
 
 function familyJob(params) {
-  const differences = parseDifferences(params);
+  const parsed = parseDifferences(params);
+  const differences = parsed.values;
   const numbers = new Map();
   let complete = true;
   let truncatedBy = null;
@@ -226,6 +236,7 @@ function familyJob(params) {
   ));
   return {
     differences: differences.map(String),
+    inputNormalization: parsed.normalization,
     candidates: ranked.candidates,
     bicliques: bicliques.matches,
     bicliqueSearches: bicliques.searches.map(({ matches, ...search }) => ({ ...search, matchCount: matches.length })),
@@ -284,6 +295,10 @@ try {
 
   const completedAt = new Date().toISOString();
   const resultBody = { ...result, sourceSha: payload.sourceSha, checks, startedAt, completedAt };
+  const requestedDomain = payload.evidenceManifest?.domain ?? 'Calculator parameters in the signed request';
+  const testedDomain = result.inputNormalization
+    ? `${requestedDomain} Effective calculator domain is the numerically smallest ${result.inputNormalization.effectiveCount} distinct positive decimal differences submitted, recorded in result.differences; ${result.inputNormalization.omittedCount} larger values were omitted.`
+    : requestedDomain;
   const certificate = {
     schemaVersion: 2,
     exactArithmetic: true,
@@ -292,7 +307,7 @@ try {
     sourceSha: payload.sourceSha,
     jobType: payload.jobType,
     evidenceManifest: payload.evidenceManifest ?? null,
-    testedDomain: payload.evidenceManifest?.domain ?? 'Calculator parameters in the signed request',
+    testedDomain,
     completenessTarget: payload.evidenceManifest?.completenessTarget ?? 'exploratory',
     complete: Boolean(result.complete),
     truncatedBy: result.truncatedBy ?? null,
