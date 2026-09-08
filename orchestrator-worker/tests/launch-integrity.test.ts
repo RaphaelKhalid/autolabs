@@ -46,6 +46,8 @@ describe('launch-integrity invariants', () => {
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.params.additionalProperties).toBe(false);
     expect(job.properties.params.required).toContain('maxChecks');
+    expect(job.properties.params.properties.maxChecks.minimum).toBe(1_000);
+    expect(job.properties.params.properties.maxChecks.maximum).toBe(5_000_000);
     expect(job.required).toContain('manifest');
     expect(RESEARCH_SCHEMA.required).toContain('claimAudit');
   });
