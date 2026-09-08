@@ -2,7 +2,6 @@ import { addEvent, initialPublicState, globalSpend, nowIso, publicJobs, recentEv
 import { secretEquals, bearer, cors, verifyCallbackSignature } from './security';
 import { POST_COUNCIL_POLICY_SUMMARY } from './second-half-policy';
 import { AGENT_IDS, type AgentId, type RunParams } from './types';
-import { finalReport } from './workflow';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -101,54 +100,6 @@ export default {
           .first<{ report_json: string | null }>();
         if (!row?.report_json) return json({ error: 'Report is not available yet.' }, { status: 404 }, corsHeaders);
         return json(JSON.parse(row.report_json), {}, corsHeaders);
-      }
-
-      const finalizeMatch = url.pathname.match(/^\/api\/experiments\/([a-zA-Z0-9-]+)\/finalize$/);
-      if (request.method === 'POST' && finalizeMatch) {
-        if (!env.ADMIN_TOKEN) return json({ error: 'The research engine is not fully configured.' }, { status: 503 }, corsHeaders);
-        if (!await secretEquals(bearer(request), env.ADMIN_TOKEN)) return json({ error: 'Unauthorized.' }, { status: 401 }, corsHeaders);
-        const row = await env.DB.prepare(`SELECT id,status,mode,target_rounds AS targetRounds,
-            minimum_rounds AS minimumRounds,phase_minutes AS phaseMinutes,budget_usd AS budgetUsd,
-            reserve_usd AS reserveUsd,report_json AS reportJson
-            FROM runs WHERE id=?`)
-          .bind(finalizeMatch[1])
-          .first<{
-            id: string;
-            status: string;
-            mode: 'rehearsal' | 'competition';
-            targetRounds: number;
-            minimumRounds: number;
-            phaseMinutes: number;
-            budgetUsd: number;
-            reserveUsd: number;
-            reportJson: string | null;
-          }>();
-        if (!row) return json({ error: 'Unknown experiment.' }, { status: 404 }, corsHeaders);
-        if (row.reportJson) return json({ finalized: true, runId: row.id, report: JSON.parse(row.reportJson) }, {}, corsHeaders);
-        if (row.status !== 'error' && row.status !== 'paused') return json({ error: 'Only a stopped experiment can be finalized.' }, { status: 409 }, corsHeaders);
-        const completed = await env.DB.prepare(`SELECT MAX(round) AS completedRound
-            FROM events WHERE run_id=? AND visible=1 AND seq % 1000=514`)
-          .bind(row.id)
-          .first<{ completedRound: number | null }>();
-        const completedRound = Math.max(0, Number(completed?.completedRound ?? 0));
-        if (completedRound < row.targetRounds) {
-          return json({ error: 'The experiment has not completed its target rounds.' }, { status: 409 }, corsHeaders);
-        }
-        const eureka = await env.DB.prepare(`SELECT 1 AS found FROM events
-            WHERE run_id=? AND kind='candidate' AND title LIKE 'Eureka%' LIMIT 1`)
-          .bind(row.id)
-          .first<{ found: number }>();
-        const params: RunParams = {
-          runId: row.id,
-          mode: row.mode,
-          targetRounds: row.targetRounds,
-          minimumRounds: row.minimumRounds,
-          phaseMinutes: row.phaseMinutes,
-          budgetUsd: row.budgetUsd,
-          reserveUsd: row.reserveUsd,
-        };
-        const report = await finalReport(env, params, eureka ? 'eureka' : 'complete', completedRound);
-        return json({ finalized: true, runId: row.id, report }, {}, corsHeaders);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/experiments/start') {

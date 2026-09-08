@@ -951,6 +951,29 @@ export async function finalReport(env: Env, params: RunParams, terminal: 'comple
 export class AutolabsWorkflow extends WorkflowEntrypoint<Env, RunParams> {
   async run(event: WorkflowEvent<RunParams>, step: WorkflowStep) {
     const params = event.payload;
+    if (params.finalizeOnly) {
+      return await step.do('recover compact terminal report', { retries: { limit: 3, delay: '10 seconds', backoff: 'linear' } }, async () => {
+        const row = await this.env.DB.prepare(`SELECT status,target_rounds AS targetRounds,report_json AS reportJson
+            FROM runs WHERE id=?`)
+          .bind(params.runId)
+          .first<{ status: string; targetRounds: number; reportJson: string | null }>();
+        if (!row) throw new Error(`Run ${params.runId} does not exist.`);
+        if (row.reportJson) return { published: true, outcome: 'already-complete', round: row.targetRounds };
+        if (row.status !== 'error' && row.status !== 'paused') throw new Error('Only a stopped experiment can be finalized.');
+        const completed = await this.env.DB.prepare(`SELECT MAX(round) AS completedRound
+            FROM events WHERE run_id=? AND visible=1 AND seq % 1000=514`)
+          .bind(params.runId)
+          .first<{ completedRound: number | null }>();
+        const completedRound = Math.max(0, Number(completed?.completedRound ?? 0));
+        if (completedRound < row.targetRounds) throw new Error('The experiment has not completed its target rounds.');
+        const eureka = await this.env.DB.prepare(`SELECT 1 AS found FROM events
+            WHERE run_id=? AND kind='candidate' AND title LIKE 'Eureka%' LIMIT 1`)
+          .bind(params.runId)
+          .first<{ found: number }>();
+        await finalReport(this.env, params, eureka ? 'eureka' : 'complete', completedRound);
+        return { published: true, outcome: eureka ? 'eureka' : 'complete', round: completedRound };
+      });
+    }
     const startRound = params.startRound ?? 1;
     let terminal: 'complete' | 'eureka' | 'budget-stop' = 'complete';
     let completedRound = startRound - 1;

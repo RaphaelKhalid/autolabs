@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const indexSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const workflowSource = readFileSync(new URL('../src/workflow.ts', import.meta.url), 'utf8');
 
 describe('terminal report recovery', () => {
@@ -19,11 +18,10 @@ describe('terminal report recovery', () => {
     expect(workflowSource).toContain('completeEventLedger: `/api/experiments/${params.runId}/events`');
   });
 
-  it('allows only the owner to finalize a stopped run that completed all target rounds', () => {
-    expect(indexSource).toContain('/finalize$');
-    expect(indexSource).toContain('secretEquals(bearer(request), env.ADMIN_TOKEN)');
-    expect(indexSource).toContain("row.status !== 'error' && row.status !== 'paused'");
-    expect(indexSource).toContain('completedRound < row.targetRounds');
-    expect(indexSource).toContain("finalReport(env, params, eureka ? 'eureka' : 'complete', completedRound)");
+  it('limits report-only recovery to a stopped run that completed all target rounds', () => {
+    expect(workflowSource).toContain('if (params.finalizeOnly)');
+    expect(workflowSource).toContain("row.status !== 'error' && row.status !== 'paused'");
+    expect(workflowSource).toContain('completedRound < row.targetRounds');
+    expect(workflowSource).toContain("finalReport(this.env, params, eureka ? 'eureka' : 'complete', completedRound)");
   });
 });

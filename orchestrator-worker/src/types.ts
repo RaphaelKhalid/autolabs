@@ -13,6 +13,7 @@ export interface RunParams {
   startRound?: number;
   resumeMeetingRound?: number;
   sessionEndRound?: number;
+  finalizeOnly?: boolean;
 }
 
 export interface CandidateInput {
