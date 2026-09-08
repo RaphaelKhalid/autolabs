@@ -10,7 +10,8 @@ describe('stopped-run continuation safety', () => {
     expect(indexSource).toContain('secretEquals(bearer(request), env.ADMIN_TOKEN)');
     expect(indexSource).toContain("status IN ('error','paused')");
     expect(indexSource).toContain('MAX_TARGET_ROUNDS = 200');
-    expect(indexSource).toContain('MAX_SESSION_ROUNDS = 25');
+    expect(indexSource).toContain('DEFAULT_SESSION_ROUNDS = 45');
+    expect(indexSource).toContain('MAX_SESSION_ROUNDS = 145');
   });
 
   it('preserves a revealed interrupted round instead of rerunning its research', () => {
