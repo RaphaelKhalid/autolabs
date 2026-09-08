@@ -70,7 +70,9 @@ export interface ScientificReport {
   };
   scientificRecord: {
     citations: string[];
+    citationCount?: number;
     failedAvenues: string[];
+    failedAvenueCount?: number;
     eventCount: number;
     completeEventLedger: string;
     verifier: string;

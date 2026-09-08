@@ -1,10 +1,41 @@
-# Autolabs · Luna High Erdős 885 Competition
+# AutoLabs · Observable agent experiments
+
+AutoLabs is evolving into a reusable public laboratory. The animated lab remains
+the homepage, with an [experiment register](https://autolabs-ebon.vercel.app/experiments)
+and stable per-experiment evidence links. The current execution engine is still
+specialized for Erdős 885; arbitrary-problem launching is not implemented yet.
+
+## Pilot 001 — completed
+
+The first pilot completed **100 synchronized rounds**, not 100 independent trials,
+between 3 and 8 September 2026. It produced **no certified k=5 solution and no
+verified SOTA improvement**. See the [results and paginated ledger](https://autolabs-ebon.vercel.app/experiments/erdos-885).
+
+- 606 computation jobs: 297 complete, 297 partial, 12 failed.
+- 87 candidate-check records, 2,611 events, 496 released private plans.
+- Final internal leader: 21 valid cells in a sparse 7×6 table, submitted in round
+  40. This is not a complete rectangle or a proven field-level novelty.
+- Pilot-only recorded estimates: OpenAI $7.41198192; Exa $3.535.
+- Including earlier runs: OpenAI $9.32071384; Exa $4.536.
+
+Usage estimates are application-ledger records, not reconciled invoices; missing
+usage from timed-out requests may be excluded. Hosting, Codex subscriptions,
+human time and separately funded agent rewards are not included. Operational
+repairs and human-directed policy changes were part of this supervised pilot.
+
+Experiment descriptors live in `lib/experiment-catalog.ts`. Models, reasoning
+effort, objectives, tools, acceptance criteria and budgets belong to each
+experiment, not to the AutoLabs brand. Pilot evidence URLs are pinned to its run
+ID and will not silently follow the next run. The report is a compact index:
+source/failed-avenue lists are excerpted and raw job inputs/outputs are not bundled.
+
+## Historical pilot methodology
 
 Five GPT-5.6 Luna High mathematicians work in synchronized five-minute private
 research loops and five-minute round tables on [Erdős Problem 885](https://erdosproblemaday.com/day/885-factor-difference-k5).
 The public observatory shows concise research records, exact tool calls, citations,
-the best verified support vector, API spend, long-running code jobs, and a complete
-replay. Hidden chain-of-thought is never requested or published.
+the best verified support vector, API spend, long-running code jobs, and a recent-event
+replay. The pilot archive provides a paginated ledger. Hidden chain-of-thought is never requested or published.
 
 ## The mathematical target
 
@@ -37,15 +68,18 @@ differences)` / `(3 integers, 5 differences)` frontier: at least `6×4` or `4×5
 - One failed call is retried and isolated; the other agents continue.
 - A real one-round dress rehearsal uses the production prompts, model, exact tools,
   ledger and budget.
-- Competition target: 50 rounds; guaranteed allocation: 25 rounds.
+- Initial competition target: 50 rounds; guaranteed allocation: 25 rounds.
+  The owner extended the pilot to 100. New-run defaults are distinct from this archive.
 - Current OpenAI experiment ceiling: `$50`, with a `$1.50` software reserve and
   preflight authorization before every five-call batch.
-- Every provider response is charged from actual input, cached-input and output
-  token usage. API secrets exist only in Cloudflare/Vercel secret stores.
+- Recorded provider responses are costed from input, cached-input and output
+  token usage. Failed requests without returned usage are not invoice-reconciled.
+  API secrets belong in ignored local configuration and deployment secret stores.
 
 The k=5 winner may later use a `$50` project budget supplied by Raphael. Each
 credited collaborator receives a separate `$10`. A verified SOTA-frontier
-improvement earns `$25`; otherwise there is no consolation prize.
+improvement would earn `$25`. The terminal report also records separately funded
+`$25` participation allocations per agent; these are not API spend or proof of payment.
 
 ## Architecture
 
