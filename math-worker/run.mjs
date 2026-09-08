@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
+import { extractExactBicliques } from './biclique.mjs';
 
 const MAX_DECIMAL_DIGITS = 120;
 const MAX_DIFFERENCES = 80;
@@ -165,7 +166,11 @@ function rank(numbers, differences) {
   }
 
   ranked.sort((a, b) => b.rowSupport - a.rowSupport || a.number.localeCompare(b.number));
-  return { candidates: ranked.slice(0, 50), complete, truncatedBy };
+  return { candidates: ranked.slice(0, 50), allCandidates: ranked, complete, truncatedBy };
+}
+
+function extractBicliques(candidates, differences) {
+  return extractExactBicliques(candidates, differences, { consumeCheck, stopReason, resultLimit: 20 });
 }
 
 function divisorJob(params) {
@@ -214,6 +219,7 @@ function familyJob(params) {
   }
 
   const ranked = rank([...numbers.values()], differences);
+  const bicliques = extractBicliques(ranked.allCandidates, differences);
   const columnSupport = differences.map((difference) => ranked.candidates.reduce(
     (count, candidate) => count + (candidate.support.includes(difference.toString()) ? 1 : 0),
     0,
@@ -221,10 +227,12 @@ function familyJob(params) {
   return {
     differences: differences.map(String),
     candidates: ranked.candidates,
+    bicliques: bicliques.matches,
+    bicliqueSearches: bicliques.searches.map(({ matches, ...search }) => ({ ...search, matchCount: matches.length })),
     columnSupport,
     distinctNumbers: numbers.size,
-    complete: complete && ranked.complete,
-    truncatedBy: truncatedBy ?? ranked.truncatedBy,
+    complete: complete && ranked.complete && bicliques.complete,
+    truncatedBy: truncatedBy ?? ranked.truncatedBy ?? bicliques.truncatedBy,
     claimScope: {
       statement: 'Exact incidence enumeration only over the declared finite difference family and calculator bounds.',
       globalImpossibilityClaim: false,
