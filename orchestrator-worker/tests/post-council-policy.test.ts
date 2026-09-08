@@ -30,7 +30,7 @@ describe('approved round 56 research policy', () => {
   it('publishes exact witnesses, replay hashes, and the active policy', () => {
     expect(verifierSource).toContain('exactWitnesses');
     expect(verifierSource).toContain('fnv1a32:');
-    expect(mathWorkerSource).toContain('schemaVersion: 2');
+    expect(mathWorkerSource).toContain('schemaVersion: 3');
     expect(mathWorkerSource).toContain('requestHash:');
     expect(mathWorkerSource).toContain('resultHash:');
     expect(mathWorkerSource).toContain('supportMask');
