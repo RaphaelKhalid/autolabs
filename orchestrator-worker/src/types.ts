@@ -23,16 +23,41 @@ export interface CandidateInput {
 
 export type JobParameter = string | number | null;
 
+export type JobCompletenessTarget = 'complete' | 'bounded-complete' | 'exploratory';
+export type RegistryOverlap = 'new' | 'unknown' | 'regression';
+
+export interface JobEvidenceManifest {
+  familyFingerprint: string;
+  registryOverlap: RegistryOverlap;
+  domain: string;
+  completenessTarget: JobCompletenessTarget;
+  targetShape: string;
+  successCriterion: string;
+  stopLoss: string;
+  symbolicIdentity: string | null;
+  proofObligations: string[];
+}
+
 export interface ProposedJob {
   jobType: 'divisor_completion' | 'family_scan' | 'boundary_scan';
   params: Record<string, JobParameter>;
   reason: string;
+  manifest: JobEvidenceManifest;
+}
+
+export interface AuditedClaim {
+  claim: string;
+  status: 'exact' | 'finite-exclusion' | 'conjecture' | 'method' | 'reproduction';
+  domain: string;
+  evidence: string;
+  fieldNovelty: 'known' | 'unknown' | 'candidate';
 }
 
 export interface ResearchReport {
   headline: string;
   thesis: string;
   claims: string[];
+  claimAudit: AuditedClaim[];
   equations: string[];
   citations: string[];
   failedAvenues: string[];
