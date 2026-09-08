@@ -120,7 +120,7 @@ function ScientificReportView({ report, workerUrl }: { report: ScientificReport;
     <section id="report" className="scientific-report">
       <div className="record-heading">
         <p className="section-index">03 / TERMINAL REPORT</p>
-        <h2>The pilot record,<br /><em>open for inspection.</em></h2>
+        <h2>Final report</h2>
         <p>This compact report includes candidate checks, released plans and a job index. Source anchors and failed avenues are excerpted; raw job inputs and outputs are not bundled here. Claims require examination of their underlying evidence.</p>
       </div>
       <div className="report-outcome">
@@ -306,7 +306,7 @@ export function AutolabsObservatory() {
   }, [replay, replayMax, replayPlaying, replayPosition, visibleEvents.length]);
 
   async function startRun(mode: 'rehearsal' | 'competition') {
-    setStartMessage('Opening the laboratory…');
+    setStartMessage('Starting experiment…');
     try {
       const response = await fetch('/api/control/start', {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-autolabs-owner-key': ownerKey },
@@ -358,7 +358,7 @@ export function AutolabsObservatory() {
       <section id="field" className="research-intro">
         <p className="section-index">01 / {state.report ? 'ARCHIVED FIELD' : 'LIVE FIELD'}</p>
         <div>
-          <h1>An exact search,<br /><em>observed in motion.</em></h1>
+          <h1>Erdős 885 research journal</h1>
 
         </div>
         <button className="replay-link" onClick={() => { setReplayPlaying(false); if (replay) setReplay(false); else { setReplay(true); setReplayIndex(0); } }}><TimerReset size={14} /> {replay ? 'Return to the present' : 'Replay the experiment'}</button>
@@ -412,7 +412,7 @@ export function AutolabsObservatory() {
       <section id="ledger" className="record-section">
         <div className="record-heading">
           <p className="section-index">02 / PUBLIC RECORD</p>
-          <h2>Nothing claimed<br />without a certificate.</h2>
+          <h2>Research ledger</h2>
           <p>The ledger is append-only. Reports reveal together; private next-round plans remain sealed until the experiment concludes.</p>
         </div>
         <div className="event-ledger">
@@ -431,10 +431,10 @@ export function AutolabsObservatory() {
       {state.report && <ScientificReportView report={state.report} workerUrl={workerUrl} />}
 
       <section className="covenant">
-        <p className="section-index">{state.report ? '04' : '03'} / COVENANT</p>
-        <div className="covenant__statement"><span>δ</span><p>Human mathematics,<br /><em>exact evidence.</em></p></div>
+        <p className="section-index">{state.report ? '04' : '03'} / PROTOCOL</p>
+        <div className="covenant__statement"><span>δ</span><p>Research and verification protocol</p></div>
         <ol>
-          <li><span>01</span>Five unrestricted expert mathematicians</li>
+          <li><span>01</span>Five Luna High research agents</li>
           <li><span>02</span>Simultaneous reports; private plans embargoed</li>
           <li><span>03</span>Immediate stop on an exact k = 5 certificate</li>
           <li><span>04</span>$50 API ceiling with a protected reserve</li>
@@ -442,14 +442,14 @@ export function AutolabsObservatory() {
         <div className="prize-note"><Trophy size={19} /><p><b>$50 victory project</b><small>$10 for every credited collaborator · supplied later by Raphael</small></p></div>
       </section>
 
-      <footer><span>AUTOLABS / EXPERIMENT 885</span><p>Public observation. Deterministic verification. Reproducible research.</p><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer"><Github size={14} /> Inspect the source</a></footer>
+      <footer><span>AUTOLABS / EXPERIMENT 885</span><p>Research records and verification source code.</p><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer"><Github size={14} /> Inspect the source</a></footer>
 
       {controlOpen && (
         <div className="modal-backdrop" onMouseDown={() => setControlOpen(false)}>
           <section className="control-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="control-title">
             <button className="modal-close" onClick={() => setControlOpen(false)} aria-label="Close control room"><X size={18} /></button>
             <span className="modal-kicker"><Zap size={13} /> PRIVATE OWNER CONTROL</span>
-            <h2 id="control-title">Cut the ribbon.</h2>
+            <h2 id="control-title">Start experiment</h2>
             <p>The dress rehearsal is real: identical agents, tools, exact verification, public ledger and budget accounting. Once opened, the durable engine continues without this browser.</p>
             <label>OWNER KEY<input type="password" value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} autoComplete="off" placeholder="Private launch key" /></label>
             <div className="modal-actions">
@@ -469,7 +469,7 @@ export function AutolabsObservatory() {
             <aside className="research-drawer" onMouseDown={(event) => event.stopPropagation()} style={{ '--pigment': pigments[index] } as React.CSSProperties}>
               <header>
                 <div className="drawer-form"><AlienForm agent={selected} index={index} meeting={isMeeting} compact /></div>
-                <div><span>{selected.epithet}</span><h2>{selected.name}</h2><p>Research phenomenon 0{index + 1}</p></div>
+                <div><span>{selected.epithet}</span><h2>{selected.name}</h2><p>Research agent 0{index + 1}</p></div>
                 <button onClick={() => setSelected(null)} aria-label="Close research drawer"><X size={19} /></button>
               </header>
               <nav>{(['stream', 'profile', 'tools'] as const).map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}</nav>
@@ -477,7 +477,7 @@ export function AutolabsObservatory() {
                 <div className="transparency-note"><BrainCircuit size={15} /><p><b>Auditable research record.</b> Hypotheses, evidence, tool inputs, outputs and conclusions are shown here—not hidden chain-of-thought.</p></div>
                 {visibleEvents.filter((event) => !event.agentId || event.agentId === selected.id).slice().reverse().map((event) => <article key={event.seq}><time>ROUND {event.round} · {event.kind.toUpperCase()}</time><h3>{event.title}</h3><p>{event.summary}</p>{event.kind === 'candidate' && <code>support = {supportLabel(supportFrom(asRecord(event.payload).support) ?? selected.bestSupport)} · EXACT</code>}<EventEvidence event={event} /></article>)}
               </div>}
-              {tab === 'profile' && <div className="drawer-content profile-view"><span>COGNITIVE GEOMETRY</span><h3>{selected.approach}</h3><p>Every researcher may use every branch of human mathematics. Its morphology expresses how it generates, selects and attacks ideas—not a limitation on knowledge.</p><span>PROPOSED PRIZE PROJECT</span><blockquote>{selected.project}</blockquote><span>CURRENT VERIFIED SUPPORT</span><strong>{supportLabel(selected.bestSupport)}</strong></div>}
+              {tab === 'profile' && <div className="drawer-content profile-view"><span>RESEARCH APPROACH</span><h3>{selected.approach}</h3><p>All agents have access to the same mathematical tools. The assigned research approaches are intended to encourage different search strategies.</p><span>PROPOSED PRIZE PROJECT</span><blockquote>{selected.project}</blockquote><span>CURRENT VERIFIED SUPPORT</span><strong>{supportLabel(selected.bestSupport)}</strong></div>}
               {tab === 'tools' && <div className="drawer-content tool-view"><span>EXACT TOOLKIT</span>{selected.tools.map((tool) => <div key={tool}><FlaskConical size={15} /><p><b>{tool}</b><small>Inputs and outputs retained in the ledger.</small></p><ShieldCheck size={14} /></div>)}<div><BookOpen size={15} /><p><b>{selected.citations} source anchors</b><small>Known searches checked before compute is scheduled.</small></p><ShieldCheck size={14} /></div><span>RECORDED TOOL EVENTS</span>{selectedToolEvents.length === 0 ? <p className="tool-empty">No deterministic job has been revealed for this researcher yet.</p> : selectedToolEvents.slice().reverse().map((event) => <article className="tool-event" key={event.seq}><b>{event.title}</b><small>{event.summary}</small><EventEvidence event={event} /></article>)}</div>}
             </aside>
           </div>
