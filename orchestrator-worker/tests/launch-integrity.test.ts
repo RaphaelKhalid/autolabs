@@ -9,6 +9,7 @@ const emptyReport: ResearchReport = {
   headline: 'bounded',
   thesis: 'test',
   claims: [],
+  claimAudit: [],
   equations: [],
   citations: [],
   failedAvenues: [],
@@ -45,6 +46,8 @@ describe('launch-integrity invariants', () => {
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.params.additionalProperties).toBe(false);
     expect(job.properties.params.required).toContain('maxChecks');
+    expect(job.required).toContain('manifest');
+    expect(RESEARCH_SCHEMA.required).toContain('claimAudit');
   });
 
   it('accepts a fresh HMAC callback and rejects stale or changed bodies', async () => {
