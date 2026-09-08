@@ -184,7 +184,7 @@ export function LivingLab() {
   }, [selectedId, state.id, state.phase, state.round]);
 
   async function startRun(mode: 'rehearsal' | 'competition') {
-    setStartMessage('Opening the laboratory…');
+    setStartMessage('Starting experiment…');
     try {
       const response = await fetch('/api/control/start', {
         method: 'POST',
@@ -217,8 +217,8 @@ export function LivingLab() {
             </div>
             <div className="lab-boot__copy">
               <span>{connection === 'retrying' ? 'COLD START / RECONNECTING' : 'LIVE LEDGER / CONNECTING'}</span>
-              <h1>{connection === 'retrying' ? 'Waking the observatory.' : 'Opening the observatory.'}</h1>
-              <p>Synchronizing the researchers, computation queue and public record. The lab will appear automatically.</p>
+              <h1>{connection === 'retrying' ? 'Reconnecting…' : 'Loading experiment…'}</h1>
+              <p>Synchronizing the researchers, computation queue and public record. The view updates when the connection is available.</p>
               <div className="lab-boot__progress"><i /></div>
               <small>CONNECTION ATTEMPT {String(loadAttempt).padStart(2, '0')}</small>
               {connection === 'retrying' && <button type="button" onClick={() => void reload()}>Try now</button>}
@@ -354,7 +354,7 @@ export function LivingLab() {
       {controlOpen && <div className="lab-control-backdrop" onMouseDown={() => setControlOpen(false)}>
         <motion.section className="lab-control" initial={{ y: 25, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onMouseDown={(event) => event.stopPropagation()}>
           <button className="lab-control-close" onClick={() => setControlOpen(false)}><X size={18}/></button>
-          <span><Zap size={12}/>OWNER CONTROL</span><h2>{terminal ? 'Pilot complete.' : 'Cut the ribbon.'}</h2><p>{terminal ? 'This panel launches another Erdős 885 run with the existing engine. It does not configure a new problem or change the archived pilot.' : 'The real rehearsal uses the same agents, retrieval, calculators, public record and stopping rules.'}</p>
+          <span><Zap size={12}/>OWNER CONTROL</span><h2>{terminal ? 'Pilot complete.' : 'Start experiment'}</h2><p>{terminal ? 'This panel launches another Erdős 885 run with the existing engine. It does not configure a new problem or change the archived pilot.' : 'The real rehearsal uses the same agents, retrieval, calculators, public record and stopping rules.'}</p>
           <label>OWNER KEY<input type="password" value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} autoComplete="off"/></label>
           <div><button onClick={() => void startRun('rehearsal')}>Real rehearsal</button><button onClick={() => void startRun('competition')}>Competition</button></div>
           {startMessage && <output>{startMessage}</output>}
