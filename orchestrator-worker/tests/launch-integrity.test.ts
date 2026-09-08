@@ -1,7 +1,8 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { mergeAttempts } from '../src/openai';
-import { RESEARCH_SCHEMA } from '../src/prompts';
+import { AGENTS } from '../src/agents';
+import { RESEARCH_SCHEMA, researchPrompt } from '../src/prompts';
 import { verifyCallbackSignature } from '../src/security';
 import type { AgentResult, ResearchReport } from '../src/types';
 
@@ -48,6 +49,12 @@ describe('launch-integrity invariants', () => {
     expect(job.properties.params.required).toContain('maxChecks');
     expect(job.properties.params.properties.maxChecks.minimum).toBe(1_000);
     expect(job.properties.params.properties.maxChecks.maximum).toBe(5_000_000);
+    const differencePattern = new RegExp(job.properties.params.properties.differences.pattern);
+    const eighty = Array.from({ length: 80 }, (_, index) => String(index + 1)).join(' ');
+    const eightyOne = `${eighty} 81`;
+    expect(differencePattern.test(eighty)).toBe(true);
+    expect(differencePattern.test(eightyOne)).toBe(false);
+    expect(researchPrompt(AGENTS[0], 56, {}, [], []).system).toContain('80 distinct positive decimal differences');
     expect(job.required).toContain('manifest');
     expect(RESEARCH_SCHEMA.required).toContain('claimAudit');
   });

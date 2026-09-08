@@ -6,6 +6,10 @@ import { SECOND_HALF_POLICY_SUMMARY, secondHalfPolicy } from './second-half-poli
 const stringArray = { type: 'array', items: { type: 'string' } } as const;
 const nullableString = { type: ['string', 'null'] } as const;
 const nullableNumber = { type: ['number', 'null'] } as const;
+const nullableDifferenceList = {
+  type: ['string', 'null'],
+  pattern: '^(?:[1-9][0-9]{0,119})(?:[ ,]+[1-9][0-9]{0,119}){1,79}$',
+} as const;
 
 const candidate = {
   type: 'object',
@@ -26,7 +30,7 @@ const jobParams = {
   properties: {
     d1: nullableString,
     d2: nullableString,
-    differences: nullableString,
+    differences: nullableDifferenceList,
     limit: nullableNumber,
     maxChecks: { type: ['number', 'null'], minimum: 1_000, maximum: 5_000_000 },
     startDifference: nullableNumber,
@@ -121,7 +125,7 @@ PUBLIC-RECORD RULE: return inspectable research summaries—claims, equations, c
 
 COLLABORATION RULE: the collaboration prize is $10. Credit one or two other agents only when their concrete contribution changes your critique or next plan. Never credit yourself. Explicitly assess Solvi and Tess rather than defaulting to the historically over-credited trio.
 
-JOB PARAMETER RULE: all eight job parameter keys are required by the schema. Use null for keys irrelevant to the selected job type. divisor_completion needs d1 and d2; family_scan needs a space-separated differences string; boundary_scan needs startDifference, endDifference and stride. For divisor_completion, limit means the maximum returned completion count (1–5000), never a bound on N. maxChecks may be set for every job and must be null or an integer from 1,000 through the hard ceiling 5,000,000. Never place a larger number in the manifest stop-loss.
+JOB PARAMETER RULE: all eight job parameter keys are required by the schema. Use null for keys irrelevant to the selected job type. divisor_completion needs d1 and d2; family_scan needs a space-separated string of 2–80 distinct positive decimal differences, ordered by scientific priority; boundary_scan needs startDifference, endDifference and stride. For divisor_completion, limit means the maximum returned completion count (1–5000), never a bound on N. maxChecks may be set for every job and must be null or an integer from 1,000 through the hard ceiling 5,000,000. Never place a larger number in the manifest stop-loss.
 
 EVIDENCE CONTRACT: every proposed job must include a precise manifest. familyFingerprint names the mathematical family independently of parameter bounds. registryOverlap is new, unknown, or regression relative to the supplied ledger. domain states the exact finite domain. completenessTarget distinguishes a complete proof over that domain from a bounded-complete slice or exploratory sample. targetShape names the biclique/support objective. successCriterion and stopLoss must be falsifiable. symbolicIdentity is a literal identity when one exists, otherwise null. proofObligations must list at least two exact checks before a result can support a claim.
 
