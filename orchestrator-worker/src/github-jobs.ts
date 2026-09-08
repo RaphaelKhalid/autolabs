@@ -3,10 +3,26 @@ import { addEvent, nowIso } from './db';
 import { secondHalfPolicy } from './second-half-policy';
 
 const MAX_ACTIVE_JOBS = 8;
-// At eight dispatched jobs per round, a 50-round competition can legitimately
-// need 400 jobs. Keep concurrency bounded while allowing every round to compute.
-const MAX_RUN_JOBS = 400;
+// Eight active jobs stay bounded, while the ledger can cover the full 200-round safety ceiling.
+const MAX_RUN_JOBS = 1000;
 const AGENT_ORDER: Record<AgentId, number> = { mira: 0, pip: 1, orum: 2, solvi: 3, tess: 4 };
+
+function hasRound56Manifest(job: ResearchReport['proposedJobs'][number]) {
+  const manifest = job.manifest;
+  return manifest.familyFingerprint.trim().length >= 4
+    && manifest.domain.trim().length >= 4
+    && manifest.targetShape.trim().length >= 3
+    && manifest.successCriterion.trim().length >= 6
+    && manifest.stopLoss.trim().length >= 6
+    && manifest.proofObligations.length >= 2;
+}
+
+function postCouncilPriority(job: ResearchReport['proposedJobs'][number]) {
+  const jobScore = job.jobType === 'family_scan' ? 30 : job.jobType === 'boundary_scan' ? 20 : 10;
+  const overlapScore = job.manifest.registryOverlap === 'new' ? 3 : job.manifest.registryOverlap === 'unknown' ? 2 : 1;
+  const completenessScore = job.manifest.completenessTarget === 'complete' ? 3 : job.manifest.completenessTarget === 'bounded-complete' ? 2 : 1;
+  return jobScore + overlapScore + completenessScore;
+}
 
 async function resolveSourceRevision(repository: string, githubToken: string) {
   const response = await fetch(`https://api.github.com/repos/${repository}/commits/main`, {
@@ -49,7 +65,7 @@ export async function scheduleJobs(options: {
     .first<{ active: number | null; total: number }>();
   const activeCapacity = Math.max(0, MAX_ACTIVE_JOBS - Number(counts?.active ?? 0));
   const totalCapacity = Math.max(0, MAX_RUN_JOBS - Number(counts?.total ?? 0));
-  const permitted = options.round < 26
+  let permitted = options.round < 26
     ? options.reports
     : options.reports.filter((job, index, reports) => {
       if (job.jobType !== 'divisor_completion') return true;
@@ -57,14 +73,20 @@ export async function scheduleJobs(options: {
       return policy.designatedDivisorVerifier === options.agentId
         && reports.findIndex((candidate) => candidate.jobType === 'divisor_completion') === index;
     });
-  const jobs = permitted.slice(0, Math.min(3, activeCapacity, totalCapacity));
+  if (options.round >= 56) {
+    permitted = permitted
+      .filter(hasRound56Manifest)
+      .sort((left, right) => postCouncilPriority(right) - postCouncilPriority(left));
+  }
+  const perAgentLimit = options.round >= 56 ? 1 : 3;
+  const jobs = permitted.slice(0, Math.min(perAgentLimit, activeCapacity, totalCapacity));
   const sourceSha = jobs.length ? await resolveSourceRevision(options.repository, options.githubToken) : null;
 
   for (let index = 0; index < jobs.length; index += 1) {
     const job = jobs[index];
     const id = `${options.runId}-r${options.round}-${options.agentId}-${index}`;
     await options.db.prepare(`INSERT OR IGNORE INTO jobs(id,run_id,agent_id,round,job_type,params_json,status,created_at) VALUES(?,?,?,?,?,?,?,?)`)
-      .bind(id, options.runId, options.agentId, options.round, job.jobType, JSON.stringify(job.params), 'queued', nowIso())
+      .bind(id, options.runId, options.agentId, options.round, job.jobType, JSON.stringify({ ...job.params, evidenceManifest: job.manifest }), 'queued', nowIso())
       .run();
 
     const lease = await options.db.prepare(`UPDATE jobs SET status='dispatching' WHERE id=? AND status='queued'`)
@@ -92,6 +114,7 @@ export async function scheduleJobs(options: {
             jobType: job.jobType,
             sourceSha,
             params: job.params,
+            evidenceManifest: job.manifest,
           },
         }),
       });
@@ -112,7 +135,7 @@ export async function scheduleJobs(options: {
         kind: 'tool',
         title: `Code job queued · ${job.jobType}`,
         summary: job.reason,
-        payload: { id, jobType: job.jobType, sourceSha, params: job.params, status: 'running' },
+        payload: { id, jobType: job.jobType, sourceSha, params: job.params, evidenceManifest: job.manifest, status: 'running' },
         visible: true,
       });
     } catch (error) {
