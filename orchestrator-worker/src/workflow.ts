@@ -821,7 +821,7 @@ function stringList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-async function finalReport(env: Env, params: RunParams, terminal: 'complete' | 'eureka' | 'budget-stop', completedRound: number) {
+export async function finalReport(env: Env, params: RunParams, terminal: 'complete' | 'eureka' | 'budget-stop', completedRound: number) {
   await queueCheckpointSummariesThrough(env.DB, params.runId, completedRound);
   const state = await getState(env.DB, params.runId);
   const events = await recentEvents(env.DB, params.runId, 5_000) as Array<PublicEvent & { seq: number }>;
@@ -849,8 +849,10 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
     .map((event) => event.payload as Record<string, unknown>);
   const retrievalRows = exaUsage.results.map((row) => ({ ...row, sources: JSON.parse(row.sources) as Array<{ url?: string }> }));
   const retrievalCitations = retrievalRows.flatMap((row) => row.sources.map((source) => source.url).filter((url): url is string => typeof url === 'string'));
-  const citations = [...new Set([...researchPayloads.flatMap((payload) => stringList(payload.citations)), ...retrievalCitations])];
-  const failedAvenues = [...new Set(researchPayloads.flatMap((payload) => stringList(payload.failedAvenues)))];
+  const allCitations = [...new Set([...researchPayloads.flatMap((payload) => stringList(payload.citations)), ...retrievalCitations])];
+  const allFailedAvenues = [...new Set(researchPayloads.flatMap((payload) => stringList(payload.failedAvenues)))];
+  const citations = allCitations.slice(0, 250);
+  const failedAvenues = allFailedAvenues.slice(0, 250);
   const candidateCertificates = events
     .filter((event) => event.kind === 'candidate')
     .map((event) => ({ round: event.round, agentId: event.agentId, title: event.title, summary: event.summary, verification: event.payload }));
@@ -866,7 +868,7 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
   if (winner?.agentId && !creditedCollaborators.includes(winner.agentId as AgentId)) creditedCollaborators.unshift(winner.agentId as AgentId);
 
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: params.runId,
     mode: params.mode,
     outcome: terminal,
@@ -883,7 +885,9 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
     },
     scientificRecord: {
       citations,
+      citationCount: allCitations.length,
       failedAvenues,
+      failedAvenueCount: allFailedAvenues.length,
       eventCount: events.length + 1,
       completeEventLedger: `/api/experiments/${params.runId}/events`,
       verifier: 'orchestrator-worker/src/verifier.ts → orchestrator-worker/src/exact-verifier.ts',
@@ -909,11 +913,20 @@ async function finalReport(env: Env, params: RunParams, terminal: 'complete' | '
       agentId: row.agentId,
       privatePlan: JSON.parse(row.plan) as { objective?: string; checks?: string[] },
     })),
-    researchRetrieval: retrievalRows,
+    researchRetrieval: retrievalRows.map(({ sources, ...row }, offset) => ({
+      ...row,
+      sourceCount: sources.length,
+      ledgerOffset: offset,
+    })),
     codeJobs: jobs.results.map((job) => ({
-      ...job,
-      params: JSON.parse(job.params),
-      result: job.result ? JSON.parse(job.result) : null,
+      id: job.id,
+      agentId: job.agentId,
+      round: job.round,
+      jobType: job.jobType,
+      status: job.status,
+      error: job.error,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
     })),
     usage: usage.results,
   };
