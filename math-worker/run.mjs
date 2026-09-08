@@ -245,7 +245,7 @@ function familyJob(params) {
     complete: complete && ranked.complete && bicliques.complete,
     truncatedBy: truncatedBy ?? ranked.truncatedBy ?? bicliques.truncatedBy,
     claimScope: {
-      statement: 'Exact incidence enumeration only over the declared finite difference family and calculator bounds.',
+      statement: 'Exact incidence enumeration only over result.differences and the machine-enforced calculator bounds. Prose evidence-manifest constraints are descriptive and are not additional executable filters.',
       globalImpossibilityClaim: false,
     },
   };
@@ -272,6 +272,22 @@ function sha256(value) {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+function executedDomain(jobType, params, result) {
+  const sharedBounds = `job-wide maxChecks=${maxChecks}, wallLimitMs=${WALL_LIMIT_MS}, candidateCeiling=${MAX_RANK_CANDIDATES}`;
+  if (jobType === 'divisor_completion') {
+    return `Machine-executed divisor_completion for d1=${result.d1}, d2=${result.d2}, completionLimit=${completionLimit(params.limit)}, ${sharedBounds}. No additional constraints written only in evidenceManifest.domain were executed.`;
+  }
+
+  const differences = Array.isArray(result.differences) ? result.differences.join(',') : '';
+  const boundarySeed = jobType === 'boundary_scan'
+    ? ` Boundary seed parameters: startDifference=${params.startDifference ?? 161}, endDifference=${params.endDifference ?? 'derived default'}, stride=${params.stride ?? 1}.`
+    : '';
+  const normalization = result.inputNormalization
+    ? ` Input normalization retained the numerically smallest ${result.inputNormalization.effectiveCount} distinct positive differences; ${result.inputNormalization.omittedCount} larger values were omitted.`
+    : '';
+  return `Machine-executed ${jobType} over exact effective differences=[${differences}]. For every unordered difference pair, divisor completions were traversed in increasing positive divisor order with per-pair completionLimit=400; resulting integers were exactly tested against every effective difference, then exact 5x5, 6x4, and 4x5 biclique searches were run, subject to ${sharedBounds}.${boundarySeed}${normalization} No additional constraints written only in evidenceManifest.domain were executed.`;
+}
+
 function safeWrite(result) {
   const encoded = JSON.stringify(result);
   if (Buffer.byteLength(encoded, 'utf8') > 900_000) {
@@ -295,19 +311,19 @@ try {
 
   const completedAt = new Date().toISOString();
   const resultBody = { ...result, sourceSha: payload.sourceSha, checks, startedAt, completedAt };
-  const requestedDomain = payload.evidenceManifest?.domain ?? 'Calculator parameters in the signed request';
-  const testedDomain = result.inputNormalization
-    ? `${requestedDomain} Effective calculator domain is the numerically smallest ${result.inputNormalization.effectiveCount} distinct positive decimal differences submitted, recorded in result.differences; ${result.inputNormalization.omittedCount} larger values were omitted.`
-    : requestedDomain;
+  const requestedDomain = payload.evidenceManifest?.domain ?? null;
+  const testedDomain = executedDomain(payload.jobType, payload.params ?? {}, result);
   const certificate = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     exactArithmetic: true,
     requestHash: `sha256:${sha256(payload)}`,
     resultHash: `sha256:${sha256(resultBody)}`,
     sourceSha: payload.sourceSha,
     jobType: payload.jobType,
     evidenceManifest: payload.evidenceManifest ?? null,
+    requestedDomain,
     testedDomain,
+    manifestDomainIsDescriptiveOnly: true,
     completenessTarget: payload.evidenceManifest?.completenessTarget ?? 'exploratory',
     complete: Boolean(result.complete),
     truncatedBy: result.truncatedBy ?? null,
