@@ -165,7 +165,77 @@ function rank(numbers, differences) {
   }
 
   ranked.sort((a, b) => b.rowSupport - a.rowSupport || a.number.localeCompare(b.number));
-  return { candidates: ranked.slice(0, 50), complete, truncatedBy };
+  return { candidates: ranked.slice(0, 50), allCandidates: ranked, complete, truncatedBy };
+}
+
+function subsetGroups(candidates, differences, rowCount, numberCount, target, resultLimit = 20) {
+  const groups = new Map();
+  const found = [];
+  let complete = true;
+  let truncatedBy = null;
+
+  function visitSubsets(indices, start, picked, candidate) {
+    if (picked.length === rowCount) {
+      if (!consumeCheck()) return false;
+      const key = picked.join(',');
+      let group = groups.get(key);
+      if (!group) {
+        group = { indices: [...picked], candidates: [], reported: false };
+        groups.set(key, group);
+      }
+      if (group.candidates.length < numberCount) group.candidates.push(candidate);
+      if (group.candidates.length === numberCount && !group.reported) {
+        group.reported = true;
+        const selectedDifferences = group.indices.map((index) => differences[index].toString());
+        const witnesses = group.candidates.flatMap((item) => item.witnesses.filter((witness) => selectedDifferences.includes(witness.difference)));
+        found.push({
+          target,
+          numbers: group.candidates.map((item) => item.number),
+          differences: selectedDifferences,
+          exactCells: numberCount * rowCount,
+          witnesses,
+        });
+      }
+      return true;
+    }
+    const remaining = rowCount - picked.length;
+    for (let index = start; index <= indices.length - remaining; index += 1) {
+      picked.push(indices[index]);
+      if (!visitSubsets(indices, index + 1, picked, candidate)) return false;
+      picked.pop();
+    }
+    return true;
+  }
+
+  for (const candidate of candidates) {
+    if (found.length >= resultLimit) {
+      complete = false;
+      truncatedBy = 'result_limit';
+      break;
+    }
+    const indices = candidate.supportMask.flatMap((supported, index) => supported ? [index] : []);
+    if (indices.length < rowCount) continue;
+    if (!visitSubsets(indices, 0, [], candidate)) {
+      complete = false;
+      truncatedBy = stopReason();
+      break;
+    }
+  }
+  return { target, rowCount, numberCount, matches: found, complete, truncatedBy };
+}
+
+function extractBicliques(candidates, differences) {
+  const searches = [
+    subsetGroups(candidates, differences, 5, 5, '5x5'),
+    subsetGroups(candidates, differences, 4, 6, '6x4'),
+    subsetGroups(candidates, differences, 5, 4, '4x5'),
+  ];
+  return {
+    searches,
+    matches: searches.flatMap((search) => search.matches),
+    complete: searches.every((search) => search.complete),
+    truncatedBy: searches.find((search) => !search.complete)?.truncatedBy ?? null,
+  };
 }
 
 function divisorJob(params) {
@@ -214,6 +284,7 @@ function familyJob(params) {
   }
 
   const ranked = rank([...numbers.values()], differences);
+  const bicliques = extractBicliques(ranked.allCandidates, differences);
   const columnSupport = differences.map((difference) => ranked.candidates.reduce(
     (count, candidate) => count + (candidate.support.includes(difference.toString()) ? 1 : 0),
     0,
@@ -221,10 +292,12 @@ function familyJob(params) {
   return {
     differences: differences.map(String),
     candidates: ranked.candidates,
+    bicliques: bicliques.matches,
+    bicliqueSearches: bicliques.searches.map(({ matches, ...search }) => ({ ...search, matchCount: matches.length })),
     columnSupport,
     distinctNumbers: numbers.size,
-    complete: complete && ranked.complete,
-    truncatedBy: truncatedBy ?? ranked.truncatedBy,
+    complete: complete && ranked.complete && bicliques.complete,
+    truncatedBy: truncatedBy ?? ranked.truncatedBy ?? bicliques.truncatedBy,
     claimScope: {
       statement: 'Exact incidence enumeration only over the declared finite difference family and calculator bounds.',
       globalImpossibilityClaim: false,
