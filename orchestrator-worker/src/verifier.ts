@@ -11,9 +11,21 @@ export interface RectangleCheck {
   totalSupport: number;
   exactCells: number;
   missing: { number: string; difference: string }[];
+  exactWitnesses: { number: string; difference: string; m: string; a: string; b: string }[];
+  replayHash: string;
   isK5: boolean;
   improvesSota: boolean;
   rejection?: string;
+}
+
+function replayHash(parts: readonly string[]) {
+  let hash = 0x811c9dc5;
+  const text = parts.join('|');
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function uniquePositive(values: string[]) {
@@ -24,16 +36,26 @@ export function verifyRectangle(candidate: CandidateInput): RectangleCheck {
   const numbers = candidate.numbers.slice(0, 12);
   const differences = candidate.differences.slice(0, 12);
   if (!numbers.length || !differences.length || !uniquePositive(numbers) || !uniquePositive(differences)) {
-    return { accepted: false, numbers, differences, support: [], columnSupport: [], progressMetric: [], totalSupport: 0, exactCells: 0, missing: [], isK5: false, improvesSota: false, rejection: 'Values must be distinct positive decimal integers.' };
+    return { accepted: false, numbers, differences, support: [], columnSupport: [], progressMetric: [], totalSupport: 0, exactCells: 0, missing: [], exactWitnesses: [], replayHash: replayHash([...numbers, ...differences]), isK5: false, improvesSota: false, rejection: 'Values must be distinct positive decimal integers.' };
   }
   const support: number[] = [];
   const missing: { number: string; difference: string }[] = [];
+  const exactWitnesses: { number: string; difference: string; m: string; a: string; b: string }[] = [];
   for (const number of numbers) {
     let hits = 0;
     for (const difference of differences) {
       try {
-        if (factorizationFromDifference(number, difference)) hits += 1;
-        else missing.push({ number, difference });
+        const witness = factorizationFromDifference(number, difference);
+        if (witness) {
+          hits += 1;
+          exactWitnesses.push({
+            number,
+            difference,
+            m: witness.m.toString(),
+            a: witness.factorPair.a.toString(),
+            b: witness.factorPair.b.toString(),
+          });
+        } else missing.push({ number, difference });
       } catch {
         missing.push({ number, difference });
       }
@@ -58,6 +80,8 @@ export function verifyRectangle(candidate: CandidateInput): RectangleCheck {
     totalSupport: exactCells,
     exactCells,
     missing,
+    exactWitnesses,
+    replayHash: replayHash([...numbers, ...differences, ...exactWitnesses.flatMap((cell) => [cell.number, cell.difference, cell.m, cell.a, cell.b])]),
     isK5: complete && numbers.length >= 5 && differences.length >= 5,
     improvesSota: complete && ((numbers.length >= 6 && differences.length >= 4) || (numbers.length >= 4 && differences.length >= 5)),
   };
