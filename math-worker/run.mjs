@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const MAX_DECIMAL_DIGITS = 120;
 const MAX_DIFFERENCES = 80;
@@ -60,10 +61,18 @@ function sqrt(n) {
   return x;
 }
 
-function exactCellUnchecked(n, d) {
+function exactWitnessUnchecked(n, d) {
   const radicand = d * d + 4n * n;
   const m = sqrt(radicand);
-  return m * m === radicand;
+  if (m * m !== radicand || m < d || (m - d) % 2n !== 0n) return null;
+  const a = (m - d) / 2n;
+  const b = (m + d) / 2n;
+  if (a <= 0n || a * b !== n || b - a !== d) return null;
+  return { number: n.toString(), difference: d.toString(), m: m.toString(), a: a.toString(), b: b.toString() };
+}
+
+function exactCellUnchecked(n, d) {
+  return exactWitnessUnchecked(n, d) !== null;
 }
 
 function exactCell(n, d) {
@@ -132,6 +141,9 @@ function rank(numbers, differences) {
 
   for (const n of bounded) {
     const support = [];
+    const supportMask = [];
+    const witnesses = [];
+    const missing = [];
     for (const difference of differences) {
       const exact = exactCell(n, difference);
       if (exact === null) {
@@ -139,13 +151,20 @@ function rank(numbers, differences) {
         truncatedBy = stopReason();
         break;
       }
-      if (exact) support.push(difference.toString());
+      supportMask.push(exact);
+      if (exact) {
+        support.push(difference.toString());
+        const witness = exactWitnessUnchecked(n, difference);
+        if (witness) witnesses.push(witness);
+      } else {
+        missing.push(difference.toString());
+      }
     }
-    ranked.push({ number: n.toString(), support });
+    ranked.push({ number: n.toString(), support, supportMask, rowSupport: support.length, witnesses, missing });
     if (!complete && stopReason()) break;
   }
 
-  ranked.sort((a, b) => b.support.length - a.support.length || a.number.localeCompare(b.number));
+  ranked.sort((a, b) => b.rowSupport - a.rowSupport || a.number.localeCompare(b.number));
   return { candidates: ranked.slice(0, 50), complete, truncatedBy };
 }
 
@@ -195,12 +214,21 @@ function familyJob(params) {
   }
 
   const ranked = rank([...numbers.values()], differences);
+  const columnSupport = differences.map((difference) => ranked.candidates.reduce(
+    (count, candidate) => count + (candidate.support.includes(difference.toString()) ? 1 : 0),
+    0,
+  ));
   return {
     differences: differences.map(String),
     candidates: ranked.candidates,
+    columnSupport,
     distinctNumbers: numbers.size,
     complete: complete && ranked.complete,
     truncatedBy: truncatedBy ?? ranked.truncatedBy,
+    claimScope: {
+      statement: 'Exact incidence enumeration only over the declared finite difference family and calculator bounds.',
+      globalImpossibilityClaim: false,
+    },
   };
 }
 
@@ -211,6 +239,18 @@ function boundaryJob(params) {
   const differences = [];
   for (let d = start; d <= end && differences.length < MAX_DIFFERENCES; d += stride) differences.push(String(d));
   return familyJob({ differences });
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256(value) {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
 function safeWrite(result) {
@@ -234,11 +274,29 @@ try {
   else if (payload.jobType === 'boundary_scan') result = boundaryJob(payload.params ?? {});
   else throw new Error(`Unsupported job type: ${payload.jobType}`);
 
+  const completedAt = new Date().toISOString();
+  const resultBody = { ...result, sourceSha: payload.sourceSha, checks, startedAt, completedAt };
+  const certificate = {
+    schemaVersion: 2,
+    exactArithmetic: true,
+    requestHash: `sha256:${sha256(payload)}`,
+    resultHash: `sha256:${sha256(resultBody)}`,
+    sourceSha: payload.sourceSha,
+    jobType: payload.jobType,
+    evidenceManifest: payload.evidenceManifest ?? null,
+    testedDomain: payload.evidenceManifest?.domain ?? 'Calculator parameters in the signed request',
+    completenessTarget: payload.evidenceManifest?.completenessTarget ?? 'exploratory',
+    complete: Boolean(result.complete),
+    truncatedBy: result.truncatedBy ?? null,
+    checks,
+    startedAt,
+    completedAt,
+  };
   safeWrite({
     id: payload.id,
     ok: true,
     complete: Boolean(result.complete),
-    result: { ...result, sourceSha: payload.sourceSha, checks, startedAt, completedAt: new Date().toISOString() },
+    result: { ...resultBody, certificate },
   });
 } catch (error) {
   safeWrite({
