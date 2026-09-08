@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const promptSource = readFileSync(new URL('../src/prompts.ts', import.meta.url), 'utf8');
 const jobSource = readFileSync(new URL('../src/github-jobs.ts', import.meta.url), 'utf8');
 const verifierSource = readFileSync(new URL('../src/verifier.ts', import.meta.url), 'utf8');
+const mathWorkerSource = readFileSync(new URL('../../math-worker/run.mjs', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 
 describe('approved round 56 research policy', () => {
@@ -29,6 +30,10 @@ describe('approved round 56 research policy', () => {
   it('publishes exact witnesses, replay hashes, and the active policy', () => {
     expect(verifierSource).toContain('exactWitnesses');
     expect(verifierSource).toContain('fnv1a32:');
+    expect(mathWorkerSource).toContain('schemaVersion: 2');
+    expect(mathWorkerSource).toContain('requestHash:');
+    expect(mathWorkerSource).toContain('resultHash:');
+    expect(mathWorkerSource).toContain('supportMask');
     expect(indexSource).toContain('POST_COUNCIL_POLICY_SUMMARY');
     expect(indexSource).toContain('state.researchPolicy = POST_COUNCIL_POLICY_SUMMARY');
   });
