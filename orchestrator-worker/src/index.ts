@@ -1,12 +1,14 @@
 import { addEvent, initialPublicState, globalSpend, nowIso, publicJobs, recentEvents, recentEventSummaries } from './db';
 import { secretEquals, bearer, cors, verifyCallbackSignature } from './security';
+import { POST_COUNCIL_POLICY_SUMMARY } from './second-half-policy';
 import { AGENT_IDS, type AgentId, type RunParams } from './types';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
-const RESUME_TARGET_ROUNDS = 75;
+const RESUME_TARGET_ROUNDS = 100;
 const MAX_TARGET_ROUNDS = 200;
-const MAX_SESSION_ROUNDS = 25;
+const MAX_SESSION_ROUNDS = 145;
+const DEFAULT_SESSION_ROUNDS = 45;
 const MINIMUM_ROUNDS = 25;
 const PHASE_MINUTES = 5;
 const BUDGET_USD = 50;
@@ -69,6 +71,7 @@ export default {
         const state = JSON.parse(row.public_state_json) as Record<string, unknown>;
         state.events = await recentEventSummaries(env.DB, row.id, 120);
         state.jobs = await publicJobs(env.DB, row.id);
+        state.researchPolicy = POST_COUNCIL_POLICY_SUMMARY;
         return json(state, {}, corsHeaders);
       }
 
@@ -216,7 +219,7 @@ export default {
         const startRound = resumeMeetingRound ? resumeMeetingRound + 1 : completedRound + 1;
         const requestedTarget = raw.targetRounds ?? RESUME_TARGET_ROUNDS;
         const targetRounds = Math.max(requestedTarget, startRound);
-        const sessionRounds = raw.sessionRounds ?? MAX_SESSION_ROUNDS;
+        const sessionRounds = raw.sessionRounds ?? DEFAULT_SESSION_ROUNDS;
         const sessionEndRound = Math.min(targetRounds, completedRound + sessionRounds);
         const spent = await globalSpend(env.DB);
         const authorization = resumeMeetingRound ? 0.65 : ROUND_AUTHORIZATION_USD;
@@ -245,6 +248,7 @@ export default {
           targetRounds,
           phaseEndsAt: null,
           liveTraces: {},
+          researchPolicy: POST_COUNCIL_POLICY_SUMMARY,
         };
         const claimedAt = nowIso();
         const claim = await env.DB.prepare(`UPDATE runs
@@ -283,7 +287,7 @@ export default {
               ? `Round ${resumeMeetingRound}'s research was preserved; its missing discussion will finish before round ${startRound} begins.`
               : `The next research loop will begin at round ${startRound}.`,
             visible: true,
-            payload: { workflowId: instance.id, startRound, resumeMeetingRound, sessionEndRound, targetRounds },
+            payload: { workflowId: instance.id, startRound, resumeMeetingRound, sessionEndRound, targetRounds, researchPolicy: POST_COUNCIL_POLICY_SUMMARY },
           });
         } catch (error) {
           console.error(JSON.stringify({ message: 'resume event could not be recorded', runId: row.id, error: error instanceof Error ? error.message : String(error) }));
@@ -297,6 +301,7 @@ export default {
           sessionEndRound,
           targetRounds,
           spentUsd: spent,
+          researchPolicy: POST_COUNCIL_POLICY_SUMMARY,
         }, { status: 202 }, corsHeaders);
       }
       if (request.method === 'POST' && url.pathname === '/api/jobs/result') {
