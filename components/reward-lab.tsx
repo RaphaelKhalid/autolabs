@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {AlienForm} from './autolabs-observatory';
+import {rewardEta} from '../lib/reward-eta';
 const API='https://autolabs-reward-compatibility.raphaelbahadurkhan.workers.dev';
 const REPO='https://github.com/RaphaelKhalid/reward-compatibility';
 interface Status {status:string;stage:string;reason:string|null;updatedAt:string;execution?:{concurrency:number};ledger?:{storageBytes:number;softLimitBytes:number};progress:{done:number;total:number;current:{id:string;phase:string;kind:string}|null};budget:{spentUsd:number;reservedUsd:number;capUsd:number;calls:number};active:{id:string;effort:string}[];gate:{pass:boolean;checks:Record<string,boolean>}|null;recent:{id:number;time:string;type:string;data:Record<string,unknown>}[];}
@@ -12,11 +13,13 @@ const pct=(n:number|null)=>n===null?'—':`${(n*100).toFixed(0)}%`;
 export function RewardLab(){
   const [status,setStatus]=useState<Status|null>(null),[error,setError]=useState<string|null>(null),[logs,setLogs]=useState<Log[]>([]),[pages,setPages]=useState([0]),[nextOffset,setNextOffset]=useState<number|null>(null),[logLoading,setLogLoading]=useState(true),[rows,setRows]=useState<Row[]|null>(null);
   const offset=pages[pages.length-1];
+  const [observedAt,setObservedAt]=useState(0);
+  const eta=rewardEta(status,observedAt);
   function turnPage(older:boolean){setLogLoading(true);setNextOffset(null);setPages(p=>older&&nextOffset!==null?[...p,nextOffset]:p.length>1?p.slice(0,-1):p);}
   const busy=useRef(false),mounted=useRef(true);
   const refresh=useCallback(async()=>{
     if(busy.current)return;busy.current=true;
-    try {const r=await fetch(`${API}/status`,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error();const data=await r.json();if(!data.progress||!data.budget)throw Error();if(mounted.current){setStatus(data);setError(null);}
+    try {const r=await fetch(`${API}/status`,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error();const data=await r.json();if(!data.progress||!data.budget)throw Error();if(mounted.current){setStatus(data);setObservedAt(Date.now());setError(null);}
       if(data.status==='complete'){const a=await fetch(`${API}/analysis`,{signal:AbortSignal.timeout(15000)});if(a.ok){const body=await a.json();if(mounted.current&&Array.isArray(body.rows))setRows(body.rows);}}
     }catch{if(mounted.current)setError('Connection delayed. The cloud runner does not depend on this page. Retrying automatically.');}finally{busy.current=false;}
   },[]);
@@ -43,6 +46,7 @@ export function RewardLab(){
         <h2>{labels[phase]??'Cloud execution'}</h2>
         <div className="reward-numbers"><div><strong>{status?.progress.done??'—'}<small> / {status?.progress.total??'—'}</small></strong><span>{status?.stage==='main'?'main-study units':'feasibility units'}</span></div><div><strong>${status?.budget.spentUsd.toFixed(2)??'—'}</strong><span>of $40 OpenAI cap</span></div></div>
         <progress value={status?.progress.done??0} max={status?.progress.total??68} aria-label="Current stage progress"/>
+        <div className="reward-eta" aria-live="polite"><p className="reward-label">{status?.stage==='gate'?'FEASIBILITY ETA':'ESTIMATED FINISH'}</p><p>{error?'Updating estimate when connection returns…':eta.label}</p>{!error&&eta.earliest&&eta.latest&&<p className="reward-caption">{new Date(eta.earliest).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}–{new Date(eta.latest).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',timeZoneName:'short'})} · Rough recent-pace range; updates every 15 seconds. Later phases may differ.</p>}</div>
         <dl><div><dt>Active calls · up to {status?.execution?.concurrency??1}</dt><dd>{status?.active.length?status.active.map(call=><div key={call.id}>{call.id}</div>):'Between checkpoints'}</dd></div><div><dt>Reserved for pending calls</dt><dd>${status?.budget.reservedUsd.toFixed(4)??'0.0000'}</dd></div>{status?.ledger&&<div><dt>Ledger · safe pause threshold</dt><dd>{(status.ledger.storageBytes/1048576).toFixed(1)} / {(status.ledger.softLimitBytes/1048576).toFixed(0)} MiB</dd></div>}<div><dt>Actor / evaluators</dt><dd>Luna None / Luna High</dd></div><div><dt>Last checkpoint</dt><dd>{status?new Date(status.updatedAt).toLocaleTimeString():'Awaiting connection'}</dd></div></dl>
         {status?.gate&&<details><summary>Feasibility: {status.gate.pass?'passed':'did not pass'}</summary>{Object.entries(status.gate.checks).map(([k,v])=><p key={k}>{v?'✓':'×'} {k}</p>)}</details>}
       </div>
