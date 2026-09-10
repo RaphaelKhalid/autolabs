@@ -32,6 +32,13 @@ Open http://localhost:3000/studio. Connect, run a mock test, then explicitly
 choose OpenRouter for a paid run. A connection check issues one text request
 with 16 maximum output tokens and rejects estimated reservations over $0.01.
 
+The visual creator lets you drag a form into the lab and drop a model onto an
+agent. Tapping provides the same add/assign actions on phones. Select an agent
+to edit it; arrow keys arrange the selected form. Forms and model assignments
+are exported with the configuration; canvas positions are visual-only.
+Run settings and records are available in compact panels. Edits apply to the
+next launch, not to an existing run. No tools are implied by an agent's form.
+
 For a native production build, use `node selfhost/web.ts build`, then
 `node selfhost/web.ts start --hostname 127.0.0.1 --port 3000` alongside the runner.
 The helper loads environment values without forwarding `--env-file` into Next.js workers.

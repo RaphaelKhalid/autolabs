@@ -5,7 +5,7 @@ import {
   CircleDollarSign, FlaskConical, Github, Pause, Play, Radio, ShieldCheck,
   Sparkles, TimerReset, Trophy, Volume2, VolumeX, X, Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { fetchExperiment } from '@/lib/api';
 import {
   formatCountdown, initialExperiment, supportLabel,
@@ -149,13 +149,14 @@ function ScientificReportView({ report, workerUrl }: { report: ScientificReport;
   );
 }
 export function AlienForm({ agent, index, meeting, compact = false }: {
-  agent: ResearchAgent;
+  agent: Pick<ResearchAgent, 'id' | 'name'> & {color?:string};
   index: number;
   meeting: boolean;
   compact?: boolean;
 }) {
-  const filter = `matter-${agent.id}-${compact ? 'small' : 'field'}`;
-  const color = pigments[index % pigments.length];
+  const instance = useId().replace(/:/g, '');
+  const filter = `matter-${instance}-${compact ? 'small' : 'field'}`;
+  const color = agent.color ?? pigments[index % pigments.length];
   const common = { vectorEffect: 'non-scaling-stroke' as const };
 
   return (

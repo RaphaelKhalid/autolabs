@@ -4,6 +4,12 @@ const token='test-owner-token-with-at-least-32-characters';
 const context=(path=['runs'])=>({params:Promise.resolve({path})});
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks();});
 describe('self-hosted control boundary',()=>{
+  it.each([['runs'],['check'],['runs','run-test','resume'],['runs','run-test','pause']])('blocks public writes to %s even with an owner credential',async(...path)=>{
+    vi.stubEnv('AUTOLABS_SELF_HOSTED','0');vi.stubEnv('AUTOLABS_LOCAL_TOKEN',token);
+    const forward=vi.spyOn(globalThis,'fetch');
+    const response=await POST(new Request(`https://autolabs-ebon.vercel.app/api/selfhost/${path.join('/')}`,{method:'POST',headers:{authorization:`Bearer ${token}`,origin:'https://autolabs-ebon.vercel.app'},body:'{}'}),context(path));
+    expect(response.status).toBe(404);expect(forward).not.toHaveBeenCalled();
+  });
   it('accepts the browser host when Next normalizes the internal request URL',async()=>{
     vi.stubEnv('AUTOLABS_SELF_HOSTED','1');vi.stubEnv('AUTOLABS_LOCAL_TOKEN',token);
     vi.spyOn(globalThis,'fetch').mockResolvedValue(Response.json({id:'run-test'},{status:201}));

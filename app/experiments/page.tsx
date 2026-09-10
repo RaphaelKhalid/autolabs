@@ -13,6 +13,6 @@ export default function ExperimentsPage() {
       <p>{experiment.objective}</p><p className="archive-caption">{experiment.researchers} researchers · {experiment.model} · {experiment.reasoning} reasoning</p>
       <Link className="archive-button" href={`/experiments/${experiment.slug}`}>Read the results</Link>
     </article>)}</section>
-    <section className="archive-section"><h2>Platform status</h2><p>The current execution engine supports Erdős 885. Support for other research problems is planned. No further experiment is scheduled.</p><p>Experiments are owner-run. Visitors can observe the published records.</p></section>
+    <section className="archive-section"><h2>Create an experiment</h2><p>Arrange agents, assign models and export a configuration in the visual creator. Run it with your own credentials on the self-hosted runner.</p><p>The initial templates support a known-answer systems test and research notes requiring human review. Study-specific evaluators and tools must be implemented separately. The public creator cannot launch jobs or access private credentials.</p><Link className="archive-button" href="/studio">Open the creator</Link></section>
   </main>;
 }
