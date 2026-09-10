@@ -16,6 +16,8 @@ their respective licenses.
 
 - [Live study and research ledger](https://autolabs-ebon.vercel.app/experiments/reward-compatibility)
 - [Research repository, registered protocol and analysis](https://github.com/RaphaelKhalid/reward-compatibility)
+- Background: Raphael Khalid's sunset photograph, with a cream overlay and
+  separate reading surfaces. [Source and image reuse notes](public/photography/README.md).
 - Luna actor with reasoning effort none; fresh Luna High evaluators and reporter.
 - Exact coin-task scoring, matched reward conditions, three repeats, and sealed
   held-out evaluation. The final figure appears after the frozen run completes.
