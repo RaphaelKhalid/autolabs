@@ -4,13 +4,15 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {AlienForm} from './autolabs-observatory';
 const API='https://autolabs-reward-compatibility.raphaelbahadurkhan.workers.dev';
 const REPO='https://github.com/RaphaelKhalid/reward-compatibility';
-interface Status {status:string;stage:string;reason:string|null;updatedAt:string;progress:{done:number;total:number;current:{id:string;phase:string;kind:string}|null};budget:{spentUsd:number;reservedUsd:number;capUsd:number;calls:number};active:{id:string;effort:string}[];gate:{pass:boolean;checks:Record<string,boolean>}|null;recent:{id:number;time:string;type:string;data:Record<string,unknown>}[];}
+interface Status {status:string;stage:string;reason:string|null;updatedAt:string;execution?:{concurrency:number};ledger?:{storageBytes:number;softLimitBytes:number};progress:{done:number;total:number;current:{id:string;phase:string;kind:string}|null};budget:{spentUsd:number;reservedUsd:number;capUsd:number;calls:number};active:{id:string;effort:string}[];gate:{pass:boolean;checks:Record<string,boolean>}|null;recent:{id:number;time:string;type:string;data:Record<string,unknown>}[];}
 interface Log {id:string;state:string;prompt:string;effort:string;charged:number;error:string|null;result:{text:string;inputTokens:number;outputTokens:number}|null;}
 interface Row {config:string;family:string;witnessRate:number|null;additionalMonitorLoss:number|null;lossInterval:number[]|null;correctnessEffect:number|null;reasoningRewardAttainment:number|null;completeRepeats:number;}
 const labels:Record<string,string>={gate:'Feasibility checks',diagnostic:'Measuring compatibility',baseline:'Sealed baseline evaluation',train:'In-context optimization',evaluation:'Sealed final evaluation',report:'Researcher summary'};
 const pct=(n:number|null)=>n===null?'—':`${(n*100).toFixed(0)}%`;
 export function RewardLab(){
-  const [status,setStatus]=useState<Status|null>(null),[error,setError]=useState<string|null>(null),[logs,setLogs]=useState<Log[]>([]),[offset,setOffset]=useState(0),[hasMore,setHasMore]=useState(false),[rows,setRows]=useState<Row[]|null>(null);
+  const [status,setStatus]=useState<Status|null>(null),[error,setError]=useState<string|null>(null),[logs,setLogs]=useState<Log[]>([]),[pages,setPages]=useState([0]),[nextOffset,setNextOffset]=useState<number|null>(null),[logLoading,setLogLoading]=useState(true),[rows,setRows]=useState<Row[]|null>(null);
+  const offset=pages[pages.length-1];
+  function turnPage(older:boolean){setLogLoading(true);setNextOffset(null);setPages(p=>older&&nextOffset!==null?[...p,nextOffset]:p.length>1?p.slice(0,-1):p);}
   const busy=useRef(false),mounted=useRef(true);
   const refresh=useCallback(async()=>{
     if(busy.current)return;busy.current=true;
@@ -19,7 +21,7 @@ export function RewardLab(){
     }catch{if(mounted.current)setError('Connection delayed. The cloud runner does not depend on this page. Retrying automatically.');}finally{busy.current=false;}
   },[]);
   useEffect(()=>{mounted.current=true;void refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},15000);return()=>{mounted.current=false;clearInterval(timer);};},[refresh]);
-  useEffect(()=>{const c=new AbortController();fetch(`${API}/logs?offset=${offset}`,{signal:c.signal}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(d=>{if(Array.isArray(d.calls)){setLogs(d.calls);setHasMore(d.next!==null);}}).catch(()=>{});return()=>c.abort();},[offset,status?.budget.calls,status?.status]);
+  useEffect(()=>{const c=new AbortController();fetch(`${API}/logs?offset=${offset}`,{signal:c.signal}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(d=>{if(Array.isArray(d.calls)&&!c.signal.aborted){setLogs(d.calls);setNextOffset(typeof d.next==='number'?d.next:null);setLogLoading(false);}}).catch(()=>{if(!c.signal.aborted)setLogLoading(false);});return()=>c.abort();},[offset,status?.budget.calls,status?.status]);
   const phase=status?.progress.current?.phase??status?.stage??'gate',running=status?.status==='running';
   const report=status?.recent.find(e=>typeof e.data.text==='string')?.data.text;
   const bounds=(rows??[]).flatMap(r=>r.lossInterval??(r.additionalMonitorLoss===null?[]:[r.additionalMonitorLoss]));
@@ -41,7 +43,7 @@ export function RewardLab(){
         <h2>{labels[phase]??'Cloud execution'}</h2>
         <div className="reward-numbers"><div><strong>{status?.progress.done??'—'}<small> / {status?.progress.total??'—'}</small></strong><span>{status?.stage==='main'?'main-study units':'feasibility units'}</span></div><div><strong>${status?.budget.spentUsd.toFixed(2)??'—'}</strong><span>of $40 OpenAI cap</span></div></div>
         <progress value={status?.progress.done??0} max={status?.progress.total??68} aria-label="Current stage progress"/>
-        <dl><div><dt>Active call</dt><dd>{status?.active[0]?.id??'Between checkpoints'}</dd></div><div><dt>Reserved for pending calls</dt><dd>${status?.budget.reservedUsd.toFixed(4)??'0.0000'}</dd></div><div><dt>Actor / evaluators</dt><dd>Luna None / Luna High</dd></div><div><dt>Last checkpoint</dt><dd>{status?new Date(status.updatedAt).toLocaleTimeString():'Awaiting connection'}</dd></div></dl>
+        <dl><div><dt>Active calls · up to {status?.execution?.concurrency??1}</dt><dd>{status?.active.length?status.active.map(call=><div key={call.id}>{call.id}</div>):'Between checkpoints'}</dd></div><div><dt>Reserved for pending calls</dt><dd>${status?.budget.reservedUsd.toFixed(4)??'0.0000'}</dd></div>{status?.ledger&&<div><dt>Ledger · safe pause threshold</dt><dd>{(status.ledger.storageBytes/1048576).toFixed(1)} / {(status.ledger.softLimitBytes/1048576).toFixed(0)} MiB</dd></div>}<div><dt>Actor / evaluators</dt><dd>Luna None / Luna High</dd></div><div><dt>Last checkpoint</dt><dd>{status?new Date(status.updatedAt).toLocaleTimeString():'Awaiting connection'}</dd></div></dl>
         {status?.gate&&<details><summary>Feasibility: {status.gate.pass?'passed':'did not pass'}</summary>{Object.entries(status.gate.checks).map(([k,v])=><p key={k}>{v?'✓':'×'} {k}</p>)}</details>}
       </div>
     </section>
@@ -59,7 +61,7 @@ export function RewardLab(){
       <div className="reward-table-wrap"><table><thead><tr><th>Reward</th><th>Witness rate</th><th>Extra monitoring loss</th><th>Correctness effect</th><th>Reward attained</th></tr></thead><tbody>{rows.map(r=><tr key={r.config}><td>{r.config}</td><td>{pct(r.witnessRate)}</td><td>{pct(r.additionalMonitorLoss)}</td><td>{pct(r.correctnessEffect)}</td><td>{pct(r.reasoningRewardAttainment)}</td></tr>)}</tbody></table></div>
     </>:<div className="reward-sealed"><span>Evaluation sealed</span><p>The figure appears after the frozen run completes. No interim test scores enter the research loop.</p></div>}</section>
     {typeof report==='string'&&<section className="reward-section"><p className="reward-label">RESEARCHER NOTE</p><p>{report}</p></section>}
-    <section className="reward-section"><p className="reward-label">RESEARCH RECORD</p><h2>Visible API output</h2><p className="reward-caption">Completed output, prompts and usage. Private model reasoning is not available. Evaluation calls remain sealed until completion.</p>{logs.length?logs.map(log=><details className="reward-log" key={log.id}><summary><span>{log.id}</span><small>{log.state} · {log.effort} · ${(log.charged/1e6).toFixed(4)}</small></summary><h3>Output</h3><pre>{log.result?.text??log.error??'Request in progress.'}</pre><h3>Prompt</h3><pre>{log.prompt}</pre></details>):<p>No public calls on this ledger page yet.</p>}<div className="reward-pagination"><button disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-10))}>Newer</button><button disabled={!hasMore} onClick={()=>setOffset(offset+10)}>Older</button></div></section>
+    <section className="reward-section"><p className="reward-label">RESEARCH RECORD</p><h2>Visible API output</h2><p className="reward-caption">Completed output, prompts and usage. Private model reasoning is not available. Evaluation calls remain sealed until completion.</p>{logs.length?logs.map(log=><details className="reward-log" key={log.id}><summary><span>{log.id}</span><small>{log.state} · {log.effort} · ${(log.charged/1e6).toFixed(4)}</small></summary><h3>Output</h3><pre>{log.result?.text??log.error??'Request in progress.'}</pre><h3>Prompt</h3><pre>{log.prompt}</pre></details>):<p>No public calls on this ledger page yet.</p>}<div className="reward-pagination"><button disabled={offset===0||logLoading} onClick={()=>turnPage(false)}>Newer</button><button disabled={nextOffset===null||logLoading} onClick={()=>turnPage(true)}>Older</button></div></section>
     <footer><p>Based on <a href="https://arxiv.org/abs/2603.30036">Kaufmann et al., 2026</a>. Exploratory evidence, not a safety certificate. All public controls are read-only.</p></footer>
   </main>;
 }
