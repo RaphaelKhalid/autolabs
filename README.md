@@ -1,20 +1,40 @@
 # AutoLabs · Observable agent experiments
 
-AutoLabs is evolving into a reusable public laboratory. The animated lab remains
-the homepage, with an [experiment register](https://autolabs-ebon.vercel.app/experiments)
-and stable per-experiment evidence links. The current execution engine is still
-specialized for Erdős 885; arbitrary-problem launching is not implemented yet.
+AutoLabs is a public laboratory for observable agent experiments. The
+[homepage](https://autolabs-ebon.vercel.app) opens the newest published experiment;
+the [experiment register](https://autolabs-ebon.vercel.app/experiments) is ordered
+newest first. Each experiment retains its own stable page, protocol and evidence.
+Study-specific research runners remain separate; arbitrary scientific evaluators
+are not generated automatically.
 The separate [self-hosted early release](selfhost/README.md) adds a creator,
 OpenRouter models, no-cost mock tests, two starter evaluators and local run exports.
 It is not connected to the public pilot's controls. See its documented limitations
 before use. Source code is available under the MIT license; dependencies retain
 their respective licenses.
 
+## Experiment 002 — Measuring reward compatibility
+
+- [Live study and research ledger](https://autolabs-ebon.vercel.app/experiments/reward-compatibility)
+- [Research repository, registered protocol and analysis](https://github.com/RaphaelKhalid/reward-compatibility)
+- Luna actor with reasoning effort none; fresh Luna High evaluators and reporter.
+- Exact coin-task scoring, matched reward conditions, three repeats, and sealed
+  held-out evaluation. The final figure appears after the frozen run completes.
+- Separate Cloudflare Durable Object runner, $4 feasibility gate and $40 inclusive
+  OpenAI cap. The research repository owns its runner, protocol and figure export;
+  this repository owns the AutoLabs interface. No private reasoning traces are exposed.
+
+To publish the next experiment, add its stable route and a descriptor with a higher
+`sequence` in `lib/experiment-catalog.ts`. The public homepage and register both
+follow that ordering. The homepage uses a temporary redirect so browsers do not
+permanently cache one experiment. Self-hosted mode still opens `/studio`.
+
 ## Pilot 001 — completed
 
 The first pilot completed **100 synchronized rounds**, not 100 independent trials,
 between 3 and 8 September 2026. It produced **no certified k=5 solution and no
 verified SOTA improvement**. See the [results and paginated ledger](https://autolabs-ebon.vercel.app/experiments/erdos-885).
+The original [animated pilot archive](https://autolabs-ebon.vercel.app/experiments/erdos-885/lab)
+remains available separately; it is not the current experiment.
 
 - 606 computation jobs: 297 complete, 297 partial, 12 failed.
 - 87 candidate-check records, 2,611 events, 496 released private plans.
@@ -58,7 +78,7 @@ certificate stops the run immediately. The secondary milestone is a strict
 complete-rectangle improvement over the currently tracked `(5 integers, 4
 differences)` / `(3 integers, 5 differences)` frontier: at least `6×4` or `4×5`.
 
-## Experiment covenant
+## Historical pilot covenant
 
 - Exactly five unrestricted expert mathematicians, all using `gpt-5.6-luna`
   with `high` reasoning effort.
@@ -75,7 +95,7 @@ differences)` / `(3 integers, 5 differences)` frontier: at least `6×4` or `4×5
   ledger and budget.
 - Initial competition target: 50 rounds; guaranteed allocation: 25 rounds.
   The owner extended the pilot to 100. New-run defaults are distinct from this archive.
-- Current OpenAI experiment ceiling: `$50`, with a `$1.50` software reserve and
+- Pilot OpenAI experiment ceiling: `$50`, with a `$1.50` software reserve and
   preflight authorization before every five-call batch.
 - Recorded provider responses are costed from input, cached-input and output
   token usage. Failed requests without returned usage are not invoice-reconciled.
@@ -86,7 +106,7 @@ credited collaborator receives a separate `$10`. A verified SOTA-frontier
 improvement would earn `$25`. The terminal report also records separately funded
 `$25` participation allocations per agent; these are not API spend or proof of payment.
 
-## Architecture
+## Pilot architecture
 
 ```text
 Vercel Next.js observatory (public, read-only)
@@ -125,7 +145,9 @@ are set with `wrangler secret put`; never prefix a secret with `NEXT_PUBLIC_`.
 
 ## Repository map
 
-- `app/`, `components/` — the public observatory and owner-only ribbon control.
+- `app/`, `components/` — current experiment interface, register and archived pilot observatory.
+- `lib/experiment-catalog.ts` — published experiments, newest-first ordering and landing-page selection.
+- [reward-compatibility](https://github.com/RaphaelKhalid/reward-compatibility) — separate Experiment 002 runner, registered protocol and reproducible analysis.
 - `lib/exact-verifier.ts` — exact bigint witness, factor-pair and support checks.
 - `orchestrator-worker/` — durable run engine, D1 migration, prompts and budget ledger.
 - `math-worker/` — bounded deterministic search programs.

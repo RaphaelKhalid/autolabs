@@ -9,7 +9,7 @@ export default function PilotPage() {
   const candidate = snapshot.candidate;
   const cells = candidate.numbers.map((n) => candidate.differences.map((d) => factorizationFromDifference(BigInt(n), BigInt(d))));
   return <main className="archive-page">
-    <nav className="archive-nav" aria-label="Primary"><Link href="/">A / AUTOLABS</Link><Link href="/experiments">All experiments</Link></nav>
+    <nav className="archive-nav" aria-label="Primary"><Link href="/">A / AUTOLABS</Link><Link href="/experiments/erdos-885/lab">Animated pilot archive</Link><Link href="/experiments">All experiments</Link></nav>
     <header className="archive-heading"><p className="archive-kicker">PILOT 001 / COMPLETE / 3–8 SEPTEMBER 2026</p><h1>Erdős 885: pilot results</h1><p>Five Luna High researchers investigated Erdős problem 885 for k = 5. This was one pilot experiment with 100 synchronized rounds—not 100 independent trials.</p></header>
     <section className="archive-verdict" aria-label="Pilot outcome"><h2>No certified k = 5 solution.<br/>No verified frontier improvement.</h2><p>The pilot completed 100 rounds. No mathematical novelty has been established from the retained candidates.</p><a href={pilotReportUrl}>Final report ↗</a></section>
     <div className="archive-stats"><div><strong>100</strong><span>rounds completed</span></div><div><strong>606</strong><span>computation jobs</span></div><div><strong>87</strong><span>candidate-check records</span></div><div><strong>2,611</strong><span>ledger events</span></div></div>
