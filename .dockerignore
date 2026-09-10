@@ -1,0 +1,11 @@
+.git
+.next
+.vercel
+.env*
+.autolabs
+**/node_modules
+**/.wrangler
+**/.dev.vars*
+*.log
+*.tsbuildinfo
+coverage

@@ -5,6 +5,7 @@ import './globals.css';
 import './report.css';
 import './lab.css';
 import './archive.css';
+import './studio.css';
 
 const serif = STIX_Two_Text({
   subsets: ['latin'],
@@ -33,7 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className={`${serif.variable} ${mono.variable}`}>
         {children}
-        <Analytics />
+        {process.env.AUTOLABS_SELF_HOSTED !== '1' && <Analytics />}
       </body>
     </html>
   );
