@@ -4,11 +4,12 @@ export interface ExperimentDefinition {
   title: string;
   label: string;
   runId: string;
-  status: 'complete' | 'planned';
+  status: 'complete' | 'planned' | 'registered';
   model: string;
   reasoning: string;
   researchers: number;
   rounds: number;
+  scheduleLabel?: string;
   objective: string;
   protocol: string;
   verifier: string;
@@ -25,7 +26,17 @@ export const erdosPilot: ExperimentDefinition = {
   budgets: { openai: 50, exa: 40 },
 };
 
-export const experiments: readonly ExperimentDefinition[] = [erdosPilot];
+export const rewardCompatibility: ExperimentDefinition = {
+  slug: 'reward-compatibility', title: 'Measuring reward compatibility', label: 'Experiment 002',
+  runId: 'experiment-002-v01', status: 'registered',
+  model: 'gpt-5.6-luna', reasoning: 'none (actor), high (evaluators)', researchers: 1, rounds: 12,
+  scheduleLabel: '48 matched optimization histories',
+  objective: 'Test whether readable high-reward strategies predict subsequent changes in monitorability.',
+  protocol: 'Frozen coin-tracking study: feasibility gate, diagnostics, paired repeated optimization, sealed held-out evaluation.',
+  verifier: 'Exact coin parity, blinded monitoring, grounded evidence audits and paired-history analysis.',
+  budgets: {openai: 40, exa: 0},
+};
+export const experiments: readonly ExperimentDefinition[] = [rewardCompatibility, erdosPilot];
 export const pilotReportUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/report`;
 export const pilotLedgerUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/events`;
 
