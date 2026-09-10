@@ -1,4 +1,4 @@
-export type Agent = { id: string; name: string; model: string; instructions: string; color: string };
+export type Agent = { id: string; name: string; model: string; instructions: string; color: string; appearance?: number };
 export type Configuration = {
   schemaVersion: 1; title: string; objective: string;
   template: 'integer-search-v1' | 'research-notes-v1';
@@ -41,7 +41,7 @@ export function validateConfiguration(value: unknown): Configuration {
     if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error('Use a six-digit hex color.');
     const model = text(a.model,'Model',120);
     if (!/^[a-zA-Z0-9_./:-]+$/.test(model) || model.includes('..')) throw new Error('Invalid model ID.');
-    return {id,name:text(a.name,'Agent name',60),model,instructions:text(a.instructions,'Agent instructions',4000),color};
+    return {id,name:text(a.name,'Agent name',60),model,instructions:text(a.instructions,'Agent instructions',4000),color,...(a.appearance===undefined?{}:{appearance:numeric(a.appearance,'Form',0,4)})};
   });
   if (new Set(agents.map(a=>a.id)).size !== agents.length) throw new Error('Agent IDs must be unique.');
   if (typeof v.meetings !== 'boolean' || typeof v.stopOnSuccess !== 'boolean') throw new Error('Protocol switches must be boolean.');

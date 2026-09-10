@@ -235,7 +235,7 @@ export function LivingLab() {
 
       <header className="lab-header">
         <a className="lab-mark" href="/"><i>A</i><span>AUTOLABS<small>{isPilot ? 'PILOT 001 · ERDŐS 885' : 'OBSERVABLE EXPERIMENTS'}</small></span></a>
-        <nav aria-label="Experiments"><a href="/experiments">Experiments</a><a href="/experiments/erdos-885">Pilot results</a><a href="/journal">Journal</a></nav>
+        <nav aria-label="Experiments"><a href="/studio">Create a lab</a><a href="/experiments">Experiments</a><a href="/experiments/erdos-885">Pilot results</a></nav>
         <div>
           <span className={`lab-live ${live ? '' : 'is-offline'}`}><i />{live ? (terminal ? 'ARCHIVE' : 'LIVE') : 'OFFLINE'}</span>
           <button className="lab-refresh" type="button" onClick={() => void refreshNow()} disabled={refreshing} aria-label="Refresh live laboratory">

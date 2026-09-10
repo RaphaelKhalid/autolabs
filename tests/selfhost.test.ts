@@ -10,6 +10,11 @@ function engine(){const dir=mkdtempSync(join(tmpdir(),'autolabs-test-'));directo
 const configuration=()=>({...structuredClone(starter),phaseSeconds:0});
 afterEach(()=>{for(const dir of directories.splice(0))rmSync(dir,{recursive:true,force:true});vi.restoreAllMocks();});
 describe('portable configuration and evaluator',()=>{
+  it('preserves valid agent forms in exports and rejects unsupported forms',()=>{
+    const c=configuration();c.agents[0].appearance=4;
+    expect(validateConfiguration(c).agents[0].appearance).toBe(4);
+    c.agents[0].appearance=5;expect(()=>validateConfiguration(c)).toThrow('Form');
+  });
   it('validates and strips unrecognized configuration properties',()=>{expect(validateConfiguration({...configuration(),apiKey:'not exported'})).not.toHaveProperty('apiKey');});
   it('rejects secrets, duplicate identities and unbounded parameters',()=>{
     expect(()=>validateConfiguration({...configuration(),objective:'sk-or-v1-123456789012345678901234'})).toThrow('API keys');

@@ -5,7 +5,7 @@ import './globals.css';
 import './report.css';
 import './lab.css';
 import './archive.css';
-import './studio.css';
+import './workbench.css';
 
 const serif = STIX_Two_Text({
   subsets: ['latin'],
