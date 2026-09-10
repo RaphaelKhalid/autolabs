@@ -4,6 +4,11 @@ AutoLabs is evolving into a reusable public laboratory. The animated lab remains
 the homepage, with an [experiment register](https://autolabs-ebon.vercel.app/experiments)
 and stable per-experiment evidence links. The current execution engine is still
 specialized for Erdős 885; arbitrary-problem launching is not implemented yet.
+The separate [self-hosted early release](selfhost/README.md) adds a creator,
+OpenRouter models, no-cost mock tests, two starter evaluators and local run exports.
+It is not connected to the public pilot's controls. See its documented limitations
+before use. Source code is available under the MIT license; dependencies retain
+their respective licenses.
 
 ## Pilot 001 — completed
 

@@ -1,0 +1,34 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: selfhost/Dockerfile
+      target: web
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      AUTOLABS_SELF_HOSTED: "1"
+      AUTOLABS_LOCAL_TOKEN: ${AUTOLABS_LOCAL_TOKEN:?Run the self-hosted setup first}
+      AUTOLABS_RUNNER_URL: http://runner:8788
+    depends_on:
+      runner:
+        condition: service_healthy
+    restart: unless-stopped
+  runner:
+    build:
+      context: .
+      dockerfile: selfhost/Dockerfile
+      target: runner
+    environment:
+      AUTOLABS_LOCAL_TOKEN: ${AUTOLABS_LOCAL_TOKEN:?Run the self-hosted setup first}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    volumes:
+      - autolabs-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  autolabs-data:
