@@ -1,0 +1,36 @@
+/* The original stays untouched; an opaque base keeps the fade predictable. */
+.reward-experiment {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+}
+.reward-photograph {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #f5f1e7;
+}
+.reward-photograph img {
+  object-fit: cover;
+  object-position: center 30%;
+  opacity: .25;
+}
+.reward-experiment .reward-overview,
+.reward-experiment .reward-section {
+  background: rgb(245 241 231 / 94%);
+  box-shadow: 24px 0 rgb(245 241 231 / 94%), -24px 0 rgb(245 241 231 / 94%);
+}
+.reward-experiment .reward-numbers small { color: #626b5a; }
+.reward-experiment .reward-page footer {
+  background: rgb(245 241 231 / 94%);
+  box-shadow: 12px 0 rgb(245 241 231 / 94%), -12px 0 rgb(245 241 231 / 94%);
+}
+@media (max-width: 700px) {
+  .reward-photograph img { object-position: 42% center; }
+  .reward-experiment .reward-overview,
+  .reward-experiment .reward-section {
+    box-shadow: 12px 0 rgb(245 241 231 / 94%), -12px 0 rgb(245 241 231 / 94%);
+  }
+}
+@media print { .reward-photograph { display: none; } }
