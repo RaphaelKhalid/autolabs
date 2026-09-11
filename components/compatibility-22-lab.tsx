@@ -1,0 +1,78 @@
+'use client';
+import Link from 'next/link';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {AlienForm} from './autolabs-observatory';
+import {Category22Figure} from './category-22-figure';
+import {compatibility21Eta} from '@/lib/compatibility-21-display';
+import {COMPATIBILITY22_API as API,validCompatibility22Status,validCategoryAnalysis,categoryLabel,observedCategoryLabel,referenceMean,type Compatibility22Status,type CategoryAnalysis} from '@/lib/compatibility-22-display';
+
+type Call={id:string;state:string;charged:number;prompt:string;error:string|null;response:{text?:string}|null};
+type Logs={calls:Call[];next:number|null;sealed:boolean};
+const money=(value:number|null|undefined)=>value==null?'Awaiting settlement':`$${value.toFixed(4)}`;
+const pp=(value:number|null)=>value===null?'—':`${value>=0?'+':''}${(value*100).toFixed(1)} pp`;
+const title=(id:string)=>id.includes('/combined/')?'Combined-reward search':id.includes('/outcome/')?'Outcome-only reference':'Research call';
+function validLogs(value:unknown):value is Logs {
+  if(!value||typeof value!=='object')return false;
+  const data=value as Partial<Logs>;
+  return typeof data.sealed==='boolean'&&(data.next===null||Number.isSafeInteger(data.next))&&Array.isArray(data.calls)&&data.calls.length<=5&&data.calls.every(call=>call&&typeof call.id==='string'&&typeof call.state==='string'&&typeof call.charged==='number'&&typeof call.prompt==='string'&&(call.response===null||typeof call.response==='object'));
+}
+export function Compatibility22Lab(){
+  const [status,setStatus]=useState<Compatibility22Status|null>(null),[error,setError]=useState(false),[refreshing,setRefreshing]=useState(false);
+  const [analysis,setAnalysis]=useState<CategoryAnalysis|null>(null),[analysisError,setAnalysisError]=useState(false);
+  const [logs,setLogs]=useState<Logs|null>(null),[logError,setLogError]=useState(false),[loading,setLoading]=useState(true),[offsets,setOffsets]=useState([0]),[revision,setRevision]=useState(0);
+  const pending=useRef<AbortController|null>(null),offset=offsets.at(-1)??0;
+  const refresh=useCallback(async()=>{
+    if(pending.current)return;
+    const controller=new AbortController();pending.current=controller;setRefreshing(true);
+    const timer=setTimeout(()=>controller.abort('timeout'),15000);
+    try{
+      const response=await fetch(`${API}/status`,{signal:controller.signal,cache:'no-store'});if(!response.ok)throw Error();
+      const data:unknown=await response.json();if(!validCompatibility22Status(data))throw Error();
+      if(!controller.signal.aborted){setStatus(data);setError(false);}
+    }catch{if(controller.signal.reason!=='unmount')setError(true);}
+    finally{clearTimeout(timer);if(pending.current===controller)pending.current=null;if(controller.signal.reason!=='unmount')setRefreshing(false);}
+  },[]);
+  useEffect(()=>{
+    void refresh();const interval=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},15000);
+    const visible=()=>{if(document.visibilityState==='visible')void refresh();};document.addEventListener('visibilitychange',visible);
+    return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',visible);pending.current?.abort('unmount');pending.current=null;};
+  },[refresh]);
+  useEffect(()=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort('timeout'),15000);
+    fetch(`${API}/logs?offset=${offset}`,{signal:controller.signal,cache:'no-store'}).then(async response=>{if(!response.ok)throw Error();const value:unknown=await response.json();if(!validLogs(value))throw Error();if(!controller.signal.aborted){setLogs(value);setLogError(false);setLoading(false);}}).catch(()=>{if(controller.signal.reason!=='unmount'){setLogError(true);setLoading(false);}}).finally(()=>clearTimeout(timer));
+    return()=>{controller.abort('unmount');clearTimeout(timer);};
+  },[offset,revision,status?.updatedAt]);
+  useEffect(()=>{
+    if(status?.status!=='complete')return;
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort('timeout'),15000);
+    fetch(`${API}/analysis`,{signal:controller.signal,cache:'no-store'}).then(async response=>{if(!response.ok)throw Error();const value:unknown=await response.json();if(!validCategoryAnalysis(value))throw Error();if(!controller.signal.aborted){setAnalysis(value);setAnalysisError(false);}}).catch(()=>{if(controller.signal.reason!=='unmount')setAnalysisError(true);}).finally(()=>clearTimeout(timer));
+    return()=>{controller.abort('unmount');clearTimeout(timer);};
+  },[status?.status,revision]);
+  const running=status?.status==='running',sealed=status?.evaluationSealed!==false;
+  const phase=status?.status==='waiting'?'Waiting for Experiment 002.1':status?.status==='complete'?'Fixed run complete':status?.stage==='eval'?'Sealed paired evaluation':'Development preflight';
+  const description=!status?'Connecting to the cloud laboratory…':status.status==='waiting'?'Waiting for 002.1 to finish and settle its reserved spend.':status.status==='ready'?'Prepared protocol. No paid calls have started.':status.status==='paused'?`Paused safely: ${status.reason?.replaceAll('_',' ')??'review required'}`:status.status==='complete'?'Search complete. Reading the registered category estimates.':'Independent outcome-only and combined-reward searches.';
+  const phaseJobs=status?.progress.histories.find(row=>row.split===status.stage);
+  const turnPage=(older:boolean)=>{setLoading(true);setLogs(null);setOffsets(previous=>older&&logs?.next!=null?[...previous,logs.next]:previous.slice(0,-1));};
+  return <main className="reward-page compatibility21-page categories22-page">
+    <nav className="reward-nav" aria-label="Main navigation"><Link href="/">A / AUTOLABS</Link><div><Link href="/experiments">Experiments</Link><a href="https://github.com/RaphaelKhalid/reward-compatibility/tree/main/v22">Source ↗</a></div></nav>
+    <header className="reward-heading"><p className="reward-label">EXPERIMENT 002.2 · AI SAFETY</p><h1>Classifying<br/>reward pairs.</h1><p>What changes when a reasoning reward is added to an outcome-only objective?</p></header>
+    <section className="reward-overview" aria-label="Live category study"><div className={`reward-researcher ${running?'is-running':''}`}>
+      <div className="reward-bubble" role="status">{description}</div><AlienForm agent={{id:'luna-0022',name:'Luna',color:'#477969'}} index={2} meeting={false}/><div className="reward-desk"/><p className="reward-label">LUNA · PAIRED INDEPENDENT SEARCHES</p><div className="compatibility21-slots" aria-label={`${status?.active.length??0} active calls`}>{Array.from({length:8},(_,index)=><span key={index} className={running&&index<(status?.active.length??0)?'is-active':''} aria-hidden="true"/>)}</div><p className="reward-caption">Up to eight API calls in parallel</p>
+    </div><div className="reward-readout"><div className="reward-state"><span className={running?'status-live':''}>{status?.status??'connecting'}</span><button disabled={refreshing} onClick={()=>{void refresh();setRevision(value=>value+1);}}>{refreshing?'Refreshing…':'Refresh ↻'}</button></div>
+      {error&&<p className="reward-warning" role="alert">Connection delayed. Retrying automatically; any values shown are from the last checkpoint.</p>}
+      <h2>{phase}</h2><div className="reward-numbers"><div><strong>{status?.progress.callsDone.toLocaleString()??'—'}<small> / {status?.progress.callsTotal.toLocaleString()??'4,116'}</small></strong><span>fixed API call steps</span></div></div><progress value={status?.progress.callsDone??0} max={status?.progress.callsTotal||4116} aria-label="Fixed category-study progress"/>
+      <p className="compatibility21-eta">{error?'ETA unavailable while reconnecting':status?.status==='waiting'?'Starts after 002.1 settles':compatibility21Eta(status?{status:status.status,etaSeconds:status.etaSeconds}:null)}</p><p className="reward-caption">Elapsed-pace estimate; updated every 15 seconds while visible.</p>
+      <dl><div><dt>Phase histories complete</dt><dd>{phaseJobs?`${phaseJobs.done} / ${phaseJobs.total}`:'Awaiting launch'}</dd></div><div><dt>Model / reasoning effort</dt><dd>{status?.model??'gpt-5.6-luna'} / none</dd></div><div><dt>Independent checker</dt><dd>{status?.isolation?.passed?'Preflight passed':'Awaiting verification'}</dd></div><div><dt>Last checkpoint</dt><dd>{status?new Date(status.updatedAt).toLocaleString():'Awaiting connection'}</dd></div></dl>
+    </div></section>
+    <div className="reward-links"><a href={`${API}/protocol`}>Frozen protocol ↗</a><a href={`${API}/results`}>Scored histories ↗</a><a href={`${API}/logs`}>API ledger ↗</a><Link href="/experiments/reward-compatibility-21">Experiment 002.1</Link><Link href="/experiments/reward-compatibility">Experiment 002 archive</Link></div>
+    <section className="reward-section"><p className="reward-label">SHARED $40 CEILING</p><h2>{status?.budget.totalCommittedUsd==null?'Prior spend settles before launch':`${money(status.budget.totalCommittedUsd)} committed`}</h2><div className="compatibility21-budget"><div><span>002 + 002.1 settled commitment</span><strong>{money(status?.budget.priorCommittedUsd)}</strong></div><div><span>002.2 recorded spend</span><strong>{money(status?.budget.spentUsd)}</strong></div><div><span>Pending reservations</span><strong>{money(status?.budget.reservedUsd)}</strong></div></div><p className="reward-caption">No new $40 allocation. The entire fixed plan must fit the remaining shared budget before launch. The page is read-only and does not run or bill model calls.</p></section>
+    <section className="reward-section"><p className="reward-label">THE MEASUREMENT</p><h2>Compare against the same reference.</h2><div className="reward-metric-grid"><div><h3><i>q</i><sub>ref</sub></h3><p>Best outcome reached by the outcome-only search.</p><p className="reward-caption">Its search sees task feedback, never the reasoning-reward rule or score.</p></div><div><h3><i>r</i><sub>CoT</sub> ≥ 1</h3><p>Does the combined optimizer meet the fixed reasoning-reward threshold?</p><p className="reward-caption">Attainment is reported separately. Without it, the category stays unresolved.</p></div><div><h3>Δ<i>q</i></h3><p>Outcome under combined optimization minus the reference outcome.</p><p className="reward-caption">Retain all tied optima. Positive means improvement; negative means harm.</p></div></div><p className="reward-caption">The reasoning trace is constructed from a finite executable policy by the checker. This is not a measurement of private chain of thought.</p></section>
+    <section className="reward-section"><p className="reward-label">CATEGORY RESULTS</p><h2>{sealed?'Held-out analysis is sealed':'Reference-relative category estimates'}</h2>
+      {sealed?<div className="reward-sealed"><span>{status?.status==='waiting'?'Queued study · no evaluation yet':'No interim evaluation scores'}</span><p>Eight held-out templates, 64 paired histories each, four calls per arm. Categories are calculated after the full fixed run, not used to decide when to stop.</p></div>:analysis?.available&&analysis.analysis?.templates?<><Category22Figure rows={analysis.analysis.templates}/><div className="reward-table-wrap"><table><thead><tr><th>Template</th><th>Reference outcome</th><th>Threshold attained</th><th>Δ outcome across ties</th><th>Observed histories</th><th>Population support</th></tr></thead><tbody>{analysis.analysis.templates.map(row=>{const reference=referenceMean(row.pairs);return <tr key={row.templateId}><td>{row.templateId}<small className="category22-domain">{row.domain}</small></td><td>{reference===null?'—':`${(reference*100).toFixed(1)}%`}</td><td>{row.eligiblePairs} / 64 pairs</td><td>{pp(row.meanGainMin)} to {pp(row.meanGainMax)}</td><td>{observedCategoryLabel(row.observedHistoryLabel)}</td><td>{categoryLabel(row.label)}</td></tr>;})}</tbody></table></div><p className="reward-caption">Threshold attainment counts pairs with a qualifying combined optimum. Observed labels summarize these histories; population support requires separate simultaneous distribution-free bounds. Ties are retained. Neither is a universal proof.</p></>:<p role="status">{analysisError?'Analysis could not load. Use Refresh to retry.':'Awaiting the released analysis.'}</p>}
+      <div className="category22-key"><p><strong>Aligned direction:</strong> improvement beyond the 5-percentage-point margin.</p><p><strong>Conflict direction:</strong> deterioration beyond that margin.</p><p><strong>Orthogonal evidence:</strong> outcome equivalence within the margin, plus checked outcome-preserving witnesses.</p><p><strong>Mixed / insufficient:</strong> uncertainty, ties or unmet criteria prevent a category.</p></div><p className="reward-caption">Population support uses simultaneous Hoeffding bounds, including worst-case contributions for failures. Bootstrap intervals are descriptive only and never determine support. Scope: 64 independent paired histories per template, two finite policy languages and this API-search procedure.</p>{!sealed&&<a href={`${API}/analysis`}>Full estimates, tied solutions and uncertainty intervals ↗</a>}
+    </section>
+    <section className="reward-section"><p className="reward-label">ACTIVE CALLS</p><h2>{status?.active.length??0} active / {status?.execution.concurrency??8} maximum</h2>{status?.active.length?<ul className="compatibility21-active">{status.active.map(call=><li key={call.id}>{title(call.id)}<small>{call.id}</small></li>)}</ul>:<p className="reward-caption">{status?.status==='waiting'?'No calls until the predecessor completes.':'Between checkpoints.'}</p>}</section>
+    <section className="reward-section"><p className="reward-label">PUBLIC RESEARCH RECORD</p><h2>{sealed?'Development logs':'Released call logs'}</h2><p className="reward-caption">Held-out prompts and responses remain withheld until completion. These records contain public model outputs, not private reasoning.</p>{logError&&<p role="alert" className="reward-warning">Ledger unavailable. <button onClick={()=>{setLoading(true);setRevision(value=>value+1);}}>Retry ledger</button></p>}{loading?<p role="status">Loading records…</p>:logs?.calls.length?logs.calls.map(call=><details className="reward-log" key={call.id}><summary><span><span className="reward-call-title">{title(call.id)}</span><span className="reward-call-id">{call.id}</span></span><small>{call.state} · {money(call.charged/1e6)}</small></summary><h3>Output</h3><pre>{typeof call.response?.text==='string'?call.response.text:call.error??'Pending response.'}</pre><h3>Prompt</h3><pre>{call.prompt}</pre></details>):<p>No public records yet.</p>}<div className="reward-pagination"><button disabled={offset===0||loading} onClick={()=>turnPage(false)}>Newer</button><button disabled={logs?.next==null||loading} onClick={()=>turnPage(true)}>Older</button></div></section>
+    <footer><p>Run: {status?.runId??'experiment-002-2-v1'} · <a href={`${API}/status`}>Machine-readable status</a>. Fixed sample size; never stopped for significance. Earlier experiments remain preserved.</p>{status?.protocolHash&&<p className="compatibility21-hash">Protocol SHA-256: {status.protocolHash}</p>}</footer>
+  </main>;
+}
