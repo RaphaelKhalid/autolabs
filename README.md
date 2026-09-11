@@ -18,6 +18,9 @@ their respective licenses.
 - [Research repository, registered protocol and analysis](https://github.com/RaphaelKhalid/reward-compatibility)
 - Background: Raphael Khalid's sunset photograph, with a cream overlay and
   separate reading surfaces. [Source and image reuse notes](public/photography/README.md).
+- The metric guide distinguishes exact outcome scoring, reasoning rewards and
+  monitoring. Public call labels translate grader ratings into per-sample rewards;
+  they do not reveal sealed records or represent aggregate research findings.
 - Luna actor with reasoning effort none; fresh Luna High evaluators and reporter.
 - Exact coin-task scoring, matched reward conditions, three repeats, and sealed
   held-out evaluation. The final figure appears after the frozen run completes.

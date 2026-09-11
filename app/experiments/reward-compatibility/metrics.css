@@ -1,0 +1,37 @@
+/* Reset the pilot's global footer rules, including its mobile display:none. */
+.reward-experiment .reward-page footer {
+  min-height: 0;
+  max-width: none;
+  padding: 18px 0;
+  margin-top: 24px;
+  font: 14px/1.6 var(--font-serif), serif;
+  box-shadow: 24px 0 rgb(245 241 231 / 94%), -24px 0 rgb(245 241 231 / 94%);
+}
+.reward-experiment .reward-page footer p {
+  display: block;
+  margin: 0;
+  color: #505b4b;
+  font: inherit;
+  text-align: left;
+}
+.reward-metric-grid {display: grid;grid-template-columns: repeat(3,minmax(0,1fr));gap: 28px;margin: 24px 0;}
+.reward-metric-grid h3 {font-size: 28px;font-weight: 400;margin: 0 0 8px;}
+.reward-metric-grid p {font-size: 16px;margin: 8px 0;}
+.reward-metric-grid .reward-caption {font-size: 14px;}
+.reward-formulas {font-size: 16px;}
+.reward-formulas summary {cursor: pointer;min-height: 44px;}
+.reward-formulas dl>div {grid-template-columns: minmax(80px,1fr) 3fr;}
+.reward-call-title {display: block;font-size: 17px;}
+.reward-call-id {display: block;font: 11px/1.6 var(--font-mono),monospace;color: #5f6659;margin-top: 6px;overflow-wrap: anywhere;}
+.reward-call-note {font-size: 14px;margin: 8px 0 0;}
+.reward-call-score {display: inline-block;background: #e3e9dd;border: 1px solid #b7c4ae;padding: 3px 10px;margin: 0 8px 4px 0;font: 15px/1.5 var(--font-mono),monospace;}
+.reward-log summary::before {content: '+';font: 18px var(--font-mono),monospace;flex: 0 0 14px;}
+.reward-log[open] summary::before {content: '−';}
+.reward-log summary>span {flex: 1;min-width: 0;}
+@media (max-width:700px) {
+  .reward-metric-grid {grid-template-columns: 1fr;gap: 18px;}
+  .reward-metric-grid>div+div {border-top: 1px solid #c4c8b9;padding-top: 18px;}
+  .reward-experiment .reward-page footer {box-shadow: 12px 0 rgb(245 241 231 / 94%), -12px 0 rgb(245 241 231 / 94%);}
+  .reward-log summary {display: flex;flex-wrap: wrap;gap: 8px;}
+  .reward-log summary>small {flex-basis: 100%;padding-left: 22px;white-space: normal;}
+}
