@@ -8,7 +8,7 @@ describe('newest experiment landing page',()=>{
   it('orders the register by descending unique experiment sequence',()=>{
     expect(new Set(experiments.map(e=>e.sequence)).size).toBe(experiments.length);
     expect(experiments.map(e=>e.sequence)).toEqual([...experiments].sort((a,b)=>b.sequence-a.sequence).map(e=>e.sequence));
-    expect(latestExperiment.slug).toBe('reward-compatibility');
+    expect(latestExperiment.slug).toBe('reward-compatibility-21');
   });
   it('opens the newest experiment on the public site',()=>{
     vi.stubEnv('AUTOLABS_SELF_HOSTED','0');
