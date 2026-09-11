@@ -12,6 +12,25 @@ It is not connected to the public pilot's controls. See its documented limitatio
 before use. Source code is available under the MIT license; dependencies retain
 their respective licenses.
 
+## Experiment 002.2 — Classifying reward pairs (follow-on)
+
+- [Study page](https://autolabs-ebon.vercel.app/experiments/reward-categories-22)
+- A separate durable run waits for 002.1 to complete and settle its reservations.
+  It does not receive a fresh $40 budget: the shared ceiling includes both predecessors.
+- 20 development calls, then 4,096 held-out calls: eight templates, 64 paired
+  histories per template, four calls per arm. Outcome-only searches never receive
+  reasoning-reward feedback. Combined searches optimize the specified joint reward.
+- Reference outcome, threshold attainment and tie-aware outcome changes are distinct
+  quantities. Observed categories are separate from population support, which uses
+  simultaneous distribution-free bounds rather than descriptive bootstrap intervals;
+  mixed or insufficient evidence is an explicit result, not forced into a category.
+- These are scoped empirical findings in finite policy languages, not a universal
+  classification of reward pairs or a private-chain-of-thought measurement.
+- The homepage remains on 002.1 while this successor waits. A bounded public status
+  check (2.5-second timeout, 15-second server cache) promotes 002.2 only after a verified
+  running/complete state, launch timestamp and frozen protocol hash. Failure falls
+  back to 002.1. No control requests or provider calls are made by this routing check.
+
 ## Experiment 002.1 — Testing finite reward compatibility
 
 - [Live study and public ledger](https://autolabs-ebon.vercel.app/experiments/reward-compatibility-21)

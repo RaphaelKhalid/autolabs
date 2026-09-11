@@ -91,7 +91,7 @@ export function Compatibility21Lab() {
         {status?.gate&&<p className="reward-caption">Development gate: {status.gate.pass?'passed':'not passed'}{typeof status.gate.parseRate==='number'?` · ${(status.gate.parseRate*100).toFixed(1)}% parseable`:''}. This checks validity and budget, not whether results are positive.</p>}
       </div>
     </section>
-    <div className="reward-links"><a href={`${API}/protocol`}>Frozen protocol ↗</a><a href={`${API}/results`}>Scored records ↗</a><a href={`${API}/logs`}>API ledger ↗</a><Link href="/experiments/reward-compatibility">Experiment 002 archive</Link></div>
+    <div className="reward-links"><a href={`${API}/protocol`}>Frozen protocol ↗</a><a href={`${API}/results`}>Scored records ↗</a><a href={`${API}/logs`}>API ledger ↗</a><Link href="/experiments/reward-compatibility">Experiment 002 archive</Link><Link href="/experiments/reward-categories-22">Follow-on: Experiment 002.2</Link></div>
     <section className="reward-section" aria-labelledby="budget21"><p className="reward-label">SHARED BUDGET</p><h2 id="budget21">{money(status?.budget.totalCommittedUsd)} committed / $40 cap</h2>
       <div className="compatibility21-budget"><div><span>Experiment 002 + prior reservations</span><strong>{money(status?.budget.priorCommittedUsd,4)}</strong></div><div><span>002.1 recorded spend</span><strong>{money(status?.budget.spentUsd,4)}</strong></div><div><span>Reserved, not yet settled</span><strong>{money(status?.budget.reservedUsd,4)}</strong></div></div>
       <p className="reward-caption">The $40 ceiling is shared, not reset for this run. Pending or uncertain requests retain reservations. Usage is application accounting, not a reconciled provider invoice.</p>

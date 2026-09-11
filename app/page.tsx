@@ -1,10 +1,11 @@
-import { latestExperiment } from '../lib/experiment-catalog';
+import { currentExperimentPath } from '../lib/experiment-landing';
 import { redirect } from 'next/navigation';
+import { connection } from 'next/server';
 
-export const dynamic = 'force-dynamic';
-
-export default function Home() {
+export default async function Home() {
   if (process.env.AUTOLABS_SELF_HOSTED === '1') redirect('/studio');
+  // Request-time redirect, while the public successor-status fetch can cache for 15s.
+  await connection();
   // Temporary redirect: the newest published experiment changes over time.
-  redirect(`/experiments/${latestExperiment.slug}`);
+  redirect(await currentExperimentPath());
 }

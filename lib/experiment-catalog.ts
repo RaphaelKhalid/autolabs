@@ -50,9 +50,18 @@ export const finiteCompatibility: ExperimentDefinition = {
   verifier: 'Exact coin-state checks and isolated affine-trigger program checks. Failure to find a witness is not a conflict proof.',
   budgets: {openai: 40, exa: 0},
 };
-/** Add published experiments here; ordering and the public landing page follow sequence. */
-export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility, finiteCompatibility].sort((a,b)=>b.sequence-a.sequence);
-export const latestExperiment = experiments[0];
+export const rewardCategories: ExperimentDefinition = {
+  sequence: 4, slug: 'reward-categories-22', title: 'Classifying reward pairs', label: 'Experiment 002.2',
+  runId: 'experiment-002-2-v1', status: 'planned', model: 'gpt-5.6-luna', reasoning: 'none', researchers: 1, rounds: 4,
+  scheduleLabel: '8 templates · 64 paired histories each',
+  objective: 'Measure reference-relative aligned, orthogonal and in-conflict support within two finite policy languages.',
+  protocol: 'Independent outcome-only and combined-reward searches. 20 development calls, 4,096 held-out calls. Starts after 002.1 settles.',
+  verifier: 'Exact policy outcomes, threshold attainment, tied-optimum bounds and paired uncertainty intervals; no hidden-reasoning claims.',
+  budgets: {openai: 40, exa: 0},
+};
+/** Planned successors appear in navigation, but do not replace the landing page before verified launch. */
+export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility, finiteCompatibility, rewardCategories].sort((a,b)=>b.sequence-a.sequence);
+export const latestExperiment = experiments.find(experiment=>experiment.status!=='planned')!;
 export const pilotReportUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/report`;
 export const pilotLedgerUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/events`;
 
