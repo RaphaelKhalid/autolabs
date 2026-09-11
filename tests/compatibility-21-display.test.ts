@@ -16,6 +16,11 @@ describe('Experiment 002.1 display',()=>{
     expect(compatibility21Eta(null)).toContain('Waiting');
     expect(compatibility21Eta({status:'running',etaSeconds:null})).toContain('Estimating');
   });
+  it('accepts optional conservative accounting breakdown but rejects invalid amounts',()=>{
+    expect(validCompatibility21Status({...status,budget:{...status.budget,knownSpendUsd:.01,uncertainChargeUpperBoundUsd:.01}})).toBe(true);
+    expect(validCompatibility21Status({...status,budget:{...status.budget,knownSpendUsd:-1}})).toBe(false);
+    expect(validCompatibility21Status({...status,budget:{...status.budget,uncertainChargeUpperBoundUsd:NaN}})).toBe(false);
+  });
   it('explains method labels without modifying raw IDs',()=>{
     expect(compatibility21CallTitle('dev-c01/guided/0')).toBe('Verifier-guided search · step 1');
     expect(compatibility21CallTitle('eval-c01/description/0')).toBe('Description-only judgment · step 1');

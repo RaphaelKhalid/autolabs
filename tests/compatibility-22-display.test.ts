@@ -15,6 +15,11 @@ describe('Experiment 002.2 display',()=>{
     expect(validCategoryAnalysis({available:true,sealed:false,analysis:{templates:[row]}})).toBe(true);
     expect(validCategoryAnalysis({available:true,sealed:false,analysis:{templates:[{...row,meanGainMin:NaN}]}})).toBe(false);
   });
+  it('inherits optional conservative accounting fields and rejects malformed amounts',()=>{
+    expect(validCompatibility22Status({...status,budget:{...status.budget,knownSpendUsd:.25,uncertainChargeUpperBoundUsd:.05,spentUsd:.30}})).toBe(true);
+    expect(validCompatibility22Status({...status,budget:{...status.budget,knownSpendUsd:-.01}})).toBe(false);
+    expect(validCompatibility22Status({...status,budget:{...status.budget,uncertainChargeUpperBoundUsd:NaN}})).toBe(false);
+  });
   it('does not turn an observed pattern into population support',()=>{
     expect(observedCategoryLabel(row.observedHistoryLabel)).toBe('Equivalence + witnesses');
     expect(categoryLabel(row.label)).toBe('Mixed / insufficient');
