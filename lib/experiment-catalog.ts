@@ -31,7 +31,7 @@ export const erdosPilot: ExperimentDefinition = {
 export const rewardCompatibility: ExperimentDefinition = {
   sequence: 2,
   slug: 'reward-compatibility', title: 'Measuring reward compatibility', label: 'Experiment 002',
-  runId: 'experiment-002-v01', status: 'registered',
+  runId: 'experiment-002-v01', status: 'complete',
   model: 'gpt-5.6-luna', reasoning: 'none (actor), high (evaluators)', researchers: 1, rounds: 12,
   scheduleLabel: '48 matched optimization histories',
   objective: 'Test whether readable high-reward strategies predict subsequent changes in monitorability.',
@@ -39,8 +39,19 @@ export const rewardCompatibility: ExperimentDefinition = {
   verifier: 'Exact coin parity, blinded monitoring, grounded evidence audits and paired-history analysis.',
   budgets: {openai: 40, exa: 0},
 };
+export const finiteCompatibility: ExperimentDefinition = {
+  sequence: 3,
+  slug: 'reward-compatibility-21', title: 'Testing finite reward compatibility', label: 'Experiment 002.1',
+  runId: 'experiment-002-1-v1', status: 'registered',
+  model: 'gpt-5.6-luna', reasoning: 'none', researchers: 1, rounds: 4,
+  scheduleLabel: '400 cases · three comparison methods',
+  objective: 'Validate reward compatibility against independently checkable finite-domain cases.',
+  protocol: '80 development cases, 320 held-out cases; description judgment, unguided search and verifier-guided search. Fixed sample size.',
+  verifier: 'Exact coin-state checks and isolated affine-trigger program checks. Failure to find a witness is not a conflict proof.',
+  budgets: {openai: 40, exa: 0},
+};
 /** Add published experiments here; ordering and the public landing page follow sequence. */
-export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility].sort((a,b)=>b.sequence-a.sequence);
+export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility, finiteCompatibility].sort((a,b)=>b.sequence-a.sequence);
 export const latestExperiment = experiments[0];
 export const pilotReportUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/report`;
 export const pilotLedgerUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/events`;

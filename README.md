@@ -12,7 +12,26 @@ It is not connected to the public pilot's controls. See its documented limitatio
 before use. Source code is available under the MIT license; dependencies retain
 their respective licenses.
 
-## Experiment 002 — Measuring reward compatibility
+## Experiment 002.1 — Testing finite reward compatibility
+
+- [Live study and public ledger](https://autolabs-ebon.vercel.app/experiments/reward-compatibility-21)
+- [Research implementation and protocol](https://github.com/RaphaelKhalid/reward-compatibility/tree/main/v21)
+- 80 development cases and 320 held-out cases across coin tracking and a restricted
+  Backdoor-Easy-inspired affine-trigger language. Three comparison methods use
+  independent Luna calls: description judgment, unguided search and verifier-guided search.
+- Up to eight concurrent API calls, fixed sample size, read-only public status and
+  five-record ledger pages. Held-out responses stay sealed until completion.
+- The **$40 cap is shared with Experiment 002**, including its prior commitments;
+  the interface separates old commitments, current spend and outstanding reservations.
+- This finite-language validation does not establish all three aligned / orthogonal /
+  in-conflict categories for unrestricted tasks. A missing witness is not a conflict proof.
+- The checker interprets bounded JSON data, not arbitrary generated Python or JavaScript.
+  The durable cloud runner remains in the research repository; the browser never starts
+  API calls or receives private credentials. Closing the page does not stop execution.
+- The page reuses Raphael Khalid's original photograph and accessible cream reading
+  surfaces. Experiment 002 and the Erdős pilot remain on their original stable routes.
+
+## Experiment 002 — Measuring reward compatibility (complete)
 
 - [Live study and research ledger](https://autolabs-ebon.vercel.app/experiments/reward-compatibility)
 - [Research repository, registered protocol and analysis](https://github.com/RaphaelKhalid/reward-compatibility)
