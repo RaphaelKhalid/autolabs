@@ -4,7 +4,7 @@ export interface Compatibility21Status {
   status: 'ready'|'running'|'paused'|'complete'; stage: 'dev'|'eval'; reason: string|null;
   updatedAt: string; protocolHash: string|null; evaluationSealed: boolean;
   progress: {callsDone: number; callsTotal: number; cases: {split: string; done: number; total: number}[]};
-  budget: {spentUsd: number; reservedUsd: number; priorCommittedUsd: number; totalCommittedUsd: number; capUsd: number; calls: number};
+  budget: {spentUsd: number; reservedUsd: number; priorCommittedUsd: number; totalCommittedUsd: number; capUsd: number; calls: number; knownSpendUsd?:number; uncertainChargeUpperBoundUsd?:number};
   execution: {concurrency: number}; ledger: {storageBytes: number; softLimitBytes: number};
   active: {id: string; started: number}[]; etaSeconds: number|null;
   gate: {pass?: boolean; parseRate?: number; forecastUsd?: number}|null;
@@ -21,6 +21,7 @@ export function validCompatibility21Status(value: unknown): value is Compatibili
     typeof value.evaluationSealed === 'boolean' && (value.reason === null || typeof value.reason === 'string') && (value.protocolHash === null || typeof value.protocolHash === 'string') &&
     object(progress) && nonnegative(progress.callsDone) && nonnegative(progress.callsTotal) && Array.isArray(progress.cases) && progress.cases.every(row => object(row) && typeof row.split === 'string' && nonnegative(row.done) && nonnegative(row.total)) &&
     object(budget) && ['spentUsd','reservedUsd','priorCommittedUsd','totalCommittedUsd','capUsd','calls'].every(key => nonnegative(budget[key])) &&
+    ['knownSpendUsd','uncertainChargeUpperBoundUsd'].every(key=>budget[key]===undefined||nonnegative(budget[key])) &&
     object(execution) && nonnegative(execution.concurrency) && object(ledger) && nonnegative(ledger.storageBytes) && nonnegative(ledger.softLimitBytes) &&
     Array.isArray(active) && active.every(row => object(row) && typeof row.id === 'string' && nonnegative(row.started)) &&
     (value.etaSeconds === null || nonnegative(value.etaSeconds)) && (value.gate === null || object(value.gate)) && (value.isolation === null || object(value.isolation)) &&
