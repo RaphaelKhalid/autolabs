@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STATUS_URL = 'https://afterlight-api.raphaelbahadurkhan.workers.dev/api/studies/persona-discovery/status';
 const QUESTION_URL = 'https://afterlight-research.vercel.app/#/questions/q-unsupervised-persona';
@@ -68,6 +68,8 @@ function timestampLabel(value: string): string {
 
 export function PersonaDiscoveryStudy() {
   const [record, setRecord] = useState<PersonaStudyStatus | null>(null);
+  const previousRecordRef = useRef<PersonaStudyStatus | null>(null);
+  const [previousRecord, setPreviousRecord] = useState<PersonaStudyStatus | null>(null);
   const [syncState, setSyncState] = useState<SyncState>('loading');
   const [lastSynchronized, setLastSynchronized] = useState<string | null>(null);
 
@@ -77,6 +79,8 @@ export function PersonaDiscoveryStudy() {
       if (!response.ok) throw new Error('status unavailable');
       const next = parseStatus(await response.json());
       if (!next) throw new Error('invalid status record');
+      setPreviousRecord(previousRecordRef.current);
+      previousRecordRef.current = next;
       setRecord(next);
       setLastSynchronized(next.updatedAt);
       setSyncState('ready');
@@ -97,6 +101,16 @@ export function PersonaDiscoveryStudy() {
   const stale = available && Date.now() - Date.parse(record.updatedAt) > 180_000;
   const notebookUrl = available ? record.notebookUrl : NOTEBOOK_URL;
   const measuredUnits = available && record && record.telemetry === 'notebook-log' ? record.completed + ' / ' + record.total : 'Awaiting notebook counts';
+  const measured = available && record?.telemetry === 'notebook-log';
+  const progress = measured && record ? Math.min(100, Math.max(0, (record.completed / Math.max(1, record.total)) * 100)) : 0;
+  const elapsedSeconds = measured && previousRecord && record && record.completed > previousRecord.completed
+    ? (Date.parse(record.updatedAt) - Date.parse(previousRecord.updatedAt)) / 1000
+    : 0;
+  const unitsPerSecond = elapsedSeconds > 0 && record && previousRecord ? (record.completed - previousRecord.completed) / elapsedSeconds : 0;
+  const etaSeconds = unitsPerSecond > 0 && record && record.status === 'running' ? Math.ceil((record.total - record.completed) / unitsPerSecond) : null;
+  const etaLabel = etaSeconds === null ? null : etaSeconds >= 3600
+    ? Math.floor(etaSeconds / 3600) + 'h ' + Math.ceil((etaSeconds % 3600) / 60) + 'm'
+    : Math.max(1, Math.ceil(etaSeconds / 60)) + 'm';
 
   return <main className="archive-page persona-study">
     <nav className="archive-nav" aria-label="Primary">
@@ -127,6 +141,11 @@ export function PersonaDiscoveryStudy() {
           <div><span className="archive-kicker">PHASE</span><strong>{record.phase}</strong></div>
           <div><span className="archive-kicker">RECORDED UNITS</span><strong>{measuredUnits}</strong></div>
         </div>
+        {measured && <div className="persona-progress" aria-label={'Discovery progress: ' + Math.round(progress) + ' percent'}>
+          <div className="persona-progress-label"><span className="archive-kicker">DISCOVERY PROGRESS</span><strong>{Math.round(progress)}%</strong></div>
+          <div className="persona-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><span style={{ width: progress + '%' }} /></div>
+          <p className="persona-eta">{etaLabel ? 'Estimated time remaining · ' + etaLabel : 'ETA calibrating from the next synchronized update'}</p>
+        </div>}
         <p className="persona-sync">Last synchronized status · {timestampLabel(record.updatedAt)}</p>
         {stale && <p className="persona-stale">Status may be stale. The last update is more than three minutes old.</p>}
         {record.artifactUrl ? <a href={record.artifactUrl} target="_blank" rel="noreferrer">Protocol and source ↗</a> : <p className="archive-caption">Protocol and source link pending.</p>}
