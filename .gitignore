@@ -13,3 +13,6 @@ coverage/
 orchestrator-worker/.dev.vars*
 orchestrator-worker/.wrangler/
 .vercel
+
+# Explicit self-hosted secret file (also covered by .env* above).
+.env.selfhost.local
