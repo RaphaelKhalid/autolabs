@@ -78,7 +78,7 @@ export function AutolabsHome() {
     <div className="home-playground-wash" aria-hidden="true" />
     <nav className="playground-nav" aria-label="Primary">
       <Link className="playground-brand" href="/" aria-label="AutoLabs home"><span>A</span><strong>AUTOLABS</strong></Link>
-      <div><Link href="/experiments">Experiments</Link><Link href="/research">Research</Link><Link href="/journal">Journal</Link><Link href="/studio">Studio</Link><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source ↗</a></div>
+      <div><Link href="/experiments">Experiments</Link><Link href="/events">Events</Link><Link href="/research">Research</Link><Link href="/journal">Journal</Link><Link href="/studio">Studio</Link><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source ↗</a></div>
     </nav>
     <section className="playground-intro"><p>THE AUTOLABS FIELD</p><h1>Meet the researchers.</h1></section>
     <section className="agent-arena" ref={arenaRef} aria-label="Interactive five-agent laboratory">
