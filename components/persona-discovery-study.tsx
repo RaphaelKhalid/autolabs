@@ -142,8 +142,8 @@ export function PersonaDiscoveryStudy() {
       <h2>Three phases, with confirmation kept separate.</h2>
       <ol className="archive-lessons persona-phases">
         <li><h3>Discovery</h3><p>Use Qwen2.5-7B-Instruct activations from 1,024 discovery responses with a pretrained layer 19 BatchTopK SAE. Select up to 32 candidate features without labels; these are study leads, not findings.</p></li>
-        <li><h3>Development</h3><p>Screen candidate features on 12 positive and negative prompts, record the selection rule, and carry at most three candidates forward.</p></li>
-        <li><h3>Confirmation</h3><p>The later plan covers 600 scenarios, six conditions, and two repeats per condition. Confirmation has not produced a result; any result will remain scoped to the tested setting.</p></li>
+        <li><h3>Development</h3><p>Screen each feature on the same 12 neutral prompts with positive and negative activation steering. Freeze behavioral definitions and fair prompting baselines before carrying at most three candidates forward.</p></li>
+        <li><h3>Confirmation</h3><p>The later plan covers 600 scenarios per candidate, six conditions, and two repeats per condition. Confirmation has not produced a result; any result will remain scoped to the tested setting.</p></li>
       </ol>
     </section>
 
