@@ -34,3 +34,11 @@
   .persona-links { display: grid; }
   .persona-links .archive-button { width: 100%; }
 }
+.persona-progress { margin: 28px 0 6px; max-width: 760px; }
+.persona-progress-label { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; margin-bottom: 9px; }
+.persona-progress-label .archive-kicker { margin: 0; color: #5d6258; }
+.persona-progress-label strong { font: 16px var(--font-mono), monospace; color: #315f54; }
+.persona-progress-track { height: 9px; overflow: hidden; border: 1px solid #9caf9d; background: #d5ddcf; }
+.persona-progress-track span { display: block; height: 100%; background: #477969; transition: width 600ms ease; }
+.persona-eta { margin: 9px 0 0; color: #5d6258; font: 12px/1.6 var(--font-mono), monospace; }
+@media (prefers-reduced-motion: reduce) { .persona-progress-track span { transition: none; } }
