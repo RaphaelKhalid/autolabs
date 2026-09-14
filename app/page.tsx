@@ -1,11 +1,12 @@
-import { currentExperimentPath } from '../lib/experiment-landing';
-import { redirect } from 'next/navigation';
-import { connection } from 'next/server';
+import type { Metadata } from 'next';
+import { AutolabsHome } from '@/components/autolabs-home';
 
-export default async function Home() {
-  if (process.env.AUTOLABS_SELF_HOSTED === '1') redirect('/studio');
-  // Request-time redirect, while the public successor-status fetch can cache for 15s.
-  await connection();
-  // Temporary redirect: the newest published experiment changes over time.
-  redirect(await currentExperimentPath());
+export const metadata: Metadata = {
+  title: 'AutoLabs · Observable agent experiments',
+  description: 'A public laboratory for agent experiments, research records and reproducible evidence.',
+};
+
+export default function Home() {
+  if (process.env.AUTOLABS_SELF_HOSTED === '1') return <AutolabsHome />;
+  return <AutolabsHome />;
 }
