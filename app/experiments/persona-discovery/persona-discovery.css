@@ -1,0 +1,36 @@
+.persona-study { max-width: 1120px; }
+.persona-study .archive-heading { max-width: 820px; }
+.persona-study .archive-heading > p:not(.archive-kicker) { max-width: 700px; }
+.persona-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.persona-links .archive-button { margin: 0; }
+.persona-status { border-left-color: #477969; background: #e5eadf; }
+.persona-status-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.persona-status-head .archive-kicker { margin: 0; }
+.persona-status-pill { padding: 5px 9px; border: 1px solid #a5a899; color: #5d6258; font: 11px var(--font-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
+.persona-status-pill.is-available { border-color: #477969; color: #315f54; }
+.persona-status-pill.is-stale { border-color: #a46f3d; color: #8a5d33; }
+.persona-stale { color: #8a5d33; font: 12px/1.6 var(--font-mono), monospace; }
+.persona-status h2 { max-width: 760px; margin: 20px 0 28px; }
+.persona-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 620px; margin: 20px 0; }
+.persona-status-grid > div { display: grid; gap: 7px; padding-top: 12px; border-top: 1px solid #b7c1b3; }
+.persona-status-grid .archive-kicker { color: #5d6258; }
+.persona-status-grid strong { font-size: 28px; font-weight: 400; }
+.persona-sync { color: #5d6258; font: 12px/1.6 var(--font-mono), monospace; overflow-wrap: anywhere; }
+.persona-phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; padding-left: 0; list-style: none; }
+.persona-phases li { padding: 18px 0 0; border-top: 1px solid #b5b5a5; }
+.persona-phases li:before { display: block; margin-bottom: 12px; color: #725a3b; font: 12px var(--font-mono), monospace; }
+.persona-phases li:nth-child(1):before { content: '01'; }
+.persona-phases li:nth-child(2):before { content: '02'; }
+.persona-phases li:nth-child(3):before { content: '03'; }
+.persona-phases h3 { margin: 0; font-size: 25px; font-weight: 400; }
+.persona-phases p { margin-top: 10px; }
+.persona-boundary { max-width: 860px; }
+.persona-boundary h2 { max-width: 620px; }
+.persona-study footer { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; align-items: start; }
+.persona-study footer p { margin: 0; overflow-wrap: anywhere; }
+@media(max-width: 700px) {
+  .persona-status-head { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .persona-status-grid, .persona-phases, .persona-study footer { grid-template-columns: 1fr; }
+  .persona-links { display: grid; }
+  .persona-links .archive-button { width: 100%; }
+}
