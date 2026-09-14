@@ -91,7 +91,7 @@ export function AutolabsHome() {
           <div className="play-agent-aura" aria-hidden="true" />
           <div className="play-agent-note"><b>0{index + 1}</b><span>{agent.name}</span></div>
           <AlienForm agent={{ id: agent.id, name: agent.name, color: colors[index] }} index={index} meeting={false} />
-          {isSpeaking && <div className="play-agent-dialogue" aria-live="polite"><b>{agent.name}</b><span>{currentLine.text}</span></div>}
+          {isSpeaking && <div className={'play-agent-dialogue ' + (position.y < 43 ? 'dialogue-below' : '')} aria-live="polite"><b>{agent.name}</b><span>{currentLine.text}</span></div>}
           <strong>{agent.name}</strong><small>{agent.epithet}</small>
         </div>;
       })}

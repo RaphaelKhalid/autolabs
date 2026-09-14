@@ -91,7 +91,9 @@
 .play-agent-note span { color: rgba(248,245,236,.9); }
 .play-agent.is-selected .play-agent-note, .play-agent.is-speaking .play-agent-note { border-color: var(--agent-color); box-shadow: 0 0 16px color-mix(in srgb, var(--agent-color) 32%, transparent); }
 .play-agent-dialogue { position: absolute; z-index: 12; left: 50%; bottom: calc(100% + 4px); width: 190px; padding: 10px 12px; transform: translateX(-50%); border: 1px solid color-mix(in srgb, var(--agent-color) 62%, rgba(248,245,236,.4)); background: rgba(17,27,27,.78); box-shadow: 0 10px 28px rgba(0,0,0,.18), 0 0 24px color-mix(in srgb, var(--agent-color) 22%, transparent); backdrop-filter: blur(12px); font-size: 11px; line-height: 1.35; }
+.play-agent-dialogue.dialogue-below { top: calc(100% - 2px); bottom: auto; }
 .play-agent-dialogue:after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); border-right: 1px solid color-mix(in srgb, var(--agent-color) 62%, rgba(248,245,236,.4)); border-bottom: 1px solid color-mix(in srgb, var(--agent-color) 62%, rgba(248,245,236,.4)); background: rgba(17,27,27,.78); }
+.play-agent-dialogue.dialogue-below:after { top: -6px; bottom: auto; transform: translateX(-50%) rotate(225deg); }
 .play-agent-dialogue b { display: block; margin-bottom: 4px; color: var(--agent-color); font: 9px var(--font-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
 .play-agent-dialogue span { color: rgba(248,245,236,.9); }
 .play-agent.is-punched { animation: agent-punch .52s cubic-bezier(.2,.8,.2,1); }
