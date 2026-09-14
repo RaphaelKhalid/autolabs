@@ -50,6 +50,15 @@ export const finiteCompatibility: ExperimentDefinition = {
   verifier: 'Exact coin-state checks and isolated affine-trigger program checks. Failure to find a witness is not a conflict proof.',
   budgets: {openai: 40, exa: 0},
 };
+export const personaDiscovery: ExperimentDefinition = {
+  sequence: 5, slug: 'persona-discovery', title: 'Unsupervised persona discovery', label: 'Study proposal',
+  runId: 'persona-discovery-v1', status: 'planned', model: 'Qwen2.5-7B-Instruct', reasoning: 'Activation study', researchers: 1, rounds: 3,
+  scheduleLabel: 'Discovery · development · confirmation',
+  objective: 'Can label-free SAE feature selection recover generalizable persona tendencies that optimized prompting and prompt-extracted persona vectors struggle to recover?',
+  protocol: 'Qwen2.5-7B-Instruct, pretrained layer 19 BatchTopK SAE, 1,024 discovery responses, up to 32 features, 12 positive and negative development prompts, then at most 3 candidates for 600 scenarios across 6 conditions with 2 repeats.',
+  verifier: 'Held-out confirmation across the planned scenarios. No confirmation result is claimed yet.',
+  budgets: { openai: 0, exa: 0 },
+};
 export const rewardCategories: ExperimentDefinition = {
   sequence: 4, slug: 'reward-categories-22', title: 'Classifying reward pairs', label: 'Experiment 002.2',
   runId: 'experiment-002-2-v1', status: 'planned', model: 'gpt-5.6-luna', reasoning: 'none', researchers: 1, rounds: 4,
@@ -60,7 +69,7 @@ export const rewardCategories: ExperimentDefinition = {
   budgets: {openai: 40, exa: 0},
 };
 /** Planned successors appear in navigation, but do not replace the landing page before verified launch. */
-export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility, finiteCompatibility, rewardCategories].sort((a,b)=>b.sequence-a.sequence);
+export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility, finiteCompatibility, rewardCategories, personaDiscovery].sort((a,b)=>b.sequence-a.sequence);
 export const latestExperiment = experiments.find(experiment=>experiment.status!=='planned')!;
 export const pilotReportUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/report`;
 export const pilotLedgerUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/events`;
