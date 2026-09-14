@@ -36,7 +36,7 @@ function TestCard({ onRun, running }: { onRun: (key: string) => void; running: b
       <dl className="events-facts"><div><dt>Model</dt><dd>gpt-4.1-mini</dd></div><div><dt>Calls</dt><dd>1 fixed call</dd></div><div><dt>Hard cap</dt><dd>64 output tokens</dd></div><div><dt>Spend guard</dt><dd>One request only</dd></div></dl>
       <label className="events-key">Owner key<input type="password" autoComplete="off" value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} placeholder="Configured server key" /></label>
       <button className="events-run-button" disabled={!ownerKey || running} onClick={() => onRun(ownerKey)}>{running ? 'Calling model…' : 'Run the test call'}</button>
-      <p className="events-fine">The key is sent to the AutoLabs server as an authorization header and is never displayed or stored in the browser.</p>
+      <p className="events-fine">The key is sent to the AutoLabs server as an authorization header and is not persisted by the page.</p>
     </article>
   );
 }
