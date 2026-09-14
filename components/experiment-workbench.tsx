@@ -6,6 +6,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Check, ChevronRight, CircleHelp, Copy
 import { AlienForm } from './autolabs-observatory';
 import { starter, validateConfiguration, type Agent, type Configuration } from '@/selfhost/config';
 import type { Run } from '@/selfhost/engine';
+import type { AfterlightQuestion } from '@/lib/afterlight-contract';
 
 const forms = [
   {name:'Mira', color:'#ca6844', role:'Map approaches and propose testable hypotheses.'},
@@ -17,12 +18,12 @@ const forms = [
 type Point = {x:number;y:number};
 type Payload = {kind:'form';index:number}|{kind:'model';model:string}|{kind:'move';id:string};
 type Summary = Pick<Run,'id'|'status'|'round'|'spentUsd'> & {title:string;provider:string};
-const initial = () => ({...structuredClone(starter), agents:starter.agents.map((a,i)=>({...a,name:forms[i].name,color:forms[i].color,appearance:i}))});
+const initial = (questionContext?:AfterlightQuestion|null) => { const config={...structuredClone(starter), agents:starter.agents.map((a,i)=>({...a,name:forms[i].name,color:forms[i].color,appearance:i}))}; if(questionContext){config.title=('Research: ' + questionContext.title).slice(0,160);config.template='research-notes-v1';} return config; };
 const placement = (i:number):Point => ({x:[27,71,49,25,74,48,18,81][i],y:[35,38,66,72,74,25,55,56][i]});
 
-export function ExperimentWorkbench({selfHosted=false}:{selfHosted?:boolean}) {
+export function ExperimentWorkbench({selfHosted=false,questionContext=null}:{selfHosted?:boolean;questionContext?:AfterlightQuestion|null}) {
   const reducedMotion=useReducedMotion();
-  const [config,setConfig]=useState<Configuration>(initial);
+  const [config,setConfig]=useState<Configuration>(()=>initial(questionContext));
   const [selected,setSelected]=useState<string|null>(starter.agents[0].id);
   const [positions,setPositions]=useState<Record<string,Point>>({});
   const [tray,setTray]=useState<'forms'|'models'>('forms');
@@ -102,8 +103,9 @@ export function ExperimentWorkbench({selfHosted=false}:{selfHosted?:boolean}) {
     <header className="wb-header">
       <a className="wb-brand" href="/">A<span>AUTOLABS</span></a><span className="wb-divider"/>
       <input aria-label="Experiment title" className="wb-title" value={config.title} onChange={e=>change('title',e.target.value)}/>
-      <div className="wb-header-actions">{!selfHosted?<><span>Configuration only</span><a href="https://github.com/RaphaelKhalid/autolabs/tree/main/selfhost">Self-host</a></>:<><button onClick={()=>setPanel('runs')}><History size={17}/><span>Runs</span></button><button className={connected?'wb-connected':''} onClick={()=>setPanel('connection')}><KeyRound size={16}/>{connected?'Connected':'Connect runner'}</button></>}</div>
+      <div className="wb-header-actions"><a href="/research">Research</a>{!selfHosted?<><span>Configuration only</span><a href="https://github.com/RaphaelKhalid/autolabs/tree/main/selfhost">Self-host</a></>:<><button onClick={()=>setPanel('runs')}><History size={17}/><span>Runs</span></button><button className={connected?'wb-connected':''} onClick={()=>setPanel('connection')}><KeyRound size={16}/>{connected?'Connected':'Connect runner'}</button></>}</div>
     </header>
+    {questionContext && <section className="wb-question-context" aria-label="Research question context"><div><span>RESEARCH HANDOFF</span><h2>{questionContext.title}</h2><a href={questionContext.sourceUrl} target="_blank" rel="noreferrer">Source record ↗</a></div><p><strong>Evaluator pending.</strong> This source and question are design context. They do not create a runnable evaluator or start a paid run.</p></section>}
     <div className="wb-body">
       <aside className="wb-library" aria-label="Component library">
         <div className="wb-tabs"><button aria-pressed={tray==='forms'} onClick={()=>setTray('forms')}>Agents</button><button aria-pressed={tray==='models'} onClick={()=>setTray('models')}>Models</button></div>

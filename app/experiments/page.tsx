@@ -5,7 +5,7 @@ import { experiments } from '@/lib/experiment-catalog';
 export const metadata: Metadata = { title: 'Experiments · AutoLabs' };
 export default function ExperimentsPage() {
   return <main className="archive-page">
-    <nav className="archive-nav" aria-label="Primary"><Link href="/">A / AUTOLABS</Link><Link href="/journal">Lab journal</Link></nav>
+    <nav className="archive-nav" aria-label="Primary"><Link href="/">A / AUTOLABS</Link><Link href="/journal">Lab journal</Link><Link href="/research">Research</Link></nav>
     <header className="archive-heading"><p className="archive-kicker">AUTOLABS</p><h1>Experiments</h1><p>Research objectives, configurations, results and supporting records for AutoLabs experiments.</p></header>
     <section aria-label="Experiments">{experiments.map((experiment) => <article className="experiment-entry" key={experiment.slug}>
       <div className="archive-kicker">{experiment.label} / {experiment.status} / {experiment.scheduleLabel ?? `${experiment.rounds} rounds`}</div>

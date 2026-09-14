@@ -332,6 +332,7 @@ export function AutolabsObservatory() {
         <nav className="masthead__nav" aria-label="Primary">
           <a href="/">Lab</a>
           <a href="/experiments">Experiments</a>
+          <a href="/research">Research</a>
           <a href="#ledger">Ledger</a>
           {state.report && <a href="#report">Report</a>}
           <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={11} /></a>

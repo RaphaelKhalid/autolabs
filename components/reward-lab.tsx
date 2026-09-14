@@ -32,7 +32,7 @@ export function RewardLab(){
   const lower=Math.min(-.1,...bounds),upper=Math.max(.1,...bounds),span=upper-lower;
   const plotX=(n:number)=>315+((n-lower)/span)*355;
   return <main className="reward-page">
-    <nav className="reward-nav" aria-label="Main navigation"><Link href="/">A / AUTOLABS</Link><div><Link href="/experiments">Experiments</Link><a href={REPO}>Source ↗</a></div></nav>
+    <nav className="reward-nav" aria-label="Main navigation"><Link href="/">A / AUTOLABS</Link><div><Link href="/experiments">Experiments</Link><Link href="/research">Research</Link><a href={REPO}>Source ↗</a></div></nav>
     <header className="reward-heading"><p className="reward-label">EXPERIMENT 002 · AI SAFETY</p><h1>Measuring reward<br/>compatibility.</h1><p>Can a small test predict when optimizing reasoning makes it harder to monitor?</p></header>
     <section className="reward-overview" aria-label="Live experiment">
       <div className={`reward-researcher ${running?'is-running':''}`}>
