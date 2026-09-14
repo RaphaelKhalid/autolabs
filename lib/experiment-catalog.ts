@@ -5,7 +5,8 @@ export interface ExperimentDefinition {
   title: string;
   label: string;
   runId: string;
-  status: 'complete' | 'planned' | 'registered';
+  status: 'complete' | 'active' | 'planned' | 'registered';
+  protocolState?: 'locked' | 'draft';
   model: string;
   reasoning: string;
   researchers: number;
@@ -51,10 +52,10 @@ export const finiteCompatibility: ExperimentDefinition = {
   budgets: {openai: 40, exa: 0},
 };
 export const personaDiscovery: ExperimentDefinition = {
-  sequence: 5, slug: 'persona-discovery', title: 'Unsupervised persona discovery', label: 'Study proposal',
-  runId: 'persona-discovery-v1', status: 'planned', model: 'Qwen2.5-7B-Instruct', reasoning: 'Activation study', researchers: 1, rounds: 3,
+  sequence: 5, slug: 'persona-discovery', title: 'Unsupervised persona discovery', label: 'Active study',
+  runId: 'persona-discovery-v1', status: 'active', protocolState: 'locked', model: 'Qwen2.5-7B-Instruct', reasoning: 'Activation study', researchers: 1, rounds: 3,
   scheduleLabel: 'Discovery · development · confirmation',
-  objective: 'Can label-free SAE feature selection recover generalizable persona tendencies that optimized prompting and prompt-extracted persona vectors struggle to recover?',
+  objective: 'Test whether label-free SAE features reveal a repeatable behavior that ordinary prompt-based persona extraction misses.',
   protocol: 'Qwen2.5-7B-Instruct, pretrained layer 19 BatchTopK SAE, 1,024 discovery responses, up to 32 features, 12 positive and negative development prompts, then at most 3 candidates for 600 scenarios across 6 conditions with 2 repeats.',
   verifier: 'Held-out confirmation across the planned scenarios. No confirmation result is claimed yet.',
   budgets: { openai: 0, exa: 0 },
