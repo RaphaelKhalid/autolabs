@@ -3,8 +3,8 @@ import { PersonaDiscoveryStudy } from '@/components/persona-discovery-study';
 import './persona-discovery.css';
 
 export const metadata: Metadata = {
-  title: 'Unsupervised persona discovery · AutoLabs',
-  description: 'Live monitoring for the bounded Experiment 3A unsupervised persona discovery study.',
+  title: 'Experiment 3A · AutoLabs',
+  description: 'Verified Experiment 3A development results, preliminary SAE signals, and the scoring plan.',
 };
 
 export default function PersonaDiscoveryPage() {
