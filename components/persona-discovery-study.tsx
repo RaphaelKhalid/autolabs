@@ -51,7 +51,7 @@ export function PersonaDiscoveryStudy() {
     </section>
 
     <section className="persona-results" aria-labelledby="preliminary-results">
-      <div className="persona-section-heading"><p className="persona-eyebrow">PRELIMINARY RESULTS</p><h2 id="preliminary-results">The screen moved text, not yet a persona claim</h2></div>
+      <div className="persona-section-heading"><p className="persona-eyebrow">PRELIMINARY RESULTS</p><h2 id="preliminary-results">Preliminary results</h2></div>
       <p className="persona-results-lede">The 32 label-free candidates completed a development screen across 12 neutral scenarios. Paired token changes show that steering affected generation, but this is only a perturbation diagnostic until blinded behavioral scoring is complete.</p>
       <div className="persona-results-grid">
         <article><span>32</span><h3>features screened</h3><p>One calibrated positive and one calibrated negative intervention per feature.</p></article>
