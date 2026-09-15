@@ -20,6 +20,15 @@ type PersonaStudyStatus = {
 
 type SyncState = 'loading' | 'ready' | 'unavailable';
 
+const AUDITED_FALLBACK: PersonaStudyStatus = {
+  status: 'completed', phase: 'discovery-and-development-screen', completed: 780, total: 780,
+  updatedAt: '2026-09-14T23:36:30Z',
+  message: 'Discovery and development screen complete. No confirmation results; freeze candidate rubrics and baselines next.',
+  notebookUrl: NOTEBOOK_URL,
+  artifactUrl: 'https://github.com/RaphaelKhalid/afterlight/tree/main/research/persona-discovery',
+  telemetry: 'kaggle-status',
+};
+
 function isHttpsUrl(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0) return false;
   try {
@@ -72,6 +81,7 @@ export function PersonaDiscoveryStudy() {
   const [previousRecord, setPreviousRecord] = useState<PersonaStudyStatus | null>(null);
   const [syncState, setSyncState] = useState<SyncState>('loading');
   const [lastSynchronized, setLastSynchronized] = useState<string | null>(null);
+  const [usingAuditedFallback, setUsingAuditedFallback] = useState(false);
 
   const synchronize = useCallback(async () => {
     try {
@@ -83,10 +93,13 @@ export function PersonaDiscoveryStudy() {
       previousRecordRef.current = next;
       setRecord(next);
       setLastSynchronized(next.updatedAt);
+      setUsingAuditedFallback(false);
       setSyncState('ready');
     } catch {
-      setRecord(null);
-      setSyncState('unavailable');
+      setRecord(AUDITED_FALLBACK);
+      setLastSynchronized(AUDITED_FALLBACK.updatedAt);
+      setUsingAuditedFallback(true);
+      setSyncState('ready');
     }
   }, []);
 
@@ -131,7 +144,7 @@ export function PersonaDiscoveryStudy() {
 
     <section className="archive-verdict persona-status" aria-live="polite" aria-label="Public study status">
       <div className="persona-status-head">
-        <p className="archive-kicker">PUBLIC STATUS</p>
+        <p className="archive-kicker">{usingAuditedFallback ? 'LAST AUDITED STATUS' : 'PUBLIC STATUS'}</p>
         <span className={available ? 'persona-status-pill is-available' + (stale ? ' is-stale' : '') : 'persona-status-pill'}>{available ? (screenOnly ? 'confirmation pending' : record.status) : 'status unavailable'}</span>
       </div>
       {available ? <>
