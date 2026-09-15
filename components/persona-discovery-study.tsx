@@ -1,104 +1,35 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-const STATUS_URL = 'https://afterlight-api.raphaelbahadurkhan.workers.dev/api/studies/persona-discovery/status';
+const STATUS_URL = '/api/persona-3a/status';
 const QUESTION_URL = 'https://afterlight-research.vercel.app/#/questions/q-unsupervised-persona';
 const NOTEBOOK_URL = 'https://www.kaggle.com/code/raphaelkhalid0/unsupervisedsaes';
 
 type PersonaStudyStatus = {
-  status: string;
-  phase: string;
-  completed: number;
-  total: number;
-  updatedAt: string;
-  message: string;
-  notebookUrl: string;
-  artifactUrl: string | null;
-  telemetry: 'notebook-log' | 'kaggle-status';
+  launch?: { id?: string; status?: string; phase?: string; requestedAt?: string; updatedAt?: string; maxRuntimeSeconds?: number; manifestHash?: string };
+  telemetry?: { status?: string; phase?: string; completed?: number; total?: number; updatedAt?: string; message?: string; notebookUrl?: string; artifactUrl?: string | null } | null;
 };
 
-type SyncState = 'loading' | 'ready' | 'unavailable';
-
-const AUDITED_FALLBACK: PersonaStudyStatus = {
-  status: 'completed', phase: 'discovery-and-development-screen', completed: 780, total: 780,
-  updatedAt: '2026-09-14T23:36:30Z',
-  message: 'Discovery and development screen complete. No confirmation results; freeze candidate rubrics and baselines next.',
-  notebookUrl: NOTEBOOK_URL,
-  artifactUrl: 'https://github.com/RaphaelKhalid/afterlight/tree/main/research/persona-discovery',
-  telemetry: 'kaggle-status',
-};
-
-function isHttpsUrl(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length === 0) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function parseStatus(value: unknown): PersonaStudyStatus | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.status !== 'string' ||
-    typeof record.phase !== 'string' ||
-    !Number.isInteger(record.completed) ||
-    !Number.isInteger(record.total) ||
-    (record.completed as number) < 0 ||
-    (record.total as number) < 0 ||
-    (record.completed as number) > (record.total as number) ||
-    typeof record.updatedAt !== 'string' ||
-    Number.isNaN(Date.parse(record.updatedAt)) ||
-    typeof record.message !== 'string' ||
-    (record.telemetry !== 'notebook-log' && record.telemetry !== 'kaggle-status') ||
-    !isHttpsUrl(record.notebookUrl) ||
-    (record.artifactUrl !== null && !isHttpsUrl(record.artifactUrl))
-  ) return null;
-  return {
-    status: record.status,
-    phase: record.phase,
-    completed: record.completed as number,
-    total: record.total as number,
-    updatedAt: record.updatedAt,
-    message: record.message,
-    notebookUrl: record.notebookUrl,
-    artifactUrl: record.artifactUrl as string | null,
-    telemetry: record.telemetry as 'notebook-log' | 'kaggle-status',
-  };
-}
-
-function timestampLabel(value: string): string {
-  const date = new Date(value);
-  return date.toISOString() + ' · ' + date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+function timestampLabel(value?: string) {
+  if (!value) return 'Waiting for a synchronized update';
+  return `Updated ${new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
 }
 
 export function PersonaDiscoveryStudy() {
   const [record, setRecord] = useState<PersonaStudyStatus | null>(null);
-  const previousRecordRef = useRef<PersonaStudyStatus | null>(null);
-  const [previousRecord, setPreviousRecord] = useState<PersonaStudyStatus | null>(null);
-  const [syncState, setSyncState] = useState<SyncState>('loading');
-  const [lastSynchronized, setLastSynchronized] = useState<string | null>(null);
-  const [usingAuditedFallback, setUsingAuditedFallback] = useState(false);
+  const [syncState, setSyncState] = useState<'loading' | 'ready'>('loading');
+  const [ownerKey, setOwnerKey] = useState('');
+  const [launchState, setLaunchState] = useState('');
 
   const synchronize = useCallback(async () => {
     try {
       const response = await fetch(STATUS_URL, { cache: 'no-store' });
       if (!response.ok) throw new Error('status unavailable');
-      const next = parseStatus(await response.json());
-      if (!next) throw new Error('invalid status record');
-      setPreviousRecord(previousRecordRef.current);
-      previousRecordRef.current = next;
-      setRecord(next);
-      setLastSynchronized(next.updatedAt);
-      setUsingAuditedFallback(false);
-      setSyncState('ready');
+      setRecord(await response.json() as PersonaStudyStatus);
     } catch {
-      setRecord(AUDITED_FALLBACK);
-      setLastSynchronized(AUDITED_FALLBACK.updatedAt);
-      setUsingAuditedFallback(true);
+      setRecord(null);
+    } finally {
       setSyncState('ready');
     }
   }, []);
@@ -109,85 +40,54 @@ export function PersonaDiscoveryStudy() {
     return () => window.clearInterval(interval);
   }, [synchronize]);
 
-  const available = syncState === 'ready' && record !== null;
-  const screenOnly = record?.status === 'completed' && record.phase.toLowerCase() === 'discovery-and-development-screen';
-  const stale = available && Date.now() - Date.parse(record.updatedAt) > 180_000;
-  const notebookUrl = available ? record.notebookUrl : NOTEBOOK_URL;
-  const measuredUnits = available && record && record.telemetry === 'notebook-log' ? record.completed + ' / ' + record.total : 'Awaiting notebook counts';
-  const measured = available && record?.telemetry === 'notebook-log';
-  const progress = measured && record ? Math.min(100, Math.max(0, (record.completed / Math.max(1, record.total)) * 100)) : 0;
-  const elapsedSeconds = measured && previousRecord && record && record.completed > previousRecord.completed
-    ? (Date.parse(record.updatedAt) - Date.parse(previousRecord.updatedAt)) / 1000
-    : 0;
-  const unitsPerSecond = elapsedSeconds > 0 && record && previousRecord ? (record.completed - previousRecord.completed) / elapsedSeconds : 0;
-  const etaSeconds = unitsPerSecond > 0 && record && record.status === 'running' ? Math.ceil((record.total - record.completed) / unitsPerSecond) : null;
-  const etaLabel = etaSeconds === null ? null : etaSeconds >= 3600
-    ? Math.floor(etaSeconds / 3600) + 'h ' + Math.ceil((etaSeconds % 3600) / 60) + 'm'
-    : Math.max(1, Math.ceil(etaSeconds / 60)) + 'm';
+  const launch = record?.launch;
+  const telemetry = record?.telemetry;
+  const launchStatus = launch?.status ?? 'unavailable';
+  const statusLabel = launchStatus === 'started' && telemetry?.status ? telemetry.status : launchStatus;
+  const completed = telemetry?.completed ?? 0;
+  const total = telemetry?.total ?? 780;
+  const hasProgress = typeof telemetry?.completed === 'number' && typeof telemetry?.total === 'number';
+  const progress = hasProgress ? Math.min(100, Math.max(0, completed / Math.max(1, total) * 100)) : 0;
+  const notebookUrl = telemetry?.notebookUrl ?? NOTEBOOK_URL;
+  const monitorMessage = launchStatus === 'queued'
+    ? 'Launch accepted. Waiting for the owner relay to start Kaggle.'
+    : telemetry?.message ?? (launchStatus === 'started' ? 'Kaggle development run is active.' : 'No active launch.');
 
-  return <main className="archive-page persona-study">
-    <nav className="archive-nav" aria-label="Primary">
-      <a href="/">A / AUTOLABS</a>
-      <a href="/experiments">All experiments</a>
-      <a href="/research">Research</a>
+  async function start3A() {
+    setLaunchState('Queueing the development run…');
+    try {
+      const response = await fetch('/api/control/persona-3a/start', { method: 'POST', headers: { 'content-type': 'application/json', 'x-autolabs-owner-key': ownerKey }, body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }) });
+      const data = await response.json().catch(() => ({})) as { launch?: { id?: string; status?: string }; error?: string };
+      setLaunchState(response.ok ? `Queued · ${data.launch?.id ?? 'request accepted'} · ${data.launch?.status ?? 'queued'}` : data.error ?? 'Launch request failed.');
+      void synchronize();
+    } catch {
+      setLaunchState('The orchestrator is unavailable; no launch was assumed.');
+    }
+  }
+
+  return <main className="persona-page">
+    <nav className="persona-nav" aria-label="Primary">
+      <a href="/" className="persona-brand">AUTOLABS <span>/</span> EXPERIMENT 3A</a>
+      <div><a href="/experiments">Experiments</a><a href="/research">Research</a></div>
     </nav>
 
-    <header className="archive-heading">
-      <p className="archive-kicker">STUDY PROPOSAL / UNSUPERVISED REPRESENTATIONS</p>
-      <h1>Unsupervised<br /><em>persona discovery.</em></h1>
-      <p>Can label-free SAE feature selection recover generalizable persona tendencies that optimized prompting and prompt-extracted persona vectors struggle to recover? This page shows the planned protocol and latest study update.</p>
-      <div className="persona-links">
-        <a className="archive-button" href={QUESTION_URL} target="_blank" rel="noreferrer">Read the Afterlight question ↗</a>
-        <a className="archive-button" href={notebookUrl} target="_blank" rel="noreferrer">Open the Kaggle notebook ↗</a>
-      </div>
+    <header className="persona-header">
+      <div><p className="persona-eyebrow">UNSUPERVISED REPRESENTATIONS · DEVELOPMENT STUDY</p><h1>Unsupervised <em>persona discovery</em></h1><p className="persona-lede">A label-free activation screen for repeatable behavioral directions in Qwen2.5‑7B‑Instruct.</p></div>
+      <div className="persona-header-links"><a href={QUESTION_URL} target="_blank" rel="noreferrer">Protocol ↗</a><a href={notebookUrl} target="_blank" rel="noreferrer">Kaggle notebook ↗</a></div>
     </header>
 
-    <section className="archive-verdict persona-status" aria-live="polite" aria-label="Public study status">
-      <div className="persona-status-head">
-        <p className="archive-kicker">{usingAuditedFallback ? 'LAST AUDITED STATUS' : 'PUBLIC STATUS'}</p>
-        <span className={available ? 'persona-status-pill is-available' + (stale ? ' is-stale' : '') : 'persona-status-pill'}>{available ? (screenOnly ? 'confirmation pending' : record.status) : 'status unavailable'}</span>
-      </div>
-      {available ? <>
-        <h2>{screenOnly ? 'Discovery and development screen recorded.' : record.message}</h2>
-        {screenOnly && <p>The discovery and development screen is recorded. Confirmation remains pending.</p>}
-        <div className="persona-status-grid">
-          <div><span className="archive-kicker">PHASE</span><strong>{record.phase}</strong></div>
-          <div><span className="archive-kicker">RECORDED UNITS</span><strong>{measuredUnits}</strong></div>
-        </div>
-        {measured && <div className="persona-progress" aria-label={'Discovery progress: ' + Math.round(progress) + ' percent'}>
-          <div className="persona-progress-label"><span className="archive-kicker">DISCOVERY PROGRESS</span><strong>{Math.round(progress)}%</strong></div>
-          <div className="persona-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><span style={{ width: progress + '%' }} /></div>
-          <p className="persona-eta">{etaLabel ? 'Estimated time remaining · ' + etaLabel : 'ETA calibrating from the next synchronized update'}</p>
-        </div>}
-        <p className="persona-sync">Last synchronized status · {timestampLabel(record.updatedAt)}</p>
-        {stale && <p className="persona-stale">Status may be stale. The last update is more than three minutes old.</p>}
-        {record.artifactUrl ? <a href={record.artifactUrl} target="_blank" rel="noreferrer">Protocol and source ↗</a> : <p className="archive-caption">Protocol and source link pending.</p>}
-      </> : <>
-        <h2>Status unavailable</h2>
-        <p>A synchronized study update is not available. This page does not estimate progress or report a result.</p>
-        <p className="persona-sync">Last synchronized status · {lastSynchronized ? timestampLabel(lastSynchronized) : 'unavailable'}</p>
-      </>}
+    <section className="persona-monitor" aria-live="polite" aria-label="Live experiment monitoring">
+      <div className="persona-monitor-top"><p className="persona-eyebrow">LIVE MONITOR</p><span className={'persona-status-pill ' + (statusLabel === 'started' || statusLabel === 'running' ? 'is-running' : '')}>{syncState === 'loading' ? 'syncing' : statusLabel}</span></div>
+      <h2>{monitorMessage}</h2>
+      <div className="persona-metrics"><div><span>PHASE</span><strong>{launch?.phase ?? 'development'}</strong></div><div><span>SCREEN UNITS</span><strong>{hasProgress ? `${completed} / ${total}` : `0 / ${total}`}</strong></div><div><span>COMPUTE</span><strong>2 × T4</strong></div><div><span>API SPEND</span><strong>$0</strong></div></div>
+      <div className="persona-progress" aria-label={'Screen progress: ' + Math.round(progress) + ' percent'}><div className="persona-progress-label"><span>SCREEN PROGRESS</span><strong>{Math.round(progress)}%</strong></div><div className="persona-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><span style={{ width: progress + '%' }} /></div></div>
+      <div className="persona-monitor-foot"><span>{timestampLabel(telemetry?.updatedAt ?? launch?.updatedAt ?? launch?.requestedAt)}</span><span>Auto-refresh · 30s</span></div>
     </section>
 
-    <section className="archive-section">
-      <p className="archive-kicker">01 / PLANNED METHOD</p>
-      <h2>Three phases, with confirmation kept separate.</h2>
-      <ol className="archive-lessons persona-phases">
-        <li><h3>Discovery</h3><p>Use Qwen2.5-7B-Instruct activations from 1,024 discovery responses with a pretrained layer 19 BatchTopK SAE. Select up to 32 candidate features without labels; these are study leads, not findings.</p></li>
-        <li><h3>Development</h3><p>Screen each feature on the same 12 neutral prompts with positive and negative activation steering. Freeze behavioral definitions and fair prompting baselines before carrying at most three candidates forward.</p></li>
-        <li><h3>Confirmation</h3><p>The later plan covers 600 scenarios per candidate, six conditions, and two repeats per condition. Confirmation has not produced a result; any result will remain scoped to the tested setting.</p></li>
-      </ol>
-    </section>
+    <section className="persona-method"><div className="persona-section-heading"><p className="persona-eyebrow">METHOD</p><h2>Three bounded stages</h2></div><div className="persona-method-grid"><article><span>01</span><h3>Discover</h3><p>1,024 neutral responses pass through a pretrained layer‑19 BatchTopK SAE. Up to 32 features are selected without persona labels.</p></article><article><span>02</span><h3>Steer</h3><p>Each feature is added and subtracted across 12 neutral scenarios to measure repeatable, sign-sensitive behavior.</p></article><article><span>03</span><h3>Confirm</h3><p>Only the strongest development candidates may advance to a separately approved held-out screen. Confirmation is not part of this run.</p></article></div></section>
 
-    <section className="archive-section persona-boundary">
-      <p className="archive-kicker">02 / RESEARCH BOUNDARY</p>
-      <h2>Planned work is not completed evidence.</h2>
-      <p>The Afterlight dossier is the source question. The Kaggle notebook is the working record. The confirmation phase has not produced a result, so this page reports the latest study update without presenting one.</p>
-    </section>
+    <section className="persona-control"><div><p className="persona-eyebrow">OWNER CONTROL</p><h2>Development launch</h2><p>Fixed Kaggle run · 6,600-second ceiling · no paid API calls.</p></div><div className="persona-control-form"><label htmlFor="owner-key">Owner key</label><input id="owner-key" type="password" autoComplete="off" value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} /><button disabled={!ownerKey || launchState.startsWith('Queueing')} onClick={() => void start3A()}>{launchState.startsWith('Queueing') ? 'Queueing…' : 'Queue development run'}</button>{launchState && <p role="status">{launchState}</p>}</div></section>
 
-    <footer className="archive-section">
-      <a href={QUESTION_URL} target="_blank" rel="noreferrer">Return to the source question ↗</a>
-      <p className="archive-caption">Notebook: <a href={notebookUrl} target="_blank" rel="noreferrer">{notebookUrl}</a></p>
-    </footer>
+    <footer className="persona-footer"><span>Qwen2.5‑7B‑Instruct · pretrained SAE · layer 19</span><a href={notebookUrl} target="_blank" rel="noreferrer">Working record ↗</a></footer>
   </main>;
 }

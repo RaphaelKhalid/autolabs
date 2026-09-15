@@ -1,0 +1,226 @@
+.font-options {
+  --options-ink: #e8edf0;
+  --options-muted: #9aa8b1;
+  --options-line: #2a3942;
+  --options-bg: #0c1217;
+  --options-panel: #121c23;
+  --options-cyan: #72e1d1;
+  --options-pink: #f083b4;
+  min-height: 100vh;
+  padding: 0 34px 60px;
+  color: var(--options-ink);
+  background: var(--options-bg);
+  font: 16px/1.55 var(--font-serif), Georgia, serif;
+}
+
+.font-options__header,
+.font-options__grid,
+.font-options__footer {
+  max-width: 1220px;
+  margin: 0 auto;
+}
+
+.font-options__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 34px 0 42px;
+  border-bottom: 1px solid var(--options-line);
+}
+
+.font-options__header .trace-brand {
+  margin-top: 4px;
+}
+
+.font-options__header .trace-brand__word {
+  color: var(--options-ink);
+  font-family: var(--font-serif), Georgia, serif !important;
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: normal !important;
+}
+
+.font-options__eyebrow {
+  margin: 0 0 7px;
+  color: var(--options-cyan);
+  font: 14px/1.2 var(--font-mono), monospace;
+  letter-spacing: .04em;
+}
+
+.font-options h1 {
+  max-width: 740px;
+  margin: 0;
+  font-size: clamp(30px, 4.4vw, 56px);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -.025em;
+}
+
+.font-options__header p:last-child {
+  max-width: 720px;
+  margin: 15px 0 0;
+  color: var(--options-muted);
+  font-size: 17px;
+}
+
+.font-options__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 24px 0;
+}
+
+.font-option {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--options-line);
+  background: var(--options-panel);
+}
+
+.font-option__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--options-line);
+}
+
+.font-option__head > span {
+  color: var(--options-cyan);
+  font: 14px var(--font-mono), monospace;
+}
+
+.font-option__head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.font-option__sample {
+  min-height: 260px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 24px 4px;
+  overflow: hidden;
+}
+
+.font-option__sample .glyph {
+  display: inline-block;
+  transform: translateY(var(--glyph-y)) rotate(var(--glyph-rotate)) scaleX(var(--glyph-scale));
+  transform-origin: 50% 80%;
+}
+
+.font-option__title,
+.font-option__experiment,
+.font-option__line {
+  display: block;
+  white-space: nowrap;
+}
+
+.font-option__title {
+  color: var(--options-cyan);
+  font-size: clamp(42px, 5vw, 70px);
+  line-height: .95;
+}
+
+.font-option__experiment {
+  color: var(--options-ink);
+  font-size: clamp(31px, 3.4vw, 50px);
+  line-height: 1;
+}
+
+.font-option__line {
+  margin-top: 8px;
+  color: var(--options-muted);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.option-casual .font-option__sample {
+  font-variation-settings: 'CASL' 1, 'CRSV' 1, 'MONO' .45, 'slnt' -4;
+}
+
+.option-casual .font-option__title,
+.option-casual .font-option__experiment {
+  font-weight: 600;
+}
+
+.option-ink .font-option__title,
+.option-ink .font-option__experiment {
+  font-weight: 700;
+}
+
+.option-ink .font-option__sample {
+  color: #f4c782;
+}
+
+.option-ink .font-option__title {
+  color: #f4c782;
+}
+
+.option-ink .font-option__line {
+  color: #c9a870;
+}
+
+.option-angular .font-option__sample {
+  font-feature-settings: 'calt' 1, 'ss01' 1;
+}
+
+.option-angular .font-option__title {
+  color: var(--options-pink);
+}
+
+.option-angular .font-option__line {
+  color: #c49bb0;
+}
+
+.font-option > p {
+  min-height: 52px;
+  margin: 0;
+  color: var(--options-muted);
+  font-size: 15px;
+}
+
+.font-option__test {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--options-line);
+  color: var(--options-muted);
+  font-size: 23px;
+}
+
+.font-options__footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--options-line);
+  color: var(--options-muted);
+  font-size: 15px;
+}
+
+.font-options__footer p {
+  margin: 0;
+}
+
+.font-options__footer strong {
+  color: var(--options-ink);
+}
+
+@media (max-width: 820px) {
+  .font-options {
+    padding: 0 20px 44px;
+  }
+
+  .font-options__grid,
+  .font-options__footer {
+    grid-template-columns: 1fr;
+  }
+
+  .font-option__sample {
+    min-height: 220px;
+  }
+}

@@ -7,6 +7,8 @@ interface __BaseEnv_Env {
 	GITHUB_REPOSITORY: "RaphaelKhalid/autolabs";
 	MODEL_NAME: "gpt-5.6-luna";
 	PUBLIC_WORKER_URL: "https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev";
+	EVENTS_LAUNCH_ENABLED: "false";
+	PERSONA_3A_LAUNCH_ENABLED: "false";
 	OPENAI_API_KEY: string;
 	EXA_API_KEY: string;
 	ADMIN_TOKEN: string;

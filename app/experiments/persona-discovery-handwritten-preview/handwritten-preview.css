@@ -1,0 +1,154 @@
+.handwritten-study {
+  --hand-ink: #20252b;
+  --hand-muted: #5e6872;
+  --hand-line: #d8dde2;
+  --hand-accent: #2b5f83;
+  min-height: 100vh;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 32px 72px;
+  color: var(--hand-ink);
+  background: #fcfcfb;
+  font: 18px/1.62 var(--font-serif), Georgia, serif;
+}
+
+.handwritten-study__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--hand-line);
+  font-size: 15px;
+}
+
+.handwritten-study__nav > a:first-child .trace-brand__word {
+  font-family: var(--font-hand), cursive !important;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: normal !important;
+}
+
+.handwritten-study__nav > div {
+  display: flex;
+  gap: 22px;
+}
+
+.handwritten-study__nav a,
+.handwritten-study__links a {
+  color: var(--hand-muted);
+}
+
+.handwritten-study__nav a:hover,
+.handwritten-study__links a:hover {
+  color: var(--hand-accent);
+}
+
+.handwritten-study__header {
+  padding: 50px 0 34px;
+}
+
+.hand-label {
+  margin: 0;
+  color: var(--hand-accent);
+  font: 28px/1 var(--font-hand), cursive;
+}
+
+.handwritten-study h1 {
+  max-width: 720px;
+  margin: 10px 0 18px;
+  font: 600 clamp(52px, 8vw, 86px)/.98 var(--font-hand), cursive;
+  letter-spacing: -.02em;
+}
+
+.handwritten-study__lede {
+  max-width: 680px;
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.45;
+}
+
+.handwritten-study__status {
+  max-width: 700px;
+  margin: 24px 0 0;
+  padding: 16px 18px;
+  border-left: 4px solid var(--hand-accent);
+  background: #f1f5f7;
+  color: var(--hand-muted);
+  font-size: 17px;
+}
+
+.handwritten-study__status strong,
+.handwritten-study li strong {
+  color: var(--hand-ink);
+  font-weight: 700;
+}
+
+.handwritten-study__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 22px;
+  font-size: 16px;
+}
+
+.handwritten-study__links a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.handwritten-study__section {
+  padding: 30px 0;
+  border-top: 1px solid var(--hand-line);
+}
+
+.handwritten-study__section ul {
+  max-width: 760px;
+  margin: 16px 0 0;
+  padding-left: 24px;
+}
+
+.handwritten-study__section li {
+  margin: 12px 0;
+  padding-left: 6px;
+}
+
+.handwritten-study__note {
+  margin: 28px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--hand-line);
+  color: var(--hand-muted);
+  font-size: 15px;
+}
+
+.handwritten-study__note span {
+  margin-right: 8px;
+  color: var(--hand-accent);
+  font: 24px/1 var(--font-hand), cursive;
+}
+
+@media (max-width: 620px) {
+  .handwritten-study {
+    padding: 0 20px 48px;
+  }
+
+  .handwritten-study__nav {
+    align-items: flex-start;
+  }
+
+  .handwritten-study__nav > div {
+    gap: 12px;
+  }
+
+  .handwritten-study__header {
+    padding-top: 38px;
+  }
+
+  .handwritten-study h1 {
+    font-size: 58px;
+  }
+
+  .handwritten-study__lede {
+    font-size: 19px;
+  }
+}

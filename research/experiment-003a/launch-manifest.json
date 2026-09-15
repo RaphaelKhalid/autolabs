@@ -1,0 +1,60 @@
+{
+  "studyId": "experiment-003a-v1",
+  "sourceStudyId": "persona-discovery-v1",
+  "title": "Unsupervised Persona Discovery",
+  "phase": "development",
+  "confirmationEnabled": false,
+  "maxRuntimeSeconds": 6600,
+  "apiBudgetUsd": 0,
+  "compute": {
+    "provider": "kaggle",
+    "gpu": true,
+    "accelerator": "NvidiaTeslaT4",
+    "count": 2,
+    "internet": true,
+    "privateNotebook": true,
+    "kaggleTimeoutSeconds": 7200
+  },
+  "pinned": {
+    "baseModel": "Qwen/Qwen2.5-7B-Instruct",
+    "baseModelRevision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "sae": "andyrdt/saes-qwen2.5-7b-instruct",
+    "saeRevision": "c37e53c4bb07127ad17ab88f28b93d4e87142e59",
+    "saeFolder": "resid_post_layer_19/trainer_1",
+    "layer": 19,
+    "width": 131072,
+    "dataset": "HuggingFaceH4/ultrachat_200k",
+    "datasetRevision": "8049631c405ae6576f93f445c6b81a66f76f5505a",
+    "datasetSplit": "train_sft",
+    "seed": 20260914,
+    "sourceContractHash": "71a3221c7f5e077b1af061635aaf4972aac320a6d04c46d97b839e4e9d070b43"
+  },
+  "developmentScreen": {
+    "discoveryResponses": 1024,
+    "eligibleFeatures": 6599,
+    "screenFeatures": 32,
+    "screenResponses": 780,
+    "screenScenarios": 12,
+    "batchSize": 4,
+    "maxInputTokens": 384,
+    "discoveryMaxNewTokens": 192,
+    "screenMaxNewTokens": 128,
+    "temperature": 0.7,
+    "topP": 0.95,
+    "saeTokenStride": 4,
+    "featureOccurrenceRange": [0.05, 0.8],
+    "maxDecoderCosine": 0.8,
+    "screenNormFraction": 0.1,
+    "maxCandidatesCarriedForward": 3
+  },
+  "launchInvariants": [
+    "This button queues development only; it never starts confirmation.",
+    "No paid provider API calls are permitted by this manifest.",
+    "The run must stop at 6600 seconds even if the Kaggle notebook remains alive.",
+    "Discovery leads and development screens are not confirmation evidence.",
+    "All status transitions and uncertain failures are retained in the public receipt.",
+    "The source contract and this manifest must be hash-verified before the relay pushes Kaggle."
+  ],
+  "artifactDirectory": "research/persona-discovery",
+  "manifestHash": "sha256:9d330f1b2e55971a250bbf8e49809f185712be7e228895e89d4a437dadd4315b"
+}
