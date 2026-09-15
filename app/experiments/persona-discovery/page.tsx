@@ -4,7 +4,7 @@ import './persona-discovery.css';
 
 export const metadata: Metadata = {
   title: 'Unsupervised persona discovery · AutoLabs',
-  description: 'A read-only proposal and public status surface for the planned unsupervised persona discovery study.',
+  description: 'Live monitoring for the bounded Experiment 3A unsupervised persona discovery study.',
 };
 
 export default function PersonaDiscoveryPage() {
