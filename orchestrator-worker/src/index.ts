@@ -2,6 +2,8 @@ import { addEvent, initialPublicState, globalSpend, nowIso, publicJobs, recentEv
 import { secretEquals, bearer, cors, verifyCallbackSignature } from './security';
 import { POST_COUNCIL_POLICY_SUMMARY } from './second-half-policy';
 import { AGENT_IDS, type AgentId, type RunParams } from './types';
+import { campaign as eventCampaign, claimEvent, eventRun } from './events';
+import { claimPersona3A, persona3AStatus, startPersona3A, updatePersona3A } from './persona-3a';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -348,6 +350,19 @@ export default {
           .run();
         return json({ accepted: true }, {}, corsHeaders);
       }
+
+      if (request.method === 'GET' && url.pathname === '/api/events/campaign') {
+        return await eventCampaign(env, corsHeaders);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/events/claim') {
+        return await claimEvent(request, env, corsHeaders);
+      }
+      const eventRunMatch = url.pathname.match(/^\/api\/events\/runs\/(event-[a-zA-Z0-9-]+)$/);
+      if (request.method === 'GET' && eventRunMatch) return await eventRun(env, eventRunMatch[1], corsHeaders);
+      if (request.method === 'GET' && url.pathname === '/api/persona-3a/status') return await persona3AStatus(env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3a/start') return await startPersona3A(request, env, corsHeaders);
+      if (request.method === 'GET' && url.pathname === '/api/persona-3a/next') return await claimPersona3A(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3a/update') return await updatePersona3A(request, env, corsHeaders);
 
       return json({ error: 'Not found.' }, { status: 404 }, corsHeaders);
     } catch (error) {
