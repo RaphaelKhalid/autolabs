@@ -33,7 +33,7 @@ import harvest
 import sae as sae_mod
 import steer
 from config import Config
-from report import WorkerClient, sha256_of_payload
+from report import WorkerClient, sha256_of_payload, _progress
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("autolabs_3c.run_smoke")
@@ -100,7 +100,7 @@ def stage_boot(config: Config, workdir: Path, client: WorkerClient, model, token
 
     client.report(
         "boot",
-        progress={"done": 2, "total": 2},
+        progress=_progress(2, 2),
         records=[
             {"recordId": "boot-identity-hook", "payload": identity_record},
             {"recordId": "boot-assistant-mask", "payload": mask_record},
@@ -215,7 +215,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
                 trained_sae.save(ckpt_path)
                 client.report(
                     "train",
-                    progress={"done": tokens_done, "total": config.tokens_target},
+                    progress=_progress(tokens_done, config.tokens_target),
                     records=[
                         {
                             "recordId": f"train-checkpoint-{tokens_done}",
@@ -265,7 +265,7 @@ def stage_steer(config: Config, workdir: Path, client: WorkerClient, model, toke
 
     records = steer.run_calibration(config, model, tokenizer, trained_sae, feature_stats, scenarios, device, seed=config.seed)
     path.write_text(json.dumps(records, indent=2), encoding="utf-8")
-    client.report("calibrate", progress={"done": len(records), "total": len(records)}, records=records)
+    client.report("calibrate", progress=_progress(len(records), len(records)), records=records)
     return records
 
 
@@ -498,13 +498,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             "done",
             status="complete",
             message="smoke run complete",
-            progress={"done": 1, "total": 1},
+            progress=_progress(1, 1),
         )
         logger.info("done. summary at %s", workdir / "summary.json")
         return 0
     except Exception as exc:  # noqa: BLE001 - must report failure before re-raising
         logger.exception("run_smoke failed")
-        client.report("done", status="failed", progress={"done": 0, "total": 1}, message=f"{type(exc).__name__}: {exc}"[:500])
+        client.report("done", status="failed", progress=_progress(0, 1), message=f"{type(exc).__name__}: {exc}"[:500])
         raise
 
 

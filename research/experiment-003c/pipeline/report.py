@@ -46,6 +46,15 @@ def _chunk(items: List[Any], size: int):
         yield items[i : i + size]
 
 
+def _progress(done: Any, total: Any) -> Dict[str, int]:
+    """Build a progress dict with done/total coerced to int and done clamped
+    to total. Token counters can overshoot their target by one batch; clamp
+    here so every call site sends a consistent, valid pair to the Worker."""
+    total_i = int(total)
+    done_i = min(int(done), total_i)
+    return {"done": done_i, "total": total_i}
+
+
 class WorkerClient:
     def __init__(
         self,
