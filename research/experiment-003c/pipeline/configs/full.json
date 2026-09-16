@@ -21,7 +21,7 @@
   "scenarios_file": "scenarios_full.json",
   "steer_features": 256,
   "steer_scenarios": 24,
-  "doses": [2, 4, 8],
+  "doses": [0.25, 0.5, 1.0, 2.0],
   "max_new_tokens": 256,
   "firing_density_min": 1e-4,
   "firing_density_max": 0.1,

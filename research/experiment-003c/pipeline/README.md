@@ -23,28 +23,44 @@ buffer).
    runs the model truncated to layers `0..layer` (later layers are dropped
    entirely to save compute), captures the layer's residual stream at the
    masked positions into an in-memory shuffle buffer, and trains the
-   Matryoshka BatchTopK SAE on samples drawn from that buffer. Reports a
-   `"train"` record every `checkpoint_every_tokens` tokens with
-   `{tokens_done, tokens_target, loss, recon_loss, aux_loss,
-   fraction_variance_explained, l0, dead_fraction}`, and saves a resumable
-   safetensors checkpoint to `<workdir>/checkpoints/`.
+   Matryoshka BatchTopK SAE on samples drawn from that buffer. Logs
+   `[train] tokens=... loss=... fve=... l0=... dead_frac=...` and reports a
+   `"train"` record every `checkpoint_every_tokens` tokens (and once more
+   at the end) with `{tokens_done, tokens_target, loss, recon_loss,
+   aux_loss, fraction_variance_explained, l0, dead_fraction}`, and saves a
+   resumable safetensors checkpoint to `<workdir>/checkpoints/`. After the
+   token target is reached, harvests one more, held-out batch of 4096
+   activations (never seen by the optimizer) and stores its FVE/mean-L0 as
+   `held_out_fve`/`held_out_l0` in `feature_stats.json`.
 3. **post-train check** -- `checks.sae_replace_check`: replace the residual
-   at `layer` with the SAE's reconstruction and confirm the model's greedy
-   argmax next token is preserved on >=90% of positions on a held-out
-   prompt. Reports 1 record to stage `"train"`.
+   at `layer` with `sae.reconstruct(x)` -- the same reconstruction method
+   `forward_loss` uses internally for its main (outermost-shell)
+   reconstruction, so the two paths cannot diverge -- and confirm the
+   model's greedy argmax next token is preserved on >=90% of positions on a
+   held-out prompt of at least 40 tokens. Also reports the FVE of the
+   replaced activations and the held-out FVE/L0 from stage 2. Reports 1
+   record to stage `"train"`.
 4. **calibrate** (steer) -- reloads the model with all layers restored
    (harvesting only ever truncates the same in-memory model object, and
    `ActivationHarvester.close()` restores it -- no reload from disk needed).
-   Picks `steer_features` inner-shell features by firing density, sweeps
-   sign x dose x scenario, and also runs unsteered baselines and a
-   random-direction null control swept across the same doses. Reports every
-   generation (baseline + steered + random-control) as a record to stage
-   `"calibrate"`, batched at 200 records per Worker call.
+   Picks `steer_features` in-range first-shell features spread evenly
+   across quantiles of the log-density distribution (not just the densest
+   ones), sweeps sign x dose x scenario with the additive steering vector
+   applied *only* at assistant-turn positions (the generation-prompt header
+   onward, plus every generated token -- never the user's own prompt
+   tokens), and also runs unsteered baselines and a random-direction null
+   control swept across the same doses with the same position masking.
+   Reports every generation (baseline + steered + random-control) as a
+   record to stage `"calibrate"`, batched at 200 records per Worker call.
 5. **analyze / done** -- computes embedding-free proxies (normalized
    word-level edit distance and length delta vs. the same-scenario
-   baseline, plus the coherence log-prob already computed during
-   calibration), writes `<workdir>/summary.json` and a standalone
-   `<workdir>/smoke-report.html`, then reports stage `"done"` with
+   baseline, plus the per-generation coherence dict already computed during
+   calibration: `distinct_ratio`, `max_run`, `repeat_4gram`, `logprob`, and
+   the derived `coherent` boolean), rolls up `max_coherent_dose` per
+   feature/sign and per random-control index, writes
+   `<workdir>/summary.json` and a standalone `<workdir>/smoke-report.html`
+   (density/quantile/max_coherent_dose per feature, per-dose coherence
+   fields, incoherent rows highlighted), then reports stage `"done"` with
    `status="complete"`.
 
 Any uncaught exception is reported to stage `"done"` with `status="failed"`
@@ -68,10 +84,15 @@ If harvest+train is interrupted, the SAE resumes from the latest checkpoint
 under `checkpoints/`. The dataset stream itself is **not** seekable (it's a
 `datasets` streaming shuffle buffer, not an index), so a resumed run starts
 tokenizing a fresh, differently-shuffled pass over the dataset rather than
-picking up at the exact same document -- for a smoke test with a 2M-token
+picking up at the exact same document -- for a smoke test with an 8M-token
 target and a `seed`-shuffled 200k-conversation dataset this is a fine
 tradeoff; the SAE optimizer state (Adam moments) is *not* checkpointed, only
-the weights, so a resume restarts Adam's moving averages from zero.
+the weights, so a resume restarts Adam's moving averages from zero. A run
+resumed from a *partial* checkpoint (training not yet finished) collects
+its own fresh held-out batch once training completes, same as a run that
+never crashed; a run resumed after `sae.safetensors` + `feature_stats.json`
+already exist skips harvest+train entirely and reuses whatever
+`held_out_fve`/`held_out_l0` that prior run already computed.
 
 ## Running
 
@@ -111,34 +132,37 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-26 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
-on a random 64-dim toy, BatchTopK's per-token-average-k property, the
-Worker's canonical-JSON sha256 contract against a known hash, and the
-assistant-turn masking algorithm against a small fake tokenizer that
+44 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
+on a random 64-dim toy, `sae.reconstruct`'s equivalence with
+`forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
+per-token-average-k property, the Worker's canonical-JSON sha256 contract
+against a known hash, the assistant-turn masking algorithm and the
+generation-prompt boundary computation against a small fake tokenizer that
 reproduces a `<|im_start|>{role}...<|im_end|>` chat template without any
-network access.
+network access, the quantile-spread feature-selection helper, and the
+coherence metrics (a repetitive token sequence must be `incoherent`, a
+varied one `coherent`).
 
 ## Estimated smoke-test runtime on 1x A40 48GB
 
-This is an estimate, not a measurement -- there is no GPU in this
-environment, so nothing below has been timed. Order-of-magnitude only.
-
-Assumptions: Qwen2.5-7B-Instruct, bf16, hidden size 3584, 28 decoder layers
-total (layers 0..19 kept during harvest = 20/28 ~= 0.71 of decoder compute);
-forward-only FLOPs/token ~= 2 x (params in the kept layers); ultrachat
-conversations are roughly 40-60% assistant tokens, so reaching 2,000,000
-*assistant* tokens requires forwarding roughly 3.5-4.5M total tokens through
-the truncated model; HF `generate()` (no vLLM/TensorRT) on an unbatched 7B
-bf16 model on one A40 does very roughly 15-30 output tok/s.
+Smoke-1 (see `../SMOKE-1.md`) actually ran on an A40: harvest+train reached
+its (then) 2,000,000-token target in **~10 minutes**, and the full pod
+(model load + boot + harvest+train + post-train check + 220 calibrate
+generations + analysis) took **~65 minutes** of pod time on a $0.49/h
+secure-cloud instance. The numbers below scale that measurement to
+smoke-2's larger config (`tokens_target` raised to 8,000,000,
+`checkpoint_every_tokens` to 1,000,000, and `doses` widened from 3 to 4
+values) rather than being a from-scratch FLOPs estimate; still
+order-of-magnitude, not a guarantee.
 
 | Phase | Work | Rough time |
 |---|---|---|
 | Model load (x2: truncated for harvest, restored in place for steering) | download/cache + weight load | 2-5 min |
-| Harvest + train | ~4M tokens forwarded through 20/28 layers, ~488 SAE optimizer steps (batch_tokens=4096) | 15-30 min |
-| Post-train check | 1 forward pass, 1 prompt | <1 min |
-| Steer / calibrate | 8 features x 2 signs x 3 doses x 4 scenarios = 192, + 4 baselines + 2 random x 3 doses x 4 scenarios = 24, = 220 generations at up to 256 tokens, plus 216 extra coherence forward passes | 50-70 min |
+| Harvest + train | 8M tokens forwarded through 20/28 layers, ~4x smoke-1's measured 10 min for 2M tokens | ~35-45 min |
+| Post-train check | 2 forward passes (capture + replace) on a >=40-token prompt | <1 min |
+| Steer / calibrate | 8 features x 2 signs x 4 doses x 4 scenarios = 256, + 4 baselines + 2 random x 4 doses x 4 scenarios = 32, = 292 generations at up to 256 tokens, plus 288 extra coherence forward passes | 65-90 min (up from smoke-1's 220-generation screen, scaled by the extra dose) |
 | Analysis + report | pure Python/string work | <1 min |
-| **Total** | | **roughly 70-110 minutes** |
+| **Total** | | **roughly 100-140 minutes** |
 
 The steering phase dominates because generations run unbatched and
 sequentially (one hook configuration at a time, since the additive
@@ -146,9 +170,10 @@ steering vector changes every generation); batching same-dose/same-feature
 generations across scenarios would be the first optimization if this
 matters in practice. The full-run config (100M tokens, 256 features, 24
 scenarios) scales harvest+train roughly linearly with `tokens_target`
-(~50x smoke -> many hours) and the calibration screen to 256 x 2 x 3 x 24 =
-36,864 generations, which is the dominant full-run cost by a wide margin
-and should probably be batched or sampled down before attempting it as-is.
+(~12.5x smoke-2 -> many hours) and the calibration screen to 256 x 2 x 4 x
+24 = 49,152 generations, which is the dominant full-run cost by a wide
+margin and should probably be batched or sampled down before attempting it
+as-is.
 
 ## Assumptions / things not verified without a GPU
 
@@ -173,11 +198,27 @@ and should probably be batched or sampled down before attempting it as-is.
   weighted by `aux_loss_coef`) follows the OpenAI/Anthropic TopK-SAE
   recipe; the exact coefficient (default `1/32`) is a common literature
   default, not tuned here.
-- Runtime estimate above is a rough FLOPs/throughput calculation, not a
-  measurement; real HF `generate()` throughput on an A40 varies a lot with
+- Runtime estimate above scales smoke-1's actual A40 measurement rather
+  than a from-scratch FLOPs calculation, but is still only order-of-
+  magnitude; real HF `generate()` throughput on an A40 varies a lot with
   attention implementation (SDPA vs. flash-attn-2), sequence length, and
   whether `torch.compile` is used (not used here).
 - `checks.sae_replace_check`'s >=90% threshold is checked and logged as a
   warning if missed, but does not hard-fail the run -- SAE reconstruction
   quality is expected to vary and a smoke test's job is to surface that
-  number, not gate on it.
+  number, not gate on it. Smoke-1 saw `match_fraction: 0.0` on a short,
+  non-chat-template, 11-token prompt; see `../SMOKE-1.md` for the
+  investigation (no divergence found between the check's and
+  `forward_loss`'s reconstruction math for the shipped configs, but the two
+  now share a single `sae.reconstruct` method regardless, and the check
+  prompt is >=40 tokens).
+- `steer.compute_generation_boundary` assumes the same chat-template
+  prefix-stability property `harvest.compute_assistant_mask` relies on:
+  that rendering a message list without `add_generation_prompt` produces a
+  token sequence that is an exact prefix of rendering the same messages
+  with it. Verified against the fake tokenizer in `tests/`, not against
+  Qwen2.5-7B-Instruct's real tokenizer.
+- `steer.select_steer_features`'s quantile spread assumes firing density is
+  a reasonable proxy for "qualitatively different feature" -- it has not
+  been checked against, e.g., manual inspection of what each selected
+  feature actually fires on.

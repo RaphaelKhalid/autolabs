@@ -25,9 +25,10 @@ from typing import Any, Dict, List, Optional, Sequence
 import torch
 
 from harvest import compute_assistant_mask
-from sae import batch_topk
 
 logger = logging.getLogger("autolabs_3c.checks")
+
+MIN_SAE_REPLACE_CHECK_TOKENS = 40
 
 
 def _greedy_generate_ids(model: Any, tokenizer: Any, prompt: str, max_new_tokens: int, device: Any) -> List[int]:
@@ -86,21 +87,58 @@ def sae_replace_check(
     device: Any,
     min_match_fraction: float = 0.90,
 ) -> Dict[str, Any]:
+    """Replace the residual at `layer` with `sae.reconstruct(...)` -- the
+    same shared reconstruction path `forward_loss` uses for its main
+    (outermost-shell) reconstruction -- and confirm the model's greedy
+    argmax next token is preserved on most positions. Also reports the
+    fraction of variance explained (FVE) of the SAE's reconstruction of the
+    *actual* residual it replaced, independent of the argmax comparison.
+
+    Uses a single shared `sae.reconstruct` call in both the capture step
+    (to compute FVE) and the replace hook (to compute the swapped
+    activations), so this check and `MatryoshkaBatchTopKSAE.forward_loss`
+    cannot diverge in their encode/batch-topk/decode math.
+    """
     base = getattr(model, "model", model)
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     input_ids = inputs["input_ids"]
+    num_prompt_tokens = int(input_ids.shape[1])
+    if num_prompt_tokens < MIN_SAE_REPLACE_CHECK_TOKENS:
+        logger.warning(
+            "sae_replace_check prompt has only %d tokens; >=%d is recommended for a "
+            "statistically stable match_fraction/FVE (too few positions makes "
+            "batch_topk's per-token-average-k budget noisy)",
+            num_prompt_tokens,
+            MIN_SAE_REPLACE_CHECK_TOKENS,
+        )
 
-    with torch.no_grad():
-        baseline_logits = model(input_ids=input_ids).logits
+    captured: Dict[str, torch.Tensor] = {}
+
+    def capture_hook(module: Any, layer_inputs: Any, output: Any) -> Any:
+        hidden = output[0] if isinstance(output, tuple) else output
+        captured["flat"] = hidden.reshape(-1, hidden.shape[-1]).detach().to(torch.float32)
+        return output
+
+    capture_handle = base.layers[layer].register_forward_hook(capture_hook)
+    try:
+        with torch.no_grad():
+            baseline_logits = model(input_ids=input_ids).logits
+    finally:
+        capture_handle.remove()
     baseline_argmax = baseline_logits[0, :-1].argmax(dim=-1)
+
+    flat = captured["flat"]
+    with torch.no_grad():
+        recon_flat = sae.reconstruct(x=flat)
+        total_var = flat.var(dim=0, unbiased=False).sum().clamp_min(1e-8)
+        resid_var = (flat - recon_flat).var(dim=0, unbiased=False).sum()
+        replaced_fve = (1.0 - resid_var / total_var).item()
 
     def replace_hook(module: Any, layer_inputs: Any, output: Any) -> Any:
         hidden = output[0] if isinstance(output, tuple) else output
         shape = hidden.shape
-        flat = hidden.reshape(-1, shape[-1]).to(torch.float32)
-        preact = sae.encode_preact(flat)
-        codes = batch_topk(preact, sae.k)
-        recon = sae.decode(codes).to(hidden.dtype).reshape(shape)
+        flat_h = hidden.reshape(-1, shape[-1]).to(torch.float32)
+        recon = sae.reconstruct(x=flat_h).to(hidden.dtype).reshape(shape)
         if isinstance(output, tuple):
             return (recon,) + tuple(output[1:])
         return recon
@@ -124,6 +162,8 @@ def sae_replace_check(
         "match_fraction": match_fraction,
         "min_match_fraction": min_match_fraction,
         "num_positions": int(matches.numel()),
+        "num_prompt_tokens": num_prompt_tokens,
+        "replaced_fve": replaced_fve,
     }
 
 
