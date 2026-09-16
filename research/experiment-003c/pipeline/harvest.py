@@ -24,6 +24,14 @@ logger = logging.getLogger("autolabs_3c.harvest")
 # ---------------------------------------------------------------------------
 # Assistant-turn token masking
 # ---------------------------------------------------------------------------
+def _template_ids(tokenizer, messages, add_generation_prompt: bool):
+    """Token ids of the rendered chat template. Renders to text first so the
+    result is a plain list regardless of the transformers version (newer
+    versions return a BatchEncoding from tokenize=True)."""
+    text = tokenizer.apply_chat_template(list(messages), tokenize=False, add_generation_prompt=add_generation_prompt)
+    return list(tokenizer(text, add_special_tokens=False)["input_ids"])
+
+
 def compute_assistant_mask(
     tokenizer: Any,
     messages: Sequence[Dict[str, str]],
@@ -46,23 +54,17 @@ def compute_assistant_mask(
     if not messages:
         return [], []
 
-    full_ids = list(
-        tokenizer.apply_chat_template(list(messages), tokenize=True, add_generation_prompt=False)
-    )
+    full_ids = _template_ids(tokenizer, messages, add_generation_prompt=False)
     mask = [0] * len(full_ids)
     special_ids = set(getattr(tokenizer, "all_special_ids", None) or [])
 
     for i, msg in enumerate(messages):
         if msg.get("role") != "assistant":
             continue
-        prefix_prompt_ids = tokenizer.apply_chat_template(
-            list(messages[:i]), tokenize=True, add_generation_prompt=True
-        )
+        prefix_prompt_ids = _template_ids(tokenizer, messages[:i], add_generation_prompt=True)
         content_start = min(len(prefix_prompt_ids), len(full_ids))
 
-        full_upto_ids = tokenizer.apply_chat_template(
-            list(messages[: i + 1]), tokenize=True, add_generation_prompt=False
-        )
+        full_upto_ids = _template_ids(tokenizer, messages[: i + 1], add_generation_prompt=False)
         content_end = min(len(full_upto_ids), len(full_ids))
 
         for j in range(content_start, content_end):
