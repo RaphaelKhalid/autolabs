@@ -10,6 +10,8 @@ pure-Python feature-selection / analysis helpers.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -396,6 +398,66 @@ def test_worker_client_never_raises_without_url(monkeypatch):
     client = WorkerClient(base_url="", token="", run_id="run-1")
     # Should log and return without raising, even though there's no server.
     client.report("boot", progress={"done": 1, "total": 1}, records=[{"recordId": "x", "payload": {"a": 1}}])
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self.status_code = 200
+        self._payload = payload
+        self.text = "{}"
+
+    def json(self):
+        return self._payload
+
+
+class _FakeSession:
+    """Captures every POST body instead of hitting a real Worker."""
+
+    def __init__(self):
+        self.calls = []
+
+    def post(self, url, json=None, headers=None, timeout=None):  # noqa: A002 - matches requests' kwarg name
+        self.calls.append({"url": url, "body": json})
+        return _FakeResponse({"ok": True, "runId": "run-1"})
+
+
+def test_report_sends_payload_json_and_matching_sha256_no_payload_field():
+    from report import WorkerClient
+
+    session = _FakeSession()
+    client = WorkerClient(base_url="https://worker.test", token="tok", run_id="run-1", session=session)
+    payload = {"loss": 1.251517, "fve": 0.435447, "dead_frac": 1e-05}
+
+    client.report("train", records=[{"recordId": "train-checkpoint-1004535", "payload": payload}])
+
+    assert len(session.calls) == 1
+    body = session.calls[0]["body"]
+    assert len(body["records"]) == 1
+    record = body["records"][0]
+    assert record["recordId"] == "train-checkpoint-1004535"
+    assert "payload" not in record
+    assert record["payloadJson"] == canonical_json(payload)
+    assert record["sha256"] == hashlib.sha256(record["payloadJson"].encode("utf-8")).hexdigest()
+
+
+def test_report_sanitizes_nan_and_infinity_to_null_before_hashing():
+    from report import WorkerClient
+
+    session = _FakeSession()
+    client = WorkerClient(base_url="https://worker.test", token="tok", run_id="run-1", session=session)
+    payload = {"loss": float("nan"), "grad_norm": float("inf"), "fve": 0.4}
+
+    client.report("train", records=[{"recordId": "train-checkpoint-nan", "payload": payload}])
+
+    body = session.calls[0]["body"]
+    record = body["records"][0]
+    assert '"loss":null' in record["payloadJson"]
+    assert '"grad_norm":null' in record["payloadJson"]
+    assert "NaN" not in record["payloadJson"]
+    assert "Infinity" not in record["payloadJson"]
+    # The sanitized JSON must itself be valid, standard JSON (no NaN/Infinity tokens).
+    assert json.loads(record["payloadJson"]) == {"loss": None, "grad_norm": None, "fve": 0.4}
+    assert record["sha256"] == hashlib.sha256(record["payloadJson"].encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------

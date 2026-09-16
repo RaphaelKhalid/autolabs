@@ -188,7 +188,7 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
   }
 
   const recordsRaw = b.records;
-  const records: { recordId: string; payload: Record<string, unknown>; sha256: string }[] = [];
+  const records: { recordId: string; payloadJson: string; sha256: string }[] = [];
   if (recordsRaw !== undefined) {
     if (!Array.isArray(recordsRaw) || recordsRaw.length > PERSONA_3C_MAX_RECORDS) {
       return json({ error: 'Invalid records batch.' }, { status: 400 }, c);
@@ -197,20 +197,47 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return json({ error: 'Invalid record entry.' }, { status: 400 }, c);
       const entry = raw as Record<string, unknown>;
       const recordId = str(entry.recordId, 1, 120);
-      const payload = entry.payload;
       const sha = typeof entry.sha256 === 'string' ? entry.sha256.toLowerCase() : '';
-      if (!recordId || !payload || typeof payload !== 'object' || Array.isArray(payload) || !validSha(sha)) {
-        return json({ error: 'Invalid record entry.' }, { status: 400 }, c);
+      if (!recordId || !validSha(sha)) return json({ error: 'Invalid record entry.' }, { status: 400 }, c);
+
+      // Preferred path: the client sends the exact JSON string it hashed, so integrity is
+      // checked over the literal bytes rather than a re-serialization that can disagree on
+      // float formatting (e.g. Python's json.dumps vs. this file's canonicalJson: 1e-05 vs
+      // 0.00001, 1.0 vs 1). Falls back to canonicalizing `payload` for older callers.
+      const payloadJsonRaw = entry.payloadJson;
+      const payload = entry.payload;
+      if (payloadJsonRaw !== undefined) {
+        if (typeof payloadJsonRaw !== 'string' || new TextEncoder().encode(payloadJsonRaw).byteLength > 65_536) {
+          return json({ error: `Record ${recordId} payloadJson must be a string of at most 64 KB.` }, { status: 400 }, c);
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(payloadJsonRaw);
+        } catch {
+          return json({ error: `Record ${recordId} payloadJson is not valid JSON.` }, { status: 400 }, c);
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return json({ error: `Record ${recordId} payloadJson must parse to a plain object.` }, { status: 400 }, c);
+        }
+        const computed = await sha256Hex(payloadJsonRaw);
+        if (computed !== sha) return json({ error: `Record ${recordId} sha256 does not match the canonical JSON of its payload.` }, { status: 400 }, c);
+        records.push({ recordId, payloadJson: payloadJsonRaw, sha256: sha });
+      } else if (payload !== undefined && payload !== null) {
+        if (typeof payload !== 'object' || Array.isArray(payload)) {
+          return json({ error: 'Invalid record entry.' }, { status: 400 }, c);
+        }
+        let canonical: string;
+        try {
+          canonical = canonicalJson(payload);
+        } catch {
+          return json({ error: `Record ${recordId} payload could not be canonicalized.` }, { status: 400 }, c);
+        }
+        const computed = await sha256Hex(canonical);
+        if (computed !== sha) return json({ error: `Record ${recordId} sha256 does not match the canonical JSON of its payload.` }, { status: 400 }, c);
+        records.push({ recordId, payloadJson: canonical, sha256: sha });
+      } else {
+        return json({ error: `Record ${recordId} is missing payload or payloadJson.` }, { status: 400 }, c);
       }
-      let canonical: string;
-      try {
-        canonical = canonicalJson(payload);
-      } catch {
-        return json({ error: `Record ${recordId} payload could not be canonicalized.` }, { status: 400 }, c);
-      }
-      const computed = await sha256Hex(canonical);
-      if (computed !== sha) return json({ error: `Record ${recordId} sha256 does not match the canonical JSON of its payload.` }, { status: 400 }, c);
-      records.push({ recordId, payload: payload as Record<string, unknown>, sha256: sha });
     }
   }
 
@@ -233,7 +260,7 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
 
   const statements: D1PreparedStatement[] = records.map((record) => env.DB.prepare(
     'INSERT OR IGNORE INTO persona_3c_records(run_id,stage,record_id,payload_json,sha256,created_at) VALUES(?,?,?,?,?,?)',
-  ).bind(runId, stage, record.recordId, JSON.stringify(record.payload), record.sha256, now));
+  ).bind(runId, stage, record.recordId, record.payloadJson, record.sha256, now));
   if (done !== null && total !== null) {
     statements.push(env.DB.prepare(
       'INSERT INTO persona_3c_progress(run_id,stage,done,total,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,stage) DO UPDATE SET done=excluded.done,total=excluded.total,updated_at=excluded.updated_at',
