@@ -179,6 +179,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
         conv_stream = harvest.stream_conversations(config.dataset_name, config.dataset_split, seed=config.seed)
         next_checkpoint = tokens_done + config.checkpoint_every_tokens
         convo_batch: List[List[Dict[str, str]]] = []
+        convs_seen = 0
 
         for messages in conv_stream:
             convo_batch.append(messages)
@@ -187,7 +188,10 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
 
             batch = _prepare_batch(tokenizer, convo_batch, config, device)
             convo_batch = []
+            convs_seen += config.harvest_batch_size
             if batch is None:
+                if convs_seen >= 64 and tokens_done == 0:
+                    raise RuntimeError("harvest produced zero assistant tokens after 64 conversations; assistant mask or dataset shape is wrong")
                 continue
             batch_ids, batch_attn, batch_mask = batch
             acts = harvest.masked_activations(harvester, batch_ids, batch_attn, batch_mask)

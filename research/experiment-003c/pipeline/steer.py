@@ -98,9 +98,8 @@ def generate_text(
     device: Any,
 ) -> Dict[str, Any]:
     messages = [{"role": "user", "content": prompt}]
-    input_ids = tokenizer.apply_chat_template(
-        messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
-    ).to(device)
+    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    input_ids = tokenizer(prompt_text, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
     with torch.no_grad():
         out = model.generate(
             input_ids=input_ids,

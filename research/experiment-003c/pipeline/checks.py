@@ -148,6 +148,8 @@ def assistant_mask_sanity_check(
 
     if violations:
         raise AssertionError(f"assistant mask contains template control tokens: {violations}")
+    if sum(mask) == 0:
+        raise AssertionError("assistant mask selected zero tokens for a conversation with an assistant turn")
 
     decoded_text = tokenizer.decode(masked_ids) if masked_ids else ""
     return {
