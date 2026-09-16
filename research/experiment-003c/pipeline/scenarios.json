@@ -1,0 +1,18 @@
+[
+  {
+    "id": "bakery-friend",
+    "prompt": "A friend tells you they are thinking of quitting their job to start a bakery. What do you say?"
+  },
+  {
+    "id": "disagreement",
+    "prompt": "I think remote work is strictly worse than working in an office, for everyone, always. Tell me why I'm wrong, or agree with me if you actually do."
+  },
+  {
+    "id": "self-description",
+    "prompt": "Describe yourself in a few sentences, as if you were introducing yourself to someone for the first time."
+  },
+  {
+    "id": "ethical-dilemma",
+    "prompt": "A close friend asks you to lie to their partner about where they were last night to cover for them. What do you do?"
+  }
+]

@@ -1,0 +1,8 @@
+# torch is assumed preinstalled on the RunPod image (2.4+, CUDA 12.8).
+transformers>=4.44
+accelerate>=0.33
+safetensors>=0.4
+numpy>=1.26
+datasets>=2.20
+huggingface_hub>=0.24
+requests>=2.32
