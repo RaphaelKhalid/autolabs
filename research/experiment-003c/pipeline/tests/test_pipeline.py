@@ -39,7 +39,12 @@ from steer import (  # noqa: E402
     is_coherent,
     max_coherent_dose,
 )
-from run_smoke import normalized_edit_distance, word_edit_distance  # noqa: E402
+from run_smoke import (  # noqa: E402
+    normalized_edit_distance,
+    word_edit_distance,
+    lr_warmup_multiplier,
+    train_steps_on_buffer,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +68,10 @@ def test_config_from_json_smoke_and_full(tmp_path):
     assert full.tokens_target == 100_000_000
     assert full.steer_features == 256
     assert full.steer_scenarios == 24
+    assert smoke.train_steps_per_batch == 4
+    assert smoke.lr_warmup_steps == 500
+    assert full.train_steps_per_batch == 8
+    assert full.lr_warmup_steps == 500
 
 
 def test_config_rejects_unknown_key():
@@ -75,6 +84,22 @@ def test_config_rejects_bad_shells():
         Config(matryoshka_shells=[8192, 1024])  # not ascending
     with pytest.raises(ValueError):
         Config(sae_width=100, matryoshka_shells=[1024, 4096])  # exceeds width
+
+
+def test_config_defaults_include_steps_per_batch_and_warmup():
+    cfg = Config()
+    assert cfg.train_steps_per_batch == 4
+    assert cfg.lr_warmup_steps == 500
+
+
+def test_config_rejects_zero_train_steps_per_batch():
+    with pytest.raises(ValueError):
+        Config(train_steps_per_batch=0)
+
+
+def test_config_rejects_negative_lr_warmup_steps():
+    with pytest.raises(ValueError):
+        Config(lr_warmup_steps=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -651,3 +676,85 @@ def test_normalized_edit_distance_range():
     assert d == 0.0
     d2 = normalized_edit_distance("the cat sat", "a dog ran fast")
     assert 0.0 < d2 <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# run_smoke.py: LR warmup + multi-step-per-batch training
+# ---------------------------------------------------------------------------
+def test_lr_warmup_multiplier_zero_at_step_zero_and_full_at_and_after_warmup():
+    warmup_steps = 500
+    assert lr_warmup_multiplier(0, warmup_steps) == 0.0
+    assert 0.0 < lr_warmup_multiplier(250, warmup_steps) < 1.0
+    assert lr_warmup_multiplier(499, warmup_steps) < 1.0
+    assert lr_warmup_multiplier(500, warmup_steps) == 1.0
+    assert lr_warmup_multiplier(1000, warmup_steps) == 1.0  # stays full past warmup
+
+
+def test_lr_warmup_multiplier_disabled_when_warmup_steps_is_zero():
+    assert lr_warmup_multiplier(0, 0) == 1.0
+    assert lr_warmup_multiplier(1000, 0) == 1.0
+
+
+def test_train_steps_on_buffer_runs_configured_number_of_optimizer_steps():
+    """A small CPU toy loop: with train_steps_per_batch=3, one call to
+    train_steps_on_buffer (standing in for one harvested batch) must run
+    exactly 3 optimizer steps, each on a fresh buffer sample."""
+    torch.manual_seed(0)
+    d_in, width, k = 16, 32, 4
+    sae = MatryoshkaBatchTopKSAE(d_in=d_in, width=width, shells=[8, 16, 32], k=k, seed=0)
+    optimizer = torch.optim.Adam(sae.parameters(), lr=1e-2)
+
+    buffer = ShuffleBuffer(capacity=256, d_model=d_in, seed=0)
+    buffer.add(torch.randn(256, d_in))
+
+    cfg = Config(
+        sae_width=width,
+        matryoshka_shells=[8, 16, 32],
+        k=k,
+        batch_tokens=8,
+        train_steps_per_batch=3,
+        lr_warmup_steps=0,
+        dead_feature_window_tokens=1_000_000,
+    )
+
+    step_count = 0
+    orig_step = optimizer.step
+
+    def counting_step(*args, **kwargs):
+        nonlocal step_count
+        step_count += 1
+        return orig_step(*args, **kwargs)
+
+    optimizer.step = counting_step
+
+    steps_done, last_out = train_steps_on_buffer(sae, optimizer, buffer, cfg, steps_done=0, device=None)
+
+    assert step_count == 3
+    assert steps_done == 3
+    assert last_out is not None
+    assert torch.isfinite(last_out.loss)
+
+
+def test_train_steps_on_buffer_continues_step_count_across_calls():
+    """Resuming from a checkpoint should continue the warmup schedule
+    instead of restarting it -- i.e. steps_done accumulates across calls."""
+    torch.manual_seed(0)
+    d_in, width, k = 16, 32, 4
+    sae = MatryoshkaBatchTopKSAE(d_in=d_in, width=width, shells=[8, 16, 32], k=k, seed=0)
+    optimizer = torch.optim.Adam(sae.parameters(), lr=1e-2)
+    buffer = ShuffleBuffer(capacity=256, d_model=d_in, seed=0)
+    buffer.add(torch.randn(256, d_in))
+    cfg = Config(
+        sae_width=width,
+        matryoshka_shells=[8, 16, 32],
+        k=k,
+        batch_tokens=8,
+        train_steps_per_batch=3,
+        lr_warmup_steps=10,
+        dead_feature_window_tokens=1_000_000,
+    )
+
+    steps_done, _ = train_steps_on_buffer(sae, optimizer, buffer, cfg, steps_done=0, device=None)
+    assert steps_done == 3
+    steps_done, _ = train_steps_on_buffer(sae, optimizer, buffer, cfg, steps_done=steps_done, device=None)
+    assert steps_done == 6
