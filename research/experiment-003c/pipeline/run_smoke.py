@@ -504,7 +504,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
     except Exception as exc:  # noqa: BLE001 - must report failure before re-raising
         logger.exception("run_smoke failed")
-        client.report("done", status="failed", message=f"{type(exc).__name__}: {exc}")
+        client.report("done", status="failed", progress={"done": 0, "total": 1}, message=f"{type(exc).__name__}: {exc}"[:500])
         raise
 
 
