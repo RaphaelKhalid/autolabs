@@ -84,6 +84,49 @@ def load_model_and_tokenizer(config: Config, device: torch.device):
     return model, tokenizer
 
 
+def lr_warmup_multiplier(step: int, warmup_steps: int) -> float:
+    """Linear-warmup multiplier applied to `config.lr`.
+
+    `step` is the 0-indexed optimizer step about to be taken (0 for the very
+    first step ever run). Returns 0.0 at step 0 whenever `warmup_steps > 0`,
+    ramps linearly up to 1.0 at `step == warmup_steps`, and stays at 1.0
+    for every step after that. `warmup_steps <= 0` disables warmup (always
+    full LR).
+    """
+    if warmup_steps <= 0:
+        return 1.0
+    return min(1.0, step / warmup_steps)
+
+
+def train_steps_on_buffer(trained_sae, optimizer, buffer, config: Config, steps_done: int, device=None):
+    """Run `config.train_steps_per_batch` SAE optimizer steps, each on a
+    fresh `buffer.sample(config.batch_tokens)` draw, with linear LR warmup
+    keyed off the cumulative `steps_done` count (so resuming mid-warmup
+    from a checkpoint continues the same schedule rather than restarting
+    it). Harvesting the 7B model's activations is the GPU bottleneck and
+    SAE steps are cheap, so this lets multiple gradient steps happen per
+    harvested batch instead of one.
+
+    Returns `(new_steps_done, last_out)`; `last_out` is the SAELossOutput
+    of the final step, used for logging/checkpoint payloads.
+    """
+    last_out = None
+    for _ in range(config.train_steps_per_batch):
+        x = buffer.sample(config.batch_tokens)
+        if device is not None:
+            x = x.to(device)
+        lr_mult = lr_warmup_multiplier(steps_done, config.lr_warmup_steps)
+        for group in optimizer.param_groups:
+            group["lr"] = config.lr * lr_mult
+        optimizer.zero_grad(set_to_none=True)
+        last_out = trained_sae.forward_loss(x, dead_window_tokens=config.dead_feature_window_tokens)
+        last_out.loss.backward()
+        optimizer.step()
+        trained_sae.normalize_decoder_()
+        steps_done += 1
+    return steps_done, last_out
+
+
 def idempotency_key_for(config: Config) -> str:
     if config.idempotency_key:
         return config.idempotency_key
@@ -168,10 +211,14 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     )
 
     tokens_done = 0
+    steps_done = 0
     if resume_files:
         latest = resume_files[-1]
         tokens_done = int(latest.stem.split("_")[-1])
-        logger.info("[train] resuming from checkpoint at %d tokens", tokens_done)
+        steps_meta_path = latest.parent / f"{latest.stem}.steps.json"
+        if steps_meta_path.exists():
+            steps_done = json.loads(steps_meta_path.read_text(encoding="utf-8")).get("steps_done", 0)
+        logger.info("[train] resuming from checkpoint at %d tokens (steps_done=%d)", tokens_done, steps_done)
         trained_sae = sae_mod.MatryoshkaBatchTopKSAE.load(
             latest, shells=config.matryoshka_shells, k=config.k, aux_loss_coef=config.aux_loss_coef
         ).to(device)
@@ -218,23 +265,22 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             if not buffer.is_ready(min_fraction=0.05):
                 continue
 
-            x = buffer.sample(config.batch_tokens).to(device)
-            optimizer.zero_grad(set_to_none=True)
-            last_out = trained_sae.forward_loss(x, dead_window_tokens=config.dead_feature_window_tokens)
-            last_out.loss.backward()
-            optimizer.step()
-            trained_sae.normalize_decoder_()
+            steps_done, last_out = train_steps_on_buffer(
+                trained_sae, optimizer, buffer, config, steps_done, device=device
+            )
             stats_tracker.observe(last_out.codes, progress_fraction=min(1.0, tokens_done / config.tokens_target))
 
             if tokens_done >= next_checkpoint or tokens_done >= config.tokens_target:
                 ckpt_path = checkpoint_dir / f"sae_step_{tokens_done}.safetensors"
                 trained_sae.save(ckpt_path)
+                steps_meta_path = checkpoint_dir / f"sae_step_{tokens_done}.steps.json"
+                steps_meta_path.write_text(json.dumps({"steps_done": steps_done}, indent=2), encoding="utf-8")
                 fve = last_out.fraction_variance_explained.item()
                 l0 = last_out.l0.item()
                 dead_frac = last_out.dead_fraction.item()
                 logger.info(
-                    "[train] tokens=%d loss=%.6f fve=%.6f l0=%.4f dead_frac=%.6f",
-                    tokens_done, last_out.loss.item(), fve, l0, dead_frac,
+                    "[train] tokens=%d steps=%d loss=%.6f fve=%.6f l0=%.4f dead_frac=%.6f",
+                    tokens_done, steps_done, last_out.loss.item(), fve, l0, dead_frac,
                 )
                 client.report(
                     "train",
@@ -245,6 +291,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
                             "payload": {
                                 "tokens_done": tokens_done,
                                 "tokens_target": config.tokens_target,
+                                "steps_done": steps_done,
                                 "loss": last_out.loss.item(),
                                 "recon_loss": last_out.recon_loss.item(),
                                 "aux_loss": last_out.aux_loss.item(),

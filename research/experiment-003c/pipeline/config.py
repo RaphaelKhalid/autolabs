@@ -42,6 +42,15 @@ class Config:
     lr: float = 3e-4
     aux_loss_coef: float = 1.0 / 32.0
     dead_feature_window_tokens: int = 200_000  # smoke; full run uses 10_000_000
+    # Harvesting (7B forward through `layer` layers) is the GPU bottleneck;
+    # SAE optimizer steps are cheap. One step per harvested batch starved
+    # the SAE of gradient steps (~245 steps/1M tokens on smoke-2, FVE still
+    # climbing and dead_fraction still falling at the 3M-token checkpoint --
+    # see pipeline/README.md "Steps per harvested batch"). Run several SAE
+    # steps -- each on a fresh sample from the shuffle buffer -- per
+    # harvested batch instead.
+    train_steps_per_batch: int = 4  # smoke; full run uses 8
+    lr_warmup_steps: int = 500  # linear warmup over optimizer steps, 0 disables
 
     # --- data / harvest ---
     dataset_name: str = "HuggingFaceH4/ultrachat_200k"
@@ -114,3 +123,7 @@ class Config:
             raise ValueError("k must be positive")
         if self.layer < 0:
             raise ValueError("layer must be >= 0")
+        if self.train_steps_per_batch < 1:
+            raise ValueError("train_steps_per_batch must be >= 1")
+        if self.lr_warmup_steps < 0:
+            raise ValueError("lr_warmup_steps must be >= 0")

@@ -24,14 +24,43 @@ buffer).
    entirely to save compute), captures the layer's residual stream at the
    masked positions into an in-memory shuffle buffer, and trains the
    Matryoshka BatchTopK SAE on samples drawn from that buffer. Logs
-   `[train] tokens=... loss=... fve=... l0=... dead_frac=...` and reports a
-   `"train"` record every `checkpoint_every_tokens` tokens (and once more
-   at the end) with `{tokens_done, tokens_target, loss, recon_loss,
-   aux_loss, fraction_variance_explained, l0, dead_fraction}`, and saves a
-   resumable safetensors checkpoint to `<workdir>/checkpoints/`. After the
-   token target is reached, harvests one more, held-out batch of 4096
-   activations (never seen by the optimizer) and stores its FVE/mean-L0 as
-   `held_out_fve`/`held_out_l0` in `feature_stats.json`.
+   `[train] tokens=... steps=... loss=... fve=... l0=... dead_frac=...` and
+   reports a `"train"` record every `checkpoint_every_tokens` tokens (and
+   once more at the end) with `{tokens_done, tokens_target, steps_done,
+   loss, recon_loss, aux_loss, fraction_variance_explained, l0,
+   dead_fraction}`, and saves a resumable safetensors checkpoint to
+   `<workdir>/checkpoints/`. After the token target is reached, harvests
+   one more, held-out batch of 4096 activations (never seen by the
+   optimizer) and stores its FVE/mean-L0 as `held_out_fve`/`held_out_l0`
+   in `feature_stats.json`.
+
+   **Steps per harvested batch.** Harvesting (a 7B forward pass through
+   `layer` decoder layers) is the GPU bottleneck; an SAE optimizer step is
+   cheap by comparison. Running exactly one SAE step per harvested batch
+   (the original design) starves the optimizer: on smoke-2 (width 8192,
+   k 40, lr 3e-4, `batch_tokens` 4096) that pairing gave only ~245
+   optimizer steps per 1,000,000 tokens harvested, and FVE/dead-fraction
+   were still visibly improving at the last checkpoint (FVE 0.44 / 0.54 /
+   0.59 and dead fraction 0.81 / 0.72 / 0.60 at 1M / 2M / 3M tokens) rather
+   than having converged. `train_steps_per_batch` (config field, smoke
+   default 4, full default 8) runs that many SAE optimizer steps per
+   harvested batch once the shuffle buffer is ready, each on an
+   independent fresh draw from `buffer.sample(batch_tokens)` (sampled with
+   replacement, so within one harvested batch's worth of steps some tokens
+   may repeat -- the buffer already holds up to `shuffle_buffer_size`
+   distinct activations, decorrelating a "batch" from any single
+   document). This multiplies the achieved step count roughly
+   `train_steps_per_batch`-fold for the same harvesting cost: e.g. smoke's
+   default of 4 turns ~245 steps/1M tokens into ~980 steps/1M tokens.
+   `lr_warmup_steps` (default 500) linearly ramps the learning rate from 0
+   up to `lr` over that many *optimizer steps* (not harvested batches),
+   which matters more now that so many more steps happen early in a run;
+   see `lr_warmup_multiplier` in `run_smoke.py`. Both `steps_done` (the
+   cumulative optimizer-step counter) and the warmup schedule survive a
+   resume: each checkpoint's `steps_done` is written to a sibling
+   `sae_step_<tokens>.steps.json` file so a resumed run continues the same
+   step count and warmup position rather than restarting `lr_warmup_steps`
+   from zero at the (already-passed) resume point.
 3. **post-train check** -- `checks.sae_replace_check`: replace the residual
    at `layer` with `sae.reconstruct(x)` -- the same reconstruction method
    `forward_loss` uses internally for its main (outermost-shell)
@@ -75,7 +104,7 @@ work:
 | Stage | Marker file(s) |
 |---|---|
 | boot | `boot_checks.json` |
-| harvest+train | `sae.safetensors` + `feature_stats.json` (final); `checkpoints/sae_step_*.safetensors` (partial) |
+| harvest+train | `sae.safetensors` + `feature_stats.json` (final); `checkpoints/sae_step_*.safetensors` + sibling `checkpoints/sae_step_*.steps.json` (partial) |
 | post-train check | `post_train_check.json` |
 | calibrate | `calibration_records.json` |
 | analyze | `summary.json` + `smoke-report.html` |
@@ -87,12 +116,44 @@ tokenizing a fresh, differently-shuffled pass over the dataset rather than
 picking up at the exact same document -- for a smoke test with an 8M-token
 target and a `seed`-shuffled 200k-conversation dataset this is a fine
 tradeoff; the SAE optimizer state (Adam moments) is *not* checkpointed, only
-the weights, so a resume restarts Adam's moving averages from zero. A run
+the weights, so a resume restarts Adam's moving averages from zero. The
+cumulative optimizer-step count (`steps_done`, used for the LR warmup
+schedule) *is* checkpointed, in the sibling `<checkpoint>.steps.json` file,
+so a resume continues the warmup schedule rather than restarting it; the
+per-feature dead-window counters (`tokens_since_fired`) are *not*
+checkpointed (see "Dead-feature accounting" below), so a resume restarts
+every feature's dead-window clock from zero, same as Adam's moments. A run
 resumed from a *partial* checkpoint (training not yet finished) collects
 its own fresh held-out batch once training completes, same as a run that
 never crashed; a run resumed after `sae.safetensors` + `feature_stats.json`
 already exist skips harvest+train entirely and reuses whatever
 `held_out_fve`/`held_out_l0` that prior run already computed.
+
+### Dead-feature accounting
+
+`sae.MatryoshkaBatchTopKSAE.tokens_since_fired` (one counter per feature)
+is incremented by `codes.shape[0]` inside `update_dead_stats`, called from
+`forward_loss(x, ...)` -- and `x` is always `buffer.sample(batch_tokens)`,
+i.e. the fixed-size batch actually fed to the SAE for one optimizer step,
+never the (irregularly-sized) batch of activations just harvested from the
+model. So the window is already counted in **tokens seen by the SAE**
+(`batch_tokens` per optimizer step, i.e. `steps_done x batch_tokens`
+cumulatively) rather than harvested tokens, and this held true before and
+continues to hold now that `train_steps_per_batch` calls `forward_loss`
+several times per harvested batch -- each call advances the counter by
+another `batch_tokens`, so `dead_feature_window_tokens` continues to mean
+what its name says regardless of how many SAE steps happen per harvested
+batch. The aux loss also already targets only dead features correctly:
+`dead_preact = preact * dead_mask` zeroes every column whose feature is
+not currently "dead" before `batch_topk` picks the top `k_aux` activations,
+so `dead_codes` (and therefore `aux_recon`) can only ever contain
+currently-dead features. No fix was needed for either the counting units
+or the targeting. The one related gap found (not fixed here, since it's
+a checkpoint-persistence question rather than a counting-units bug): like
+Adam's moments, `tokens_since_fired` is not part of `state_dict_safetensors`
+and is not checkpointed, so a resume restarts every feature's dead-window
+clock from zero rather than preserving how close each feature was to being
+declared dead.
 
 ## Running
 
@@ -132,16 +193,21 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-44 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
+53 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
 per-token-average-k property, the Worker's canonical-JSON sha256 contract
 against a known hash, the assistant-turn masking algorithm and the
 generation-prompt boundary computation against a small fake tokenizer that
 reproduces a `<|im_start|>{role}...<|im_end|>` chat template without any
-network access, the quantile-spread feature-selection helper, and the
+network access, the quantile-spread feature-selection helper, the
 coherence metrics (a repetitive token sequence must be `incoherent`, a
-varied one `coherent`).
+varied one `coherent`), config validation for `train_steps_per_batch` /
+`lr_warmup_steps`, the `lr_warmup_multiplier` schedule (0 at step 0, full
+LR at and after `lr_warmup_steps`), and a CPU toy loop asserting
+`train_steps_on_buffer` performs exactly `train_steps_per_batch` optimizer
+steps per call (and that `steps_done` accumulates correctly across calls,
+as it would across a resume).
 
 ## Estimated smoke-test runtime on 1x A40 48GB
 

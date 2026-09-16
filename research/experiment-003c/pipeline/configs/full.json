@@ -9,6 +9,8 @@
   "lr": 3e-4,
   "aux_loss_coef": 0.03125,
   "dead_feature_window_tokens": 10000000,
+  "train_steps_per_batch": 8,
+  "lr_warmup_steps": 500,
   "dataset_name": "HuggingFaceH4/ultrachat_200k",
   "dataset_split": "train_sft",
   "max_seq": 1024,
