@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, FlaskConical, Radio, RefreshCw, ShieldCheck } from 'lucide-react';
 import { AlienForm } from '@/components/autolabs-observatory';
+import { Persona3CProgress } from '@/components/persona-3c-progress';
 import { demoAgents, type ResearchAgent } from '@/lib/experiment';
 import {
   fetchPersona3BStatus, persona3bContract, persona3bPhaseLabel, phaseDisplay, startPersona3B,
@@ -107,6 +108,7 @@ export function Persona3BLab() {
   }
 
   return <main className="persona3b-page">
+    <Persona3CProgress />
     <section className="persona3b-monitor" aria-live="polite" aria-label="Experiment 3B run status">
       <div className="persona3b-monitor-top"><div><p className="persona-eyebrow">AUTOLABS RUN RECEIPT</p><h2>{run ? persona3bPhaseLabel(run) : 'Awaiting the owner start'}</h2></div><span className={`persona3b-status ${run ? statusTone(run.status) : 'is-idle'}`}><i />{run?.status ?? (connection === 'error' ? 'unavailable' : 'no run')}</span></div>
       <div className="persona3b-metrics"><div><span>SOURCE OUTPUTS</span><strong>{number(persona3bContract.totalRecords)} rows</strong></div><div><span>PAIRED COMPARISONS</span><strong>{number(primary.done)} / {number(persona3bContract.pairedComparisons)}</strong></div><div><span>GRADING CALLS</span><strong>{number(run?.callCount ?? 0)} / {number(run?.callCeiling ?? persona3bContract.callCeiling)}</strong>{run?.amendment ? <small>amended ceiling · manifest {number(run.amendment.originalCallCeiling)}</small> : null}</div><div><span>SPEND / CAP</span><strong>{dollars(run?.spentUsd ?? 0)} / {dollars(run?.budgetUsd ?? persona3bContract.budgetUsd)}</strong></div><div><span>MODEL</span><strong>{run?.model ?? persona3bContract.model} · high</strong></div></div>

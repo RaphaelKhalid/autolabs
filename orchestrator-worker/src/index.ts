@@ -5,6 +5,7 @@ import { AGENT_IDS, type AgentId, type RunParams } from './types';
 import { campaign as eventCampaign, claimEvent, eventRun } from './events';
 import { claimPersona3A, persona3AStatus, startPersona3A, updatePersona3A } from './persona-3a';
 import { claimPersona3B, finalizePersona3B, persona3BStatus, persona3BScores, reviewPersona3B, scorePersona3B, startPersona3B, startPersona3BRepair, synthesizePersona3B, updatePersona3B } from './persona-3b';
+import { persona3CStatus, reportPersona3C, startPersona3C, stopPersona3C } from './persona-3c';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -376,6 +377,10 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/persona-3b/finalize') return await finalizePersona3B(request, env, corsHeaders);
       if (request.method === 'POST' && url.pathname === '/api/persona-3b/synthesize') return await synthesizePersona3B(request, env, corsHeaders);
       if (request.method === 'POST' && (url.pathname === '/api/persona-3b/update' || url.pathname === '/api/persona-3b/ingest')) return await updatePersona3B(request, env, corsHeaders);
+      if (request.method === 'GET' && url.pathname === '/api/persona-3c/status') return await persona3CStatus(env, corsHeaders, url.searchParams.get('runId'));
+      if (request.method === 'POST' && url.pathname === '/api/persona-3c/start') return await startPersona3C(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3c/report') return await reportPersona3C(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3c/stop') return await stopPersona3C(request, env, corsHeaders);
 
       return json({ error: 'Not found.' }, { status: 404 }, corsHeaders);
     } catch (error) {
