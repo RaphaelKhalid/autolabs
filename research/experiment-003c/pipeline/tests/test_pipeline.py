@@ -209,6 +209,10 @@ class FakeTokenizer:
         pieces = self._PATTERN.findall(text)
         return [self._id_for(p, special=p in self._SPECIALS) for p in pieces]
 
+    def __call__(self, text: str, add_special_tokens: bool = False, **_):
+        pieces = self._PATTERN.findall(text)
+        return {"input_ids": [self._id_for(p, special=p in self._SPECIALS) for p in pieces]}
+
     def decode(self, ids: List[int]) -> str:
         inv = {v: k for k, v in self.vocab.items()}
         return " ".join(inv[i] for i in ids)
