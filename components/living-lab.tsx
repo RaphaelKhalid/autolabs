@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowUpRight, ChevronLeft, ChevronRight, CircleDollarSign, Clock3,
-  FlaskConical, Github, Pause, Play, Radio, RefreshCw, ShieldCheck, TimerReset, X, Zap,
+  FlaskConical, Pause, Play, Radio, RefreshCw, ShieldCheck, TimerReset, X, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAgentEvents, fetchExperiment } from '@/lib/api';

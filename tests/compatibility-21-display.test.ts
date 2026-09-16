@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {COMPATIBILITY21_API, compatibility21CallTitle, compatibility21Eta, validCompatibility21Status} from '../lib/compatibility-21-display';
-import {experiments, finiteCompatibility, latestExperiment, rewardCompatibility} from '../lib/experiment-catalog';
+import {experiments, finiteCompatibility, latestExperiment, personaDiscovery, rewardCompatibility} from '../lib/experiment-catalog';
 
 const status = {runId:'experiment-002-1-v1',version:'finite-compatibility-1',model:'gpt-5.6-luna',status:'running',stage:'dev',reason:null,updatedAt:'2026-09-11T06:00:00Z',protocolHash:'abc',evaluationSealed:true,progress:{callsDone:24,callsTotal:3600,cases:[{split:'dev',done:8,total:240}]},budget:{spentUsd:.02,reservedUsd:.04,priorCommittedUsd:1.291626,totalCommittedUsd:1.351626,capUsd:40,calls:32},execution:{concurrency:8},ledger:{storageBytes:4096,softLimitBytes:268435456},active:[{id:'dev-c01/guided/0',started:123}],etaSeconds:5400,gate:null,isolation:{passed:true},recent:[]};
 describe('Experiment 002.1 display',()=>{
@@ -27,7 +27,7 @@ describe('Experiment 002.1 display',()=>{
     expect(compatibility21CallTitle('future-record')).toBe('Research call');
   });
   it('keeps the completed predecessor and shared-cap successor distinct',()=>{
-    expect(latestExperiment).toBe(finiteCompatibility);
+    expect(latestExperiment).toBe(personaDiscovery);
     expect(rewardCompatibility.status).toBe('complete');
     expect(experiments).toContain(rewardCompatibility);
     expect(finiteCompatibility.runId).not.toBe(rewardCompatibility.runId);

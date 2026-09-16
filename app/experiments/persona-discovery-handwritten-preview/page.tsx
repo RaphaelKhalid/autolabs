@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { Caveat } from 'next/font/google';
-import { TraceMark } from '@/components/trace-mark';
 import './handwritten-preview.css';
 
 const hand = Caveat({

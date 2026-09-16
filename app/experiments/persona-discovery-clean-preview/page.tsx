@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { TraceMark } from '@/components/trace-mark';
 import './clean-preview.css';
 
 export const metadata: Metadata = {
