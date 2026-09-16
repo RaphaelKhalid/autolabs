@@ -4,6 +4,7 @@ import { POST_COUNCIL_POLICY_SUMMARY } from './second-half-policy';
 import { AGENT_IDS, type AgentId, type RunParams } from './types';
 import { campaign as eventCampaign, claimEvent, eventRun } from './events';
 import { claimPersona3A, persona3AStatus, startPersona3A, updatePersona3A } from './persona-3a';
+import { claimPersona3B, finalizePersona3B, persona3BStatus, persona3BScores, reviewPersona3B, scorePersona3B, startPersona3B, startPersona3BRepair, synthesizePersona3B, updatePersona3B } from './persona-3b';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -363,6 +364,18 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/persona-3a/start') return await startPersona3A(request, env, corsHeaders);
       if (request.method === 'GET' && url.pathname === '/api/persona-3a/next') return await claimPersona3A(request, env, corsHeaders);
       if (request.method === 'POST' && url.pathname === '/api/persona-3a/update') return await updatePersona3A(request, env, corsHeaders);
+      const persona3BStatusMatch = url.pathname.match(/^\/api\/persona-3b\/status(?:\/([a-zA-Z0-9-]+))?$/);
+      if (request.method === 'GET' && persona3BStatusMatch) return await persona3BStatus(env, corsHeaders, persona3BStatusMatch[1]);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3b/start') return await startPersona3B(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3b/repair-start') return await startPersona3BRepair(request, env, corsHeaders);
+      if (request.method === 'GET' && url.pathname === '/api/persona-3b/next') return await claimPersona3B(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3b/score') return await scorePersona3B(request, env, corsHeaders);
+      const persona3BScoresMatch = url.pathname.match(/^\/api\/persona-3b\/scores\/([a-zA-Z0-9-]+)$/);
+      if (request.method === 'GET' && persona3BScoresMatch) return await persona3BScores(request, env, corsHeaders, persona3BScoresMatch[1]);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3b/review-plan') return await reviewPersona3B(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3b/finalize') return await finalizePersona3B(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3b/synthesize') return await synthesizePersona3B(request, env, corsHeaders);
+      if (request.method === 'POST' && (url.pathname === '/api/persona-3b/update' || url.pathname === '/api/persona-3b/ingest')) return await updatePersona3B(request, env, corsHeaders);
 
       return json({ error: 'Not found.' }, { status: 404 }, corsHeaders);
     } catch (error) {

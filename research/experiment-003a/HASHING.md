@@ -7,5 +7,5 @@
 3. Serialize with two-space indentation and a final newline, preserving the checked-in key order.
 4. SHA-256 those UTF-8 bytes.
 
-The resulting value is `sha256:9d330f1b2e55971a250bbf8e49809f185712be7e228895e89d4a437dadd4315b`. The relay must perform this check before pushing Kaggle. Any change to the manifest requires a new hash and a new launch request.
+The resulting value is `sha256:9fd05fffe50a6f402fea4dab6f7cf51dcd66ef78ea9fa450374bd0f2411ca766`. The relay must perform this check before pushing Kaggle. Any change to the manifest requires a new hash and a new launch request.
 

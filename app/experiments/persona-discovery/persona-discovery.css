@@ -10,11 +10,11 @@
 .persona-eyebrow { margin: 0; color: #65766b; font: 11px var(--font-mono), monospace; letter-spacing: .12em; text-transform: uppercase; }
 .persona-lede { max-width: 610px; margin: 0; color: #596860; font-size: 18px; line-height: 1.55; }
 .persona-header-links { display: flex; align-items: end; gap: 18px; padding-bottom: 7px; white-space: nowrap; font: 12px var(--font-mono), monospace; }
-.persona-header-links a, .persona-footer a { color: #3d6654; text-decoration: none; border-bottom: 1px solid #87a390; padding-bottom: 4px; }
-.persona-monitor { margin-top: 32px; padding: 28px 30px 24px; border: 1px solid #aebdb1; border-left: 4px solid #3d765f; background: #eef3ed; }
+.persona-header-links a, .persona-footer a { color: #D63B00; text-decoration: none; border-bottom: 1px solid #87a390; padding-bottom: 4px; }
+.persona-monitor { margin-top: 32px; padding: 28px 30px 24px; border: 1px solid #aebdb1; border-left: 4px solid #FF4F00; background: #eef3ed; }
 .persona-monitor-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .persona-status-pill { padding: 6px 10px; border: 1px solid #aeb8ae; color: #67736a; font: 11px var(--font-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
-.persona-status-pill.is-running { border-color: #3d765f; color: #2e644e; }
+.persona-status-pill.is-running { border-color: #FF4F00; color: #2e644e; }
 .persona-monitor h2 { max-width: 800px; margin: 20px 0 26px; font-size: clamp(24px, 3vw, 36px); line-height: 1.1; font-weight: 430; letter-spacing: -.025em; }
 .persona-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
 .persona-metrics > div { display: grid; gap: 7px; padding-top: 12px; border-top: 1px solid #b8c6ba; }
@@ -24,14 +24,14 @@
 .persona-progress-label { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
 .persona-progress-label strong { color: #2f6b53; font: 13px var(--font-mono), monospace; }
 .persona-progress-track { height: 8px; overflow: hidden; border: 1px solid #a9b9ac; background: #d9e2d9; }
-.persona-progress-track span { display: block; height: 100%; background: #3d765f; transition: width 500ms ease; }
+.persona-progress-track span { display: block; height: 100%; background: #FF4F00; transition: width 500ms ease; }
 .persona-monitor-foot { display: flex; justify-content: space-between; gap: 16px; margin-top: 12px; color: #6b776e; font: 11px var(--font-mono), monospace; }
 .persona-method { padding: 66px 0 52px; }
 .persona-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; border-bottom: 1px solid #cbd3cb; padding-bottom: 16px; }
 .persona-section-heading h2, .persona-control h2 { margin: 8px 0 0; font-size: 30px; font-weight: 430; letter-spacing: -.03em; }
 .persona-method-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding-top: 22px; }
 .persona-method-grid article { padding-top: 12px; border-top: 1px solid #9eafa1; }
-.persona-method-grid article > span { color: #3d765f; font: 12px var(--font-mono), monospace; }
+.persona-method-grid article > span { color: #FF4F00; font: 12px var(--font-mono), monospace; }
 .persona-method-grid h3 { margin: 14px 0 8px; font-size: 24px; font-weight: 430; }
 .persona-method-grid p { max-width: 320px; margin: 0; color: #5d6b62; font-size: 15px; line-height: 1.6; }
 .persona-control { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end; padding: 28px 30px; border: 1px solid #cbd3cb; background: #f6f8f4; }
@@ -39,7 +39,7 @@
 .persona-control-form { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
 .persona-control-form label { grid-column: 1 / -1; color: #657269; font: 11px var(--font-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
 .persona-control-form input { min-width: 0; height: 43px; padding: 0 12px; border: 1px solid #aebdb1; background: #fff; color: #27312d; font: 14px var(--font-mono), monospace; }
-.persona-control-form button { height: 43px; padding: 0 16px; border: 1px solid #315e4d; background: #315e4d; color: #fff; font: 11px var(--font-mono), monospace; letter-spacing: .04em; cursor: pointer; }
+.persona-control-form button { height: 43px; padding: 0 16px; border: 1px solid #111312; background: #111312; color: #fff; font: 11px var(--font-mono), monospace; letter-spacing: .04em; cursor: pointer; }
 .persona-control-form button:disabled { cursor: not-allowed; opacity: .45; }
 .persona-control-form p { grid-column: 1 / -1; margin: 4px 0 0; color: #657269; font: 11px/1.5 var(--font-mono), monospace; }
 .persona-footer { display: flex; justify-content: space-between; gap: 20px; padding-top: 22px; color: #718077; font: 11px var(--font-mono), monospace; }
@@ -50,7 +50,7 @@
   .persona-header { display: block; padding: 28px 0 26px; }
   .persona-header h1 { font-size: 32px; }
   .persona-lede { font-size: 16px; }
-  .persona-header-links { align-items: start; padding-top: 26px; }
+  .persona-header-links { align-items: start; padding-top: 26px; flex-wrap: wrap; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .persona-monitor { padding: 22px 20px 20px; }
   .persona-metrics, .persona-method-grid, .persona-control { grid-template-columns: 1fr; }
   .persona-method { padding: 48px 0 36px; }
@@ -64,7 +64,7 @@
 .persona-results-lede { max-width: 760px; margin: 22px 0 0; color: #5d6b62; font-size: 16px; line-height: 1.65; }
 .persona-results-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding-top: 24px; }
 .persona-results-grid article { padding: 18px 0 0; border-top: 1px solid #9eafa1; }
-.persona-results-grid article > span { color: #3d765f; font: 18px var(--font-mono), monospace; }
+.persona-results-grid article > span { color: #FF4F00; font: 18px var(--font-mono), monospace; }
 .persona-results-grid h3, .persona-results-columns h3 { margin: 10px 0 7px; font-size: 21px; font-weight: 430; }
 .persona-results-grid p, .persona-results-columns p { margin: 0; color: #5d6b62; font-size: 14px; line-height: 1.6; }
 .persona-results-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 42px; margin-top: 38px; }
@@ -72,18 +72,18 @@
 .persona-signal-table { margin-top: 18px; border-top: 1px solid #c2ccc1; }
 .persona-signal-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid #d3d9d0; color: #3f4b43; font: 12px var(--font-mono), monospace; }
 .persona-signal-head { color: #788379; font-size: 9px; letter-spacing: .08em; }
-.persona-example { margin-top: 18px; padding: 15px 17px; border-left: 3px solid #9a4f36; background: #f4f3ec; }
+.persona-example { margin-top: 18px; padding: 15px 17px; border-left: 3px solid #FF4F00; background: #f4f3ec; }
 .persona-example p + p { margin-top: 12px; }
 .persona-example strong { color: #3e5548; font: 10px var(--font-mono), monospace; letter-spacing: .07em; text-transform: uppercase; }
 .persona-results-note { margin-top: 16px !important; color: #6c756d !important; font-size: 12px !important; }
-.persona-feature-list { margin-top: 32px; padding-top: 14px; border-top: 1px solid #cbd3cb; color: #3d6654; font: 11px var(--font-mono), monospace; }
+.persona-feature-list { margin-top: 32px; padding-top: 14px; border-top: 1px solid #cbd3cb; color: #D63B00; font: 11px var(--font-mono), monospace; }
 .persona-feature-list summary { cursor: pointer; }
 .persona-feature-list code { display: block; margin-top: 12px; color: #5d6b62; line-height: 1.8; white-space: normal; }
 .persona-scoring-list { display: grid; gap: 15px; max-width: 900px; margin: 24px 0 0; padding-left: 22px; color: #5d6b62; font-size: 15px; line-height: 1.6; }
 .persona-scoring-list strong { color: #34453b; font-weight: 600; }
-.persona-status-pill.is-complete { border-color: #3d765f; color: #2e644e; }
+.persona-status-pill.is-complete { border-color: #FF4F00; color: #2e644e; }
 .persona-control-form--complete { display: flex; align-items: center; justify-content: flex-end; gap: 18px; color: #657269; font: 11px var(--font-mono), monospace; }
-.persona-control-form--complete a { color: #3d6654; text-decoration: none; border-bottom: 1px solid #87a390; padding-bottom: 4px; white-space: nowrap; }
+.persona-control-form--complete a { color: #D63B00; text-decoration: none; border-bottom: 1px solid #87a390; padding-bottom: 4px; white-space: nowrap; }
 @media (max-width: 720px) {
   .persona-results-grid, .persona-results-columns { grid-template-columns: 1fr; }
   .persona-control-form--complete { display: grid; justify-content: start; gap: 12px; }

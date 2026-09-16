@@ -17,10 +17,7 @@ export const metadata: Metadata = {
 
 export default function PersonaDiscoveryHandwrittenPreviewPage() {
   return <main className={`handwritten-study ${hand.variable}`}>
-    <nav className="handwritten-study__nav" aria-label="Primary navigation">
-      <a href="/" aria-label="AutoLabs home"><TraceMark size={34} /></a>
-      <div><a href="/experiments">All experiments</a><a href="/research">Research</a></div>
-    </nav>
+    
 
     <header className="handwritten-study__header">
       <p className="hand-label">Experiment 3A</p>

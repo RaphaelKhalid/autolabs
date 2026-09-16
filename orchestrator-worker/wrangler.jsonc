@@ -15,7 +15,9 @@
     "MODEL_NAME": "gpt-5.6-luna",
     "PUBLIC_WORKER_URL": "https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev",
     "EVENTS_LAUNCH_ENABLED": "false",
-    "PERSONA_3A_LAUNCH_ENABLED": "false"
+    "PERSONA_3A_LAUNCH_ENABLED": "false",
+    "PERSONA_3B_SCORING_ENABLED": "true",
+    "PERSONA_3B_MANIFEST_HASH": "7e3b333e93c0bd9c6d04ca3b7cc6f8a7ed4e00887a4080623abafec2ce8b20c7"
   },
   "d1_databases": [
     {

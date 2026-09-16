@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "experiment-003b-scoring-v1",
+  "title": "Blinded Experiment 3B response score",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["record_id", "scores", "pairwise", "evidence", "notes"],
+  "properties": {
+    "record_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,80}$"},
+    "scores": {
+      "type": "object", "additionalProperties": false, "required": ["A", "B"],
+      "properties": {"A": {"$ref": "#/$defs/scoreSet"}, "B": {"$ref": "#/$defs/scoreSet"}}
+    },
+    "pairwise": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relational_stance", "self_positioning", "assertiveness", "affective_tone", "voice_coherence"],
+      "properties": {
+        "relational_stance": {"$ref": "#/$defs/pair"}, "self_positioning": {"$ref": "#/$defs/pair"},
+        "assertiveness": {"$ref": "#/$defs/pair"}, "affective_tone": {"$ref": "#/$defs/pair"},
+        "voice_coherence": {"$ref": "#/$defs/pair"}
+      }
+    },
+    "evidence": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 240}},
+    "notes": {"type": "string", "maxLength": 300}
+  },
+  "$defs": {
+    "nullableInt": {"type": ["integer", "null"]},
+    "scoreSet": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relational_stance", "self_positioning", "assertiveness", "affective_tone", "voice_coherence", "task_completion", "topical_fidelity", "specificity", "refusal_safety", "lexical_format_artifact"],
+      "properties": {
+        "relational_stance": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "self_positioning": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "assertiveness": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "affective_tone": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "voice_coherence": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "task_completion": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "topical_fidelity": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "specificity": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 4}]},
+        "refusal_safety": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 2}]},
+        "lexical_format_artifact": {"allOf": [{"$ref": "#/$defs/nullableInt"}, {"minimum": 0, "maximum": 3}]}
+      }
+    },
+    "pair": {
+      "type": "object", "additionalProperties": false, "required": ["direction", "magnitude"],
+      "properties": {
+        "direction": {"type": "string", "enum": ["increase", "decrease", "no_clear_change", "unknown"]},
+        "magnitude": {"type": "integer", "enum": [0, 1, 2]}
+      }
+    }
+  }
+}

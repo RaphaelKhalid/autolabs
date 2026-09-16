@@ -1,0 +1,11 @@
+# Private 3b run artifacts and internal identity-bearing files.
+run/
+.local-test/
+__pycache__/
+*.py[cod]
+*.jsonl
+private-mapping.json
+scoring-manifest.json
+internal-feature-manifest.json
+
+private-run/
