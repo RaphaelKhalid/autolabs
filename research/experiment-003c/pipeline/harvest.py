@@ -134,7 +134,7 @@ class ShuffleBuffer:
     def add(self, vectors: torch.Tensor) -> None:
         if vectors.numel() == 0:
             return
-        vectors = vectors.detach().to(self.buffer.dtype)
+        vectors = vectors.detach().to(device=self.buffer.device, dtype=self.buffer.dtype)
         n = vectors.shape[0]
         self.total_added += n
         if self.filled < self.capacity:
