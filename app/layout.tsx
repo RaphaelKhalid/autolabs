@@ -7,6 +7,7 @@ import './lab.css';
 import './archive.css';
 import './workbench.css';
 import './research.css';
+import { SiteHeader } from '@/components/site-header';
 
 const serif = STIX_Two_Text({
   subsets: ['latin'],
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className={`${serif.variable} ${mono.variable}`}>
+        <SiteHeader tone="dark" />
         {children}
         {process.env.AUTOLABS_SELF_HOSTED !== '1' && <Analytics />}
       </body>

@@ -35,12 +35,9 @@ export function PersonaDiscoveryStudy() {
   const run = persona3aVerifiedRun;
 
   return <main className="persona-page">
-    <nav className="persona-nav" aria-label="Primary">
-      <a href="/" className="persona-brand">AUTOLABS <span>/</span> EXPERIMENT 3A</a>
-      <div><a href="/experiments">Experiments</a><a href="/research">Research</a></div>
-    </nav>
+    
 
-    <header className="persona-header"><div><p className="persona-eyebrow">EXPERIMENT 3A · DEVELOPMENT STUDY</p><h1>Persona discovery</h1><p className="persona-lede">Development screen for repeatable behavioral directions in Qwen2.5‑7B‑Instruct.</p></div><div className="persona-header-links"><a href={QUESTION_URL} target="_blank" rel="noreferrer">Protocol ↗</a><a href={notebookUrl} target="_blank" rel="noreferrer">Kaggle notebook ↗</a></div></header>
+    <header className="persona-header"><div><p className="persona-eyebrow">EXPERIMENT 3A · DEVELOPMENT STUDY</p><h1>Persona discovery</h1><p className="persona-lede">Development screen for repeatable behavioral directions in Qwen2.5‑7B‑Instruct.</p></div><div className="persona-header-links"><a href={QUESTION_URL} target="_blank" rel="noreferrer">Protocol ↗</a><a href={notebookUrl} target="_blank" rel="noreferrer">Kaggle notebook ↗</a><a href="/experiments/persona-discovery-scoring">Open Experiment 3B scoring room ↗</a></div></header>
 
     <section className="persona-monitor" aria-live="polite" aria-label="Experiment run receipt">
       <div className="persona-monitor-top"><p className="persona-eyebrow">RUN RECEIPT</p><span className="persona-status-pill is-complete">{syncState === 'loading' ? 'syncing' : run.status}</span></div>

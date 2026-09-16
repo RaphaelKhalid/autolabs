@@ -1,0 +1,1 @@
+ALTER TABLE persona_3b_runs ADD COLUMN repair_call_count INTEGER NOT NULL DEFAULT 0 CHECK (repair_call_count >= 0);

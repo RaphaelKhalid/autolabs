@@ -4,7 +4,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { AlienForm } from '@/components/autolabs-observatory';
-import { TraceMark } from '@/components/trace-mark';
 import { demoAgents, type ResearchAgent } from '@/lib/experiment';
 
 type Position = { x: number; y: number; rotation: number };
@@ -77,10 +76,6 @@ export function AutolabsHome() {
   return <main className="home-playground">
     <Image className="home-playground-photo" src="/photography/autolabs-field.png" alt="A hazy sunset over the Pacific Ocean" fill priority sizes="100vw" />
     <div className="home-playground-wash" aria-hidden="true" />
-    <nav className="playground-nav" aria-label="Primary">
-      <Link className="playground-brand" href="/" aria-label="AutoLabs home"><TraceMark size={38} label={false} /><strong>AUTOLABS</strong></Link>
-      <div><Link href="/experiments">Experiments</Link><Link href="/events">Events</Link><Link href="/research">Research</Link><Link href="/journal">Journal</Link><Link href="/studio">Studio</Link><a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source ↗</a></div>
-    </nav>
     <section className="playground-intro"><p>THE AUTOLABS FIELD</p><h1>Meet the researchers.</h1></section>
     <section className="agent-arena" ref={arenaRef} aria-label="Interactive five-agent laboratory">
       <div className="arena-grid" aria-hidden="true" />

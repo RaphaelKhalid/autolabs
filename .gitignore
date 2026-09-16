@@ -16,3 +16,11 @@ orchestrator-worker/.wrangler/
 
 # Explicit self-hosted secret file (also covered by .env* above).
 .env.selfhost.local
+
+# Private Experiment 3A intake (raw responses and provenance metadata).
+research/experiment-003a/private-intake/
+
+# Local browser profiles and screenshot scratch output.
+.chrome-dropdown-check/
+output/
+__pycache__/

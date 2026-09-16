@@ -32,7 +32,7 @@ export function RewardLab(){
   const lower=Math.min(-.1,...bounds),upper=Math.max(.1,...bounds),span=upper-lower;
   const plotX=(n:number)=>315+((n-lower)/span)*355;
   return <main className="reward-page">
-    <nav className="reward-nav" aria-label="Main navigation"><Link href="/">A / AUTOLABS</Link><div><Link href="/experiments">Experiments</Link><Link href="/research">Research</Link><a href={REPO}>Source ↗</a></div></nav>
+    
     <header className="reward-heading"><p className="reward-label">EXPERIMENT 002 · AI SAFETY</p><h1>Measuring reward<br/>compatibility.</h1><p>Can a small test predict when optimizing reasoning makes it harder to monitor?</p></header>
     <section className="reward-overview" aria-label="Live experiment">
       <div className={`reward-researcher ${running?'is-running':''}`}>
@@ -52,7 +52,7 @@ export function RewardLab(){
         {status?.gate&&<details><summary>Feasibility: {status.gate.pass?'passed':'did not pass'}</summary>{Object.entries(status.gate.checks).map(([k,v])=><p key={k}>{v?'✓':'×'} {k}</p>)}</details>}
       </div>
     </section>
-    <div className="reward-links"><a href={`${REPO}/blob/main/PROTOCOL.md`}>Registered protocol ↗</a><a href={`${API}/results`}>Scored records ↗</a><a href={`${API}/logs`}>API ledger ↗</a><Link href="/experiments/erdos-885">Pilot 001 archive</Link></div>
+    <nav className="reward-links" aria-label="Reward compatibility research family"><span>RESEARCH / REWARD COMPATIBILITY</span><Link href="/experiments/reward-compatibility" aria-current="page">002 archive</Link><Link href="/experiments/reward-compatibility-21">002.1</Link><Link href="/experiments/reward-categories-22">002.2</Link><a href={`${REPO}/blob/main/PROTOCOL.md`}>Protocol ↗</a><a href={`${API}/results`}>Results ↗</a><a href={`${API}/logs`}>Ledger ↗</a></nav>
     <RewardMetricGuide/>
     <section className="reward-section"><p className="reward-label">METHOD</p><div className="reward-method">{[['01','Search','Find readable strategies meeting each reward.'],['02','Optimize','Matched outcome-only and combined-reward histories.'],['03','Evaluate','Blind monitoring on held-out tasks.']].map(([n,t,d])=><div key={n}><span>{n}</span><h3>{t}</h3><p>{d}</p></div>)}</div><p className="reward-caption">Eight configurations · three repeats · five fresh transfer tasks per candidate. Coin tracking only; the code-backdoor arm is deferred. No weight updates. No claim of private reasoning access.</p></section>
     <section className="reward-section"><p className="reward-label">RESULT FIGURE</p><h2>Prediction versus observed monitoring loss</h2>{rows?<>

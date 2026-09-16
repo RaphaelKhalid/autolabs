@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
-import { AutolabsHome } from '@/components/autolabs-home';
+import { Persona3BLab } from '@/components/persona-3b-lab';
+import './experiments/persona-discovery-scoring/persona-3b.css';
 
 export const metadata: Metadata = {
-  title: 'AutoLabs · Observable agent experiments',
-  description: 'A public laboratory for agent experiments, research records and reproducible evidence.',
+  title: 'Experiment 3B · AutoLabs',
+  description: 'Live blinded Luna High scoring of the completed Experiment 3A screen.',
 };
 
 export default function Home() {
-  if (process.env.AUTOLABS_SELF_HOSTED === '1') return <AutolabsHome />;
-  return <AutolabsHome />;
+  return <Persona3BLab />;
 }

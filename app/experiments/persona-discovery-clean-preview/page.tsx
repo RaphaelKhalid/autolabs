@@ -9,10 +9,7 @@ export const metadata: Metadata = {
 
 export default function PersonaDiscoveryCleanPreviewPage() {
   return <main className="clean-study">
-    <nav className="clean-study__nav" aria-label="Primary navigation">
-      <a href="/" aria-label="AutoLabs home"><TraceMark size={34} /></a>
-      <div><a href="/experiments">All experiments</a><a href="/research">Research</a></div>
-    </nav>
+    
 
     <header className="clean-study__header">
       <p className="clean-label">Experiment 3A</p>

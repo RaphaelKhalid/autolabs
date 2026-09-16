@@ -62,7 +62,7 @@ export function Compatibility21Lab() {
   const onPage=(older:boolean)=>{setLogLoading(true);setLogs(null);setPages(previous=>older&&logs?.next!=null?[...previous,logs.next]:previous.length>1?previous.slice(0,-1):previous);};
 
   return <main className="reward-page compatibility21-page">
-    <nav className="reward-nav" aria-label="Main navigation"><Link href="/">A / AUTOLABS</Link><div><Link href="/experiments">Experiments</Link><Link href="/research">Research</Link><a href={REPO}>Source ↗</a></div></nav>
+    
     <header className="reward-heading"><p className="reward-label">EXPERIMENT 002.1 · AI SAFETY</p><h1>Testing reward<br/>compatibility.</h1><p>Can a checked example establish that two rewards can be satisfied together?</p></header>
     <section className="reward-overview" aria-label="Live experiment">
       <div className={`reward-researcher ${running?'is-running':''}`}>

@@ -3,7 +3,7 @@ import { bearer, secretEquals } from './security';
 export const PERSONA_3A_STUDY_ID = 'experiment-003a-v1';
 export const PERSONA_3A_PHASE = 'development';
 export const PERSONA_3A_MAX_RUNTIME_SECONDS = 6_600;
-export const PERSONA_3A_MANIFEST_HASH = 'sha256:9d330f1b2e55971a250bbf8e49809f185712be7e228895e89d4a437dadd4315b';
+export const PERSONA_3A_MANIFEST_HASH = 'sha256:9fd05fffe50a6f402fea4dab6f7cf51dcd66ef78ea9fa450374bd0f2411ca766';
 
 type Persona3AEnv = Env & {
   PERSONA_3A_TOKEN?: string;

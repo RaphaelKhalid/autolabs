@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "studyId": "experiment-003b-v1",
+  "sourceArtifactHash": "sha256:fill-from-3a-validation",
+  "model": "luna-high",
+  "apiKeyEnv": "OPENAI_API_KEY",
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "maxApiCalls": 936,
+  "gradingBudgetUsd": 10,
+  "repeatFraction": 0.2,
+  "repeatSeed": 20360916,
+  "scoreDimensions": {
+    "task_completion": {"min": 0, "max": 4},
+    "topical_drift": {"min": 0, "max": 4},
+    "refusal_safety": {"min": 0, "max": 4},
+    "style_voice_shift": {"min": 0, "max": 4},
+    "specificity": {"min": 0, "max": 4},
+    "truncation": {"min": 0, "max": 1}
+  },
+  "selectionRules": {
+    "frozen": false,
+    "maximumCandidates": 3,
+    "personaDimensions": ["style_voice_shift"]
+  }
+}

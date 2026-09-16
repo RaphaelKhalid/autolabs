@@ -329,14 +329,7 @@ export function AutolabsObservatory() {
           <span className="wordmark__sigil">A</span>
           <span><b>AUTOLABS</b><small>Computational mathematics, observed</small></span>
         </a>
-        <nav className="masthead__nav" aria-label="Primary">
-          <a href="/">Lab</a>
-          <a href="/experiments">Experiments</a>
-          <a href="/research">Research</a>
-          <a href="#ledger">Ledger</a>
-          {state.report && <a href="#report">Report</a>}
-          <a href="https://github.com/RaphaelKhalid/autolabs" target="_blank" rel="noreferrer">Source <ArrowUpRight size={11} /></a>
-        </nav>
+        
         <div className="masthead__actions">
           <span className={`live-signal ${live ? '' : 'is-preview'}`}><i /> {live ? (state.report ? 'Experiment archive' : state.phase === 'idle' ? 'Engine online · idle' : 'Live experiment') : 'Offline / preview'}</span>
           <button className="bare-button" onClick={() => setSound(!sound)} aria-label={sound ? 'Mute atmosphere' : 'Enable atmosphere'}>{sound ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
