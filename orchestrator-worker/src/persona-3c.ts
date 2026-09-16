@@ -170,13 +170,22 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
     status = b.status as Persona3CRunStatus;
   }
 
+  // progress is optional: a status-only report (e.g. a failure notice) has no progress to
+  // upsert. When present it must be an object with integer done/total counters; done>total
+  // is clamped rather than rejected, since token counters can overshoot by one batch.
   const progressRaw = b.progress;
-  if (!progressRaw || typeof progressRaw !== 'object' || Array.isArray(progressRaw)) {
-    return json({ error: 'Invalid progress.' }, { status: 400 }, c);
+  let done: number | null = null;
+  let total: number | null = null;
+  if (progressRaw !== undefined && progressRaw !== null) {
+    if (typeof progressRaw !== 'object' || Array.isArray(progressRaw)) {
+      return json({ error: 'Invalid progress.' }, { status: 400 }, c);
+    }
+    const rawDone = integer((progressRaw as Record<string, unknown>).done, 0, 100_000_000);
+    const rawTotal = integer((progressRaw as Record<string, unknown>).total, 0, 100_000_000);
+    if (rawDone === null || rawTotal === null) return json({ error: 'Invalid progress counters.' }, { status: 400 }, c);
+    total = rawTotal;
+    done = Math.min(rawDone, rawTotal);
   }
-  const done = integer((progressRaw as Record<string, unknown>).done, 0, 100_000_000);
-  const total = integer((progressRaw as Record<string, unknown>).total, 0, 100_000_000);
-  if (done === null || total === null || done > total) return json({ error: 'Invalid progress counters.' }, { status: 400 }, c);
 
   const recordsRaw = b.records;
   const records: { recordId: string; payload: Record<string, unknown>; sha256: string }[] = [];
@@ -225,9 +234,11 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
   const statements: D1PreparedStatement[] = records.map((record) => env.DB.prepare(
     'INSERT OR IGNORE INTO persona_3c_records(run_id,stage,record_id,payload_json,sha256,created_at) VALUES(?,?,?,?,?,?)',
   ).bind(runId, stage, record.recordId, JSON.stringify(record.payload), record.sha256, now));
-  statements.push(env.DB.prepare(
-    'INSERT INTO persona_3c_progress(run_id,stage,done,total,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,stage) DO UPDATE SET done=excluded.done,total=excluded.total,updated_at=excluded.updated_at',
-  ).bind(runId, stage, done, total, now));
+  if (done !== null && total !== null) {
+    statements.push(env.DB.prepare(
+      'INSERT INTO persona_3c_progress(run_id,stage,done,total,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,stage) DO UPDATE SET done=excluded.done,total=excluded.total,updated_at=excluded.updated_at',
+    ).bind(runId, stage, done, total, now));
+  }
   statements.push(env.DB.prepare(
     "UPDATE persona_3c_runs SET stage=?,status=?,spent_usd=?,gpu_hours=?,last_record_id=?,updated_at=?,completed_at=?,error_message=? WHERE id=? AND status NOT IN ('complete','failed','stopped')",
   ).bind(stage, nextStatus, nextSpent, nextGpu, lastRecordId, now, completedAt, errorMessage, runId));
@@ -243,9 +254,11 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
   const runUpdate = results[results.length - 1];
   if (Number(runUpdate?.meta.changes ?? 0) !== 1) return json({ error: 'Run was already finalized.' }, { status: 409 }, c);
 
+  const progressText = done !== null && total !== null ? `${stage}: ${done}/${total}` : stage;
+  const recordsText = records.length ? `; ${accepted} new record(s), ${duplicates} duplicate(s)` : '';
   await recordEvent(
     env.DB, runId, stage, nextStatus === 'failed' ? 'error' : 'progress', `${stage} · ${nextStatus}`,
-    message ?? `${stage}: ${done}/${total}${records.length ? `; ${accepted} new record(s), ${duplicates} duplicate(s)` : ''}.`,
+    message ?? `${progressText}${recordsText}.`,
     { done, total, gpuHours: nextGpu, spentUsd: nextSpent, recordCount: records.length },
   );
 

@@ -226,6 +226,31 @@ describe('Experiment 3C live progress reporting', () => {
     expect(secondPayload).toMatchObject({ ok: true, accepted: 0, duplicates: 1 });
   });
 
+  it('accepts done>total progress counters and stores them clamped to total', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000007' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+
+    const response = await reportPersona3C(request('/api/persona-3c/report', {
+      runId, stage: 'harvest', progress: { done: 101, total: 100 },
+    }), env(db), {});
+    expect(response.status).toBe(200);
+    expect(db.progress.find((p) => p.run_id === runId && p.stage === 'harvest')).toMatchObject({ done: 100, total: 100 });
+  });
+
+  it('accepts a status-only report with no progress and marks the run failed', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000008' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+
+    const response = await reportPersona3C(request('/api/persona-3c/report', {
+      runId, stage: 'harvest', status: 'failed', message: 'GPU pod crashed before reporting progress.',
+    }), env(db), {});
+    expect(response.status).toBe(200);
+    expect(db.progress.find((p) => p.run_id === runId && p.stage === 'harvest')).toBeUndefined();
+    expect(db.runs.find((r) => r.id === runId)).toMatchObject({ status: 'failed', stage: 'harvest' });
+  });
+
   it('hides payloads and tokens from the public status view', async () => {
     const db = new FakeD1();
     const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000004' }), env(db), {});

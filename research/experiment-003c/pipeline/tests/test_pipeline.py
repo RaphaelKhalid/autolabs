@@ -24,7 +24,7 @@ if str(PIPELINE_DIR) not in sys.path:
 
 from config import Config  # noqa: E402
 from harvest import ShuffleBuffer, compute_assistant_mask  # noqa: E402
-from report import canonical_json, sha256_of_payload  # noqa: E402
+from report import canonical_json, sha256_of_payload, _progress  # noqa: E402
 from sae import MatryoshkaBatchTopKSAE, batch_topk  # noqa: E402
 from steer import select_steer_features, median_max_activation  # noqa: E402
 from run_smoke import normalized_edit_distance, word_edit_distance  # noqa: E402
@@ -324,6 +324,13 @@ def test_sha256_of_payload_is_deterministic_and_order_independent():
     b = sha256_of_payload({"a": 1, "b": [1, 2, 3]})
     assert a == b
     assert len(a) == 64
+
+
+def test_progress_coerces_to_int_and_clamps_done_to_total():
+    assert _progress(5, 10) == {"done": 5, "total": 10}
+    assert _progress(11, 10) == {"done": 10, "total": 10}
+    assert _progress(5.9, 10.0) == {"done": 5, "total": 10}
+    assert _progress("7", "10") == {"done": 7, "total": 10}
 
 
 def test_worker_client_never_raises_without_url(monkeypatch):
