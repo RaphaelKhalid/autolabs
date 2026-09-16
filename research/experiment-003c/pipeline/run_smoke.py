@@ -40,6 +40,22 @@ logger = logging.getLogger("autolabs_3c.run_smoke")
 
 DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
+HELD_OUT_BATCH_SIZE = 4096
+
+# checks.sae_replace_check wants >=40 tokens for a statistically stable
+# match_fraction/FVE (smoke-1 used the short "capital of France" prompt
+# below and saw match_fraction 0.0 on only 10 positions -- see
+# SMOKE-1.md problem 5). This is deliberately long-winded.
+POST_TRAIN_CHECK_PROMPT = (
+    "In a detailed paragraph of at least a few sentences, explain the history "
+    "of the French Republic to a curious student: cover its founding "
+    "principles, its capital city Paris, and why France's geographic, "
+    "cultural, and political role within the European Union matters today. "
+    "Mention at least three specific historical events since 1789 that "
+    "shaped its identity as a modern nation, and close with one sentence on "
+    "what makes Paris distinctive compared to other European capitals."
+)
+
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
@@ -213,6 +229,13 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             if tokens_done >= next_checkpoint or tokens_done >= config.tokens_target:
                 ckpt_path = checkpoint_dir / f"sae_step_{tokens_done}.safetensors"
                 trained_sae.save(ckpt_path)
+                fve = last_out.fraction_variance_explained.item()
+                l0 = last_out.l0.item()
+                dead_frac = last_out.dead_fraction.item()
+                logger.info(
+                    "[train] tokens=%d loss=%.6f fve=%.6f l0=%.4f dead_frac=%.6f",
+                    tokens_done, last_out.loss.item(), fve, l0, dead_frac,
+                )
                 client.report(
                     "train",
                     progress=_progress(tokens_done, config.tokens_target),
@@ -225,9 +248,9 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
                                 "loss": last_out.loss.item(),
                                 "recon_loss": last_out.recon_loss.item(),
                                 "aux_loss": last_out.aux_loss.item(),
-                                "fraction_variance_explained": last_out.fraction_variance_explained.item(),
-                                "l0": last_out.l0.item(),
-                                "dead_fraction": last_out.dead_fraction.item(),
+                                "fraction_variance_explained": fve,
+                                "l0": l0,
+                                "dead_fraction": dead_frac,
                             },
                         }
                     ],
@@ -237,19 +260,66 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             if tokens_done >= config.tokens_target:
                 break
 
+        # -- held-out FVE/L0 on a fresh batch harvested *after* training,
+        # never seen by the optimizer (the shuffle-buffer samples used for
+        # every training step above are not held out). Still inside the
+        # ActivationHarvester context so the model is still truncated to
+        # layer `config.layer` and the stream continues from wherever the
+        # training loop left off.
+        held_out_fve: Optional[float] = None
+        held_out_l0: Optional[float] = None
+        holdout_buffer = harvest.ShuffleBuffer(HELD_OUT_BATCH_SIZE, d_model, seed=config.seed + 1)
+        holdout_convo_batch: List[List[Dict[str, str]]] = []
+        holdout_batches_tried = 0
+        while holdout_buffer.filled < HELD_OUT_BATCH_SIZE and holdout_batches_tried < 500:
+            try:
+                messages = next(conv_stream)
+            except StopIteration:
+                break
+            holdout_convo_batch.append(messages)
+            if len(holdout_convo_batch) < config.harvest_batch_size:
+                continue
+            holdout_batch = _prepare_batch(tokenizer, holdout_convo_batch, config, device)
+            holdout_convo_batch = []
+            holdout_batches_tried += 1
+            if holdout_batch is None:
+                continue
+            h_ids, h_attn, h_mask = holdout_batch
+            h_acts = harvest.masked_activations(harvester, h_ids, h_attn, h_mask)
+            if h_acts.numel() > 0:
+                holdout_buffer.add(h_acts.to(torch.float32))
+
+        if holdout_buffer.filled > 0:
+            x_holdout = holdout_buffer.sample(holdout_buffer.filled).to(device)
+            with torch.no_grad():
+                holdout_out = trained_sae.forward_loss(x_holdout, dead_window_tokens=config.dead_feature_window_tokens)
+            held_out_fve = holdout_out.fraction_variance_explained.item()
+            held_out_l0 = holdout_out.l0.item()
+            logger.info(
+                "[train] held_out_fve=%.6f held_out_l0=%.4f (n=%d activations)",
+                held_out_fve, held_out_l0, holdout_buffer.filled,
+            )
+        else:
+            logger.warning("[train] collected zero held-out activations; held_out_fve/held_out_l0 will be null")
+
     feature_stats = stats_tracker.to_dict()
+    feature_stats["held_out_fve"] = held_out_fve
+    feature_stats["held_out_l0"] = held_out_l0
     trained_sae.save(sae_path, feature_stats=feature_stats)
     return trained_sae, feature_stats
 
 
-def stage_post_train_check(config: Config, workdir: Path, client: WorkerClient, model, tokenizer, trained_sae, device):
+def stage_post_train_check(
+    config: Config, workdir: Path, client: WorkerClient, model, tokenizer, trained_sae, feature_stats, device
+):
     path = workdir / "post_train_check.json"
     if path.exists():
         logger.info("[train] post-train check already recorded, skipping")
         return json.loads(path.read_text(encoding="utf-8"))
 
-    prompt = "In one sentence, what is the capital of France?"
-    record = checks.sae_replace_check(model, tokenizer, trained_sae, prompt, config.layer, device)
+    record = checks.sae_replace_check(model, tokenizer, trained_sae, POST_TRAIN_CHECK_PROMPT, config.layer, device)
+    record["held_out_fve"] = feature_stats.get("held_out_fve")
+    record["held_out_l0"] = feature_stats.get("held_out_l0")
     path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     client.report("train", records=[{"recordId": "post-train-sae-replace", "payload": record}])
     if not record["ok"]:
@@ -312,6 +382,7 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
         scenario = payload.get("scenario")
         base_text = baseline_text.get(scenario, "")
         base_len = baseline_len.get(scenario, 0)
+        coherence = payload.get("coherence") or {}
 
         if payload.get("kind") == "steered":
             f_idx = payload["feature"]
@@ -320,6 +391,7 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
                 {
                     "feature": f_idx,
                     "density": payload.get("density"),
+                    "quantile": payload.get("quantile"),
                     "max_activation": payload.get("max_activation"),
                     "rows": [],
                 },
@@ -333,7 +405,8 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
                     "baseline_text": base_text,
                     "edit_distance": normalized_edit_distance(payload["text"], base_text),
                     "length_delta": payload["num_tokens"] - base_len,
-                    "coherence_logprob": payload.get("coherence_logprob"),
+                    "coherence": coherence,
+                    "coherent": payload.get("coherent"),
                     "finish_reason": payload.get("finish_reason"),
                 }
             )
@@ -347,10 +420,24 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
                     "baseline_text": base_text,
                     "edit_distance": normalized_edit_distance(payload["text"], base_text),
                     "length_delta": payload["num_tokens"] - base_len,
-                    "coherence_logprob": payload.get("coherence_logprob"),
+                    "coherence": coherence,
+                    "coherent": payload.get("coherent"),
                     "finish_reason": payload.get("finish_reason"),
                 }
             )
+
+    for entry in features.values():
+        entry["max_coherent_dose"] = {
+            "pos": steer.max_coherent_dose([r for r in entry["rows"] if r["sign"] == 1]),
+            "neg": steer.max_coherent_dose([r for r in entry["rows"] if r["sign"] == -1]),
+        }
+
+    random_by_index: Dict[int, List[dict]] = {}
+    for row in random_rows:
+        random_by_index.setdefault(row["random_index"], []).append(row)
+    random_max_coherent_dose = {
+        str(idx): steer.max_coherent_dose(rows) for idx, rows in sorted(random_by_index.items())
+    }
 
     return {
         "config": config.to_dict(),
@@ -359,6 +446,7 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
         "baseline": baseline_text,
         "features": sorted(features.values(), key=lambda e: e["feature"]),
         "random_control": random_rows,
+        "random_control_max_coherent_dose": random_max_coherent_dose,
     }
 
 
@@ -366,19 +454,45 @@ def render_html_report(summary: dict) -> str:
     def esc(s: Any) -> str:
         return html.escape("" if s is None else str(s))
 
+    def fmt(v: Any, digits: int = 4) -> str:
+        return "" if v is None else esc(round(v, digits) if isinstance(v, float) else v)
+
+    def coherence_cells(coherence: dict) -> str:
+        return (
+            f"<td>{fmt(coherence.get('distinct_ratio'))}</td>"
+            f"<td>{fmt(coherence.get('max_run'), 0)}</td>"
+            f"<td>{fmt(coherence.get('repeat_4gram'))}</td>"
+            f"<td>{fmt(coherence.get('logprob'))}</td>"
+        )
+
+    feature_summary_rows = []
     rows_html = []
     for feat in summary["features"]:
+        max_coherent = feat.get("max_coherent_dose") or {}
+        feature_summary_rows.append(
+            f"""
+            <tr>
+              <td>{esc(feat['feature'])}</td>
+              <td>{fmt(feat.get('density'), 6)}</td>
+              <td>{fmt(feat.get('quantile'), 2)}</td>
+              <td>{fmt(max_coherent.get('pos'))}</td>
+              <td>{fmt(max_coherent.get('neg'))}</td>
+            </tr>"""
+        )
         for row in feat["rows"]:
+            row_class = "" if row.get("coherent") else " class=\"incoherent\""
             rows_html.append(
                 f"""
-                <tr>
+                <tr{row_class}>
                   <td>{esc(feat['feature'])}</td>
-                  <td>{esc(round(feat.get('density') or 0, 6))}</td>
+                  <td>{fmt(feat.get('density'), 6)}</td>
+                  <td>{fmt(feat.get('quantile'), 2)}</td>
                   <td>{'+' if row['sign'] > 0 else '-'}</td>
                   <td>{esc(row['dose'])}</td>
                   <td>{esc(row['scenario'])}</td>
-                  <td>{esc(round(row['coherence_logprob'] or 0, 4))}</td>
-                  <td>{esc(round(row['edit_distance'], 4))}</td>
+                  {coherence_cells(row['coherence'])}
+                  <td>{'yes' if row.get('coherent') else 'NO'}</td>
+                  <td>{fmt(row['edit_distance'])}</td>
                   <td>{esc(row['length_delta'])}</td>
                   <td><pre>{esc(row['baseline_text'])}</pre></td>
                   <td><pre>{esc(row['text'])}</pre></td>
@@ -386,15 +500,19 @@ def render_html_report(summary: dict) -> str:
             )
 
     random_rows_html = []
+    random_max_coherent = summary.get("random_control_max_coherent_dose") or {}
     for row in summary["random_control"]:
+        row_class = "" if row.get("coherent") else " class=\"incoherent\""
         random_rows_html.append(
             f"""
-            <tr>
+            <tr{row_class}>
               <td>random-{esc(row['random_index'])}</td>
+              <td>{fmt(random_max_coherent.get(str(row['random_index'])))}</td>
               <td>{esc(row['dose'])}</td>
               <td>{esc(row['scenario'])}</td>
-              <td>{esc(round(row['coherence_logprob'] or 0, 4))}</td>
-              <td>{esc(round(row['edit_distance'], 4))}</td>
+              {coherence_cells(row['coherence'])}
+              <td>{'yes' if row.get('coherent') else 'NO'}</td>
+              <td>{fmt(row['edit_distance'])}</td>
               <td>{esc(row['length_delta'])}</td>
               <td><pre>{esc(row['baseline_text'])}</pre></td>
               <td><pre>{esc(row['text'])}</pre></td>
@@ -411,6 +529,7 @@ def render_html_report(summary: dict) -> str:
   table {{ border-collapse: collapse; width: 100%; margin-bottom: 2rem; font-size: 0.85rem; }}
   th, td {{ border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; text-align: left; }}
   th {{ background: #eee; position: sticky; top: 0; }}
+  tr.incoherent {{ background: #fdecea; }}
   pre {{ white-space: pre-wrap; margin: 0; max-width: 32rem; }}
   h1, h2 {{ font-weight: 600; }}
 </style>
@@ -421,11 +540,23 @@ def render_html_report(summary: dict) -> str:
 <pre>{esc(json.dumps(summary['boot_checks'], indent=2))}</pre>
 <h2>Post-train check</h2>
 <pre>{esc(json.dumps(summary['post_train_check'], indent=2))}</pre>
-<h2>Steering dose sweep</h2>
+<h2>Feature selection summary</h2>
 <table>
 <thead><tr>
-  <th>feature</th><th>density</th><th>sign</th><th>dose</th><th>scenario</th>
-  <th>coherence logprob</th><th>norm. edit dist.</th><th>length delta</th>
+  <th>feature</th><th>density</th><th>quantile</th>
+  <th>max coherent dose (+)</th><th>max coherent dose (-)</th>
+</tr></thead>
+<tbody>{''.join(feature_summary_rows)}</tbody>
+</table>
+<h2>Steering dose sweep</h2>
+<p>Rows with <code>class="incoherent"</code> (highlighted) failed
+<code>coherent</code> = distinct_ratio &gt;= 0.5 and max_run &lt;= 4 and
+repeat_4gram &lt;= 0.2.</p>
+<table>
+<thead><tr>
+  <th>feature</th><th>density</th><th>quantile</th><th>sign</th><th>dose</th><th>scenario</th>
+  <th>distinct ratio</th><th>max run</th><th>repeat 4gram</th><th>logprob</th><th>coherent</th>
+  <th>norm. edit dist.</th><th>length delta</th>
   <th>baseline</th><th>steered</th>
 </tr></thead>
 <tbody>{''.join(rows_html)}</tbody>
@@ -433,8 +564,9 @@ def render_html_report(summary: dict) -> str:
 <h2>Random-direction control</h2>
 <table>
 <thead><tr>
-  <th>control</th><th>dose</th><th>scenario</th>
-  <th>coherence logprob</th><th>norm. edit dist.</th><th>length delta</th>
+  <th>control</th><th>max coherent dose</th><th>dose</th><th>scenario</th>
+  <th>distinct ratio</th><th>max run</th><th>repeat 4gram</th><th>logprob</th><th>coherent</th>
+  <th>norm. edit dist.</th><th>length delta</th>
   <th>baseline</th><th>steered</th>
 </tr></thead>
 <tbody>{''.join(random_rows_html)}</tbody>
@@ -484,7 +616,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         boot = stage_boot(config, workdir, client, model, tokenizer, device)
         trained_sae, feature_stats = stage_harvest_train(config, workdir, client, model, tokenizer, device)
-        post_train = stage_post_train_check(config, workdir, client, model, tokenizer, trained_sae, device)
+        post_train = stage_post_train_check(
+            config, workdir, client, model, tokenizer, trained_sae, feature_stats, device
+        )
 
         scenarios = load_scenarios(Path(config.scenarios_file))
         scenarios = scenarios[: config.steer_scenarios]

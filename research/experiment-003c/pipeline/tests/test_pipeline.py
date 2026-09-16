@@ -26,7 +26,17 @@ from config import Config  # noqa: E402
 from harvest import ShuffleBuffer, compute_assistant_mask  # noqa: E402
 from report import canonical_json, sha256_of_payload, _progress  # noqa: E402
 from sae import MatryoshkaBatchTopKSAE, batch_topk  # noqa: E402
-from steer import select_steer_features, median_max_activation  # noqa: E402
+from steer import (  # noqa: E402
+    select_steer_features,
+    median_max_activation,
+    quantile_indices,
+    compute_generation_boundary,
+    distinct_ratio,
+    max_run_length,
+    repeat_4gram_fraction,
+    is_coherent,
+    max_coherent_dose,
+)
 from run_smoke import normalized_edit_distance, word_edit_distance  # noqa: E402
 
 
@@ -148,6 +158,52 @@ def test_sae_save_and_load_roundtrip(tmp_path):
     loaded = MatryoshkaBatchTopKSAE.load(path, shells=[8, 16, 32], k=4)
     assert torch.allclose(loaded.W_enc, sae.W_enc)
     assert torch.allclose(loaded.W_dec, sae.W_dec)
+
+
+def test_reconstruct_matches_forward_loss_main_reconstruction():
+    """checks.sae_replace_check calls sae.reconstruct(x=flat); this must be
+    the exact same computation forward_loss uses for its main (outermost
+    shell) reconstruction, so the two code paths cannot diverge (see item 5
+    of the smoke-2 fix list -- the shared `reconstruct` method is what
+    guarantees this)."""
+    torch.manual_seed(0)
+    d_in, width, k = 16, 32, 4
+    shells = [8, 16, 32]
+    toy_sae = MatryoshkaBatchTopKSAE(d_in=d_in, width=width, shells=shells, k=k, seed=0)
+    x = torch.randn(20, d_in)
+
+    out = toy_sae.forward_loss(x, dead_window_tokens=1_000_000)
+
+    # Recompute forward_loss's main reconstruction directly (decode at the
+    # outermost shell, from the *same* codes forward_loss used) and compare
+    # it against sae.reconstruct(x=x).
+    with torch.no_grad():
+        codes = toy_sae.encode(x)
+        expected_main_recon = toy_sae.decode(codes, n_features=shells[-1])
+        actual = toy_sae.reconstruct(x=x)
+    assert torch.allclose(actual, expected_main_recon)
+
+    # And forward_loss's own reported recon MSE for the outermost shell
+    # must match F.mse_loss(sae.reconstruct(x=x), x) exactly.
+    import torch.nn.functional as F
+
+    assert torch.allclose(out.per_shell_mse[shells[-1]], F.mse_loss(toy_sae.reconstruct(x=x), x))
+
+
+def test_reconstruct_reuses_precomputed_codes_without_recomputing_them():
+    torch.manual_seed(0)
+    toy_sae = MatryoshkaBatchTopKSAE(d_in=8, width=16, shells=[4, 8, 16], k=2, seed=0)
+    x = torch.randn(5, 8)
+    codes = toy_sae.encode(x)
+    via_codes = toy_sae.reconstruct(codes=codes)
+    via_x = toy_sae.reconstruct(x=x)
+    assert torch.allclose(via_codes, via_x)
+
+
+def test_reconstruct_requires_x_or_codes():
+    toy_sae = MatryoshkaBatchTopKSAE(d_in=8, width=16, shells=[4, 8, 16], k=2, seed=0)
+    with pytest.raises(ValueError):
+        toy_sae.reconstruct()
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +401,7 @@ def test_worker_client_never_raises_without_url(monkeypatch):
 # ---------------------------------------------------------------------------
 # steer.py: pure-Python feature selection
 # ---------------------------------------------------------------------------
-def test_select_steer_features_filters_by_density_and_picks_top_n():
+def test_select_steer_features_filters_by_density_and_spreads_across_quantiles():
     feature_stats = {
         "firing_density": [0.5, 0.05, 1e-5, 0.02, 0.0001, 0.2],
         "max_activation": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -353,8 +409,32 @@ def test_select_steer_features_filters_by_density_and_picks_top_n():
     selected = select_steer_features(
         feature_stats, first_shell_size=6, steer_features=2, density_min=1e-4, density_max=0.1
     )
-    # candidates in range: idx1 (0.05), idx3 (0.02), idx4 (0.0001) -- top 2 by density
-    assert [c["feature"] for c in selected] == [1, 3]
+    # candidates in range, sorted ascending by density: idx4 (1e-4), idx3
+    # (0.02), idx1 (0.05). A 2-way quantile spread over 3 candidates picks
+    # the 25th/75th percentile positions (idx3, idx1), not just the top 2
+    # by density (which would always pick idx1 and idx3 too here, but by
+    # coincidence -- the point of the quantile spread is to also be able
+    # to pick idx4, the sparsest candidate, when steer_features is larger).
+    assert [c["feature"] for c in selected] == [3, 1]
+    assert selected[0]["quantile"] == pytest.approx(25.0)
+    assert selected[1]["quantile"] == pytest.approx(75.0)
+    assert all("density" in c and "max_activation" in c for c in selected)
+
+
+def test_select_steer_features_spreads_across_full_density_range():
+    # 10 candidates evenly spaced in log-density from 1e-4 to 1e-1; with
+    # steer_features=1 the densest-only selection would always pick the
+    # same end of the range, but the quantile spread over more picks
+    # should include *both* a low-density and a high-density candidate.
+    densities = [10 ** (-4 + 3 * i / 9) for i in range(10)]  # 1e-4 .. 1e-1
+    feature_stats = {"firing_density": densities, "max_activation": [1.0] * 10}
+    selected = select_steer_features(
+        feature_stats, first_shell_size=10, steer_features=4, density_min=1e-4, density_max=0.1
+    )
+    picked_features = [c["feature"] for c in selected]
+    assert len(set(picked_features)) == 4
+    assert min(picked_features) <= 2  # at least one low-density pick
+    assert max(picked_features) >= 7  # at least one high-density pick
 
 
 def test_select_steer_features_restricted_to_first_shell():
@@ -370,6 +450,129 @@ def test_select_steer_features_restricted_to_first_shell():
 def test_median_max_activation_empty_and_nonempty():
     assert median_max_activation([]) == 0.0
     assert median_max_activation([{"max_activation": 2.0}, {"max_activation": 4.0}]) == 3.0
+
+
+# ---------------------------------------------------------------------------
+# steer.py: quantile_indices (the feature-selection quantile-spread helper)
+# ---------------------------------------------------------------------------
+def test_quantile_indices_ten_bins_land_near_5_15_95_percentiles():
+    idxs = quantile_indices(n_candidates=100, n_select=10)
+    assert len(idxs) == 10
+    assert len(set(idxs)) == 10
+    assert idxs == sorted(idxs)
+    expected_approx = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
+    for got, exp in zip(idxs, expected_approx):
+        assert abs(got - exp) <= 1
+
+
+def test_quantile_indices_all_distinct_when_n_candidates_equals_n_select():
+    idxs = quantile_indices(5, 5)
+    assert sorted(idxs) == [0, 1, 2, 3, 4]
+
+
+def test_quantile_indices_caps_n_select_to_n_candidates():
+    idxs = quantile_indices(3, 10)
+    assert len(idxs) == 3
+    assert len(set(idxs)) == 3
+
+
+def test_quantile_indices_empty_inputs():
+    assert quantile_indices(0, 5) == []
+    assert quantile_indices(5, 0) == []
+
+
+# ---------------------------------------------------------------------------
+# steer.py: compute_generation_boundary (assistant-turn position boundary)
+# ---------------------------------------------------------------------------
+def test_compute_generation_boundary_matches_user_only_prefix_length():
+    tok = FakeTokenizer()
+    prompt = "hi there friend"
+    boundary = compute_generation_boundary(tok, prompt)
+
+    user_only_ids = tok.apply_chat_template(
+        [{"role": "user", "content": prompt}], tokenize=True, add_generation_prompt=False
+    )
+    with_header_ids = tok.apply_chat_template(
+        [{"role": "user", "content": prompt}], tokenize=True, add_generation_prompt=True
+    )
+    assert boundary == len(user_only_ids)
+    # the boundary must fall strictly before the end of the generation-prompt
+    # rendering (there must be at least the assistant header left over) and
+    # the user-only rendering must be a true prefix of it.
+    assert boundary < len(with_header_ids)
+    assert with_header_ids[:boundary] == user_only_ids
+
+
+# ---------------------------------------------------------------------------
+# steer.py: coherence metrics
+# ---------------------------------------------------------------------------
+def test_repetitive_sequence_is_incoherent():
+    ids = [7] * 40
+    assert distinct_ratio(ids) < 0.5
+    assert max_run_length(ids) > 4
+    assert repeat_4gram_fraction(ids) > 0.2
+    assert is_coherent(distinct_ratio(ids), max_run_length(ids), repeat_4gram_fraction(ids)) is False
+
+
+def test_varied_sequence_is_coherent():
+    ids = list(range(40))  # all distinct, no repeats at all
+    assert distinct_ratio(ids) == 1.0
+    assert max_run_length(ids) == 1
+    assert repeat_4gram_fraction(ids) == 0.0
+    assert is_coherent(distinct_ratio(ids), max_run_length(ids), repeat_4gram_fraction(ids)) is True
+
+
+def test_distinct_ratio_and_max_run_edge_cases():
+    assert distinct_ratio([]) == 1.0
+    assert max_run_length([]) == 0
+    assert repeat_4gram_fraction([1, 2, 3]) == 0.0  # fewer than 4 tokens
+
+
+def test_max_run_length_counts_longest_run_only():
+    assert max_run_length([1, 1, 2, 2, 2, 1]) == 3
+
+
+def test_repeat_4gram_fraction_all_unique_is_zero():
+    assert repeat_4gram_fraction(list(range(10))) == 0.0
+
+
+def test_repeat_4gram_fraction_fully_repeated_is_high():
+    ids = [1, 2, 3, 4] * 10
+    frac = repeat_4gram_fraction(ids)
+    assert frac > 0.5
+
+
+# ---------------------------------------------------------------------------
+# steer.py: max_coherent_dose
+# ---------------------------------------------------------------------------
+def test_max_coherent_dose_picks_largest_dose_meeting_the_bar():
+    rows = [
+        {"dose": 0.25, "coherent": True},
+        {"dose": 0.25, "coherent": True},
+        {"dose": 0.25, "coherent": True},
+        {"dose": 0.25, "coherent": True},
+        {"dose": 0.5, "coherent": True},
+        {"dose": 0.5, "coherent": True},
+        {"dose": 0.5, "coherent": True},
+        {"dose": 0.5, "coherent": False},
+        {"dose": 1.0, "coherent": True},
+        {"dose": 1.0, "coherent": False},
+        {"dose": 1.0, "coherent": False},
+        {"dose": 1.0, "coherent": False},
+    ]
+    # dose 0.25: 4/4 coherent; dose 0.5: 3/4 coherent (meets >=3-of-4);
+    # dose 1.0: only 1/4 coherent (fails) -- largest passing dose is 0.5.
+    assert max_coherent_dose(rows) == 0.5
+
+
+def test_max_coherent_dose_returns_none_when_nothing_clears_the_bar():
+    rows = [
+        {"dose": 0.25, "coherent": False},
+        {"dose": 0.25, "coherent": True},
+        {"dose": 0.25, "coherent": False},
+        {"dose": 0.25, "coherent": False},
+    ]
+    assert max_coherent_dose(rows) is None
 
 
 # ---------------------------------------------------------------------------

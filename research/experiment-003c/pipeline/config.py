@@ -20,7 +20,11 @@ def _default_shells() -> List[int]:
 
 
 def _default_doses() -> List[float]:
-    return [2, 4, 8]
+    # Fractions of each feature's max activation (see steer.py); smoke-1
+    # used raw multiples [2, 4, 8] added at *every* position, which
+    # rewrote ~90% of text at dose 2 and produced pure repetition at dose
+    # 8 -- see SMOKE-1.md problem 1.
+    return [0.25, 0.5, 1.0, 2.0]
 
 
 @dataclass

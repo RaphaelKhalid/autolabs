@@ -120,10 +120,35 @@ class MatryoshkaBatchTopKSAE(nn.Module):
     def encode_preact(self, x: torch.Tensor) -> torch.Tensor:
         return F.relu(x @ self.W_enc + self.b_enc)
 
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        """encode_preact -> batch_topk, i.e. the post-sparsity codes used
+        everywhere else in this class."""
+        return batch_topk(self.encode_preact(x), self.k)
+
     def decode(self, codes: torch.Tensor, n_features: Optional[int] = None) -> torch.Tensor:
         if n_features is None:
             return codes @ self.W_dec + self.b_dec
         return codes[:, :n_features] @ self.W_dec[:n_features, :] + self.b_dec
+
+    def reconstruct(
+        self,
+        x: Optional[torch.Tensor] = None,
+        codes: Optional[torch.Tensor] = None,
+        n_features: Optional[int] = None,
+    ) -> torch.Tensor:
+        """The single reconstruction path shared by `forward_loss` (its main,
+        full-shell reconstruction) and `checks.sae_replace_check`, so the two
+        can never diverge. Defaults to the outermost matryoshka shell
+        (`self.shells[-1]`, which may be less than `self.width` if the
+        widest shell doesn't span the full SAE) -- pass `codes` to reuse an
+        already-computed encoding instead of recomputing it from `x`."""
+        if codes is None:
+            if x is None:
+                raise ValueError("reconstruct requires x or codes")
+            codes = self.encode(x)
+        if n_features is None:
+            n_features = self.shells[-1]
+        return self.decode(codes, n_features=n_features)
 
     def update_dead_stats(self, codes: torch.Tensor, dead_window_tokens: int) -> torch.Tensor:
         """codes: (n_tokens, width) post-topk. Returns a bool dead mask and
@@ -143,7 +168,7 @@ class MatryoshkaBatchTopKSAE(nn.Module):
         recon_losses = []
         main_recon = None
         for shell in self.shells:
-            recon = self.decode(codes, n_features=shell)
+            recon = self.reconstruct(codes=codes, n_features=shell)
             mse = F.mse_loss(recon, x)
             per_shell_mse[shell] = mse
             recon_losses.append(mse)
