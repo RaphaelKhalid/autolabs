@@ -56,9 +56,9 @@ class WorkerClient:
         timeout: float = 30.0,
         session: Any = None,
     ) -> None:
-        self.base_url = (base_url if base_url is not None else os.environ.get("AUTOLABS_3C_WORKER_URL", "")).rstrip("/")
-        self.token = token if token is not None else os.environ.get("AUTOLABS_3C_TOKEN", "")
-        self.run_id = run_id if run_id is not None else os.environ.get("AUTOLABS_3C_RUN_ID", "") or None
+        self.base_url = (base_url if base_url is not None else os.environ.get("AUTOLABS_3C_WORKER_URL", "")).strip().rstrip("/")
+        self.token = token if token is not None else os.environ.get("AUTOLABS_3C_TOKEN", "").strip()
+        self.run_id = run_id if run_id is not None else os.environ.get("AUTOLABS_3C_RUN_ID", "").strip() or None
         self.max_retries = max_retries
         self.timeout = timeout
         self._session = session
