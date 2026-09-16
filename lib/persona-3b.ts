@@ -12,6 +12,25 @@ export const persona3bContract = {
   sourceArtifactHash: '6e479c2e02aa912f6bcf6b2e57554ed75711e93bb3fc3da813114bba871f3fe7',
 } as const;
 
+/** Published final record for the completed scoring run. Counts come from the finalized worker receipt; see research/experiment-003b/final-report/FINDINGS.md. */
+export const persona3bFinalResult = {
+  runId: 'persona-3b-175e0a78-0189-4fb3-bba4-4a03a3760149',
+  finalizedAt: '2026-09-16T19:26:38Z',
+  eligibleCandidates: 0,
+  decisions: 64,
+  primary: 768,
+  repeats: 117,
+  reviews: 58,
+  truncatedPairs: 650,
+  orderFlipCells: 57,
+  comparedCells: 1170,
+  attempts: 1135,
+  effectiveCeiling: 1400,
+  spentUsd: 1.716,
+  humanAudit: 'pending',
+  confirmation: 'not launched',
+} as const;
+
 export type Persona3BRunStatus = 'queued' | 'running' | 'awaiting_adjudication' | 'synthesizing' | 'complete' | 'failed' | 'cancelled';
 export type Persona3BShardStatus = 'blocked' | 'queued' | 'claimed' | 'running' | 'complete' | 'failed';
 export type Persona3BShardPhase = 'primary' | 'repeat' | 'disagreement' | 'synthesis';

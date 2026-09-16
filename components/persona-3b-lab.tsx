@@ -2,13 +2,12 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, CircleDollarSign, FlaskConical, Radio, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, FlaskConical, Radio, RefreshCw, ShieldCheck } from 'lucide-react';
 import { AlienForm } from '@/components/autolabs-observatory';
 import { demoAgents, type ResearchAgent } from '@/lib/experiment';
 import {
   fetchPersona3BStatus, persona3bContract, persona3bPhaseLabel, phaseDisplay, startPersona3B,
-  type Persona3BRun, type Persona3BShard, type Persona3BStatus,
-} from '@/lib/persona-3b';
+  type Persona3BRun, type Persona3BShard, type Persona3BStatus, persona3bFinalResult } from '@/lib/persona-3b';
 
 const agentPositions = [
   { x: 14, y: 35 }, { x: 32, y: 68 }, { x: 51, y: 31 }, { x: 70, y: 68 }, { x: 87, y: 37 },
@@ -96,6 +95,7 @@ export function Persona3BLab() {
   const agents = useMemo(() => demoAgents.map((agent) => ({ agent, shard: shardForAgent(status.shards, agent.id, run) })), [run, status.shards]);
   const displayEvents = status.events.slice(-8).reverse();
   const progress = run ? Math.min(100, run.callCount / run.callCeiling * 100) : 0;
+  const finalized = run?.status === 'complete' && run.id === persona3bFinalResult.runId;
 
   async function onStart(event: React.FormEvent) {
     event.preventDefault();
@@ -121,7 +121,7 @@ export function Persona3BLab() {
 
     <section className="persona3b-ledger"><div className="persona3b-section-head"><div><p className="persona-eyebrow">EVENT LEDGER</p><h2>What the lab has recorded</h2></div><button type="button" onClick={async () => { setRefreshing(true); await reload(); setRefreshing(false); }} disabled={refreshing}><RefreshCw size={14} className={refreshing ? 'is-spinning' : ''} /> Refresh</button></div>{displayEvents.length ? <div className="persona3b-events">{displayEvents.map((event, index) => <article key={`${event.id ?? event.at}-${index}`}><time dateTime={event.at}>{new Date(event.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</time><div><b>{event.title}</b><p>{event.summary}</p></div><span>{event.agentId ?? event.phase ?? 'system'}</span></article>)}</div> : <p className="persona3b-empty">No public events yet. A queued run will appear here after the worker records its first lease.</p>}</section>
 
-    <section className="persona3b-outcome"><div><p className="persona-eyebrow">INTERPRETATION GATE</p><h2>{run?.status === 'complete' ? 'Scoring is complete; analysis is the next record.' : 'Shortlist: pending scoring'}</h2><p>At most three candidates may advance, and zero is a valid result. Confirmation remains separately gated and cannot launch from this room.</p></div><div className="persona3b-outcome-states"><span><i className={run?.status === 'complete' ? 'is-on' : ''} />SHORTLIST {run?.status === 'complete' ? 'PENDING ANALYSIS' : 'PENDING'}</span><span><i />CONFIRMATION PENDING</span></div></section>
+    <section className="persona3b-outcome"><div><p className="persona-eyebrow">INTERPRETATION GATE</p><h2>{finalized ? 'Zero candidates qualified in this screen.' : run?.status === 'complete' ? 'Scoring is complete; analysis is the next record.' : 'Shortlist: pending scoring'}</h2>{finalized ? <p>All {persona3bFinalResult.decisions} feature/sign decisions failed the prespecified consistency rule: median matched persona change was 0.0 on every dimension. {persona3bFinalResult.truncatedPairs} of {persona3bFinalResult.primary} pairs were truncated at the 128-token generation cap, so robustness could not be assessed. This is a screen with no qualifying candidate, not evidence that persona directions do not exist. <Link href="https://github.com/RaphaelKhalid/autolabs/blob/main/research/experiment-003b/final-report/FINDINGS.md">Read the findings report ↗</Link></p> : <p>At most three candidates may advance, and zero is a valid result. Confirmation remains separately gated and cannot launch from this room.</p>}</div><div className="persona3b-outcome-states"><span><i className={run?.status === 'complete' ? 'is-on' : ''} />SHORTLIST {finalized ? '0 OF 64' : run?.status === 'complete' ? 'PENDING ANALYSIS' : 'PENDING'}</span><span><i className={finalized ? 'is-on' : ''} />HUMAN AUDIT PENDING</span><span><i />CONFIRMATION NOT LAUNCHED</span></div></section>
 
     <section className="persona3b-control"><div><p className="persona-eyebrow">OWNER CONTROL</p><h2>Start the frozen scoring run</h2><p>One start creates an idempotent run with the existing 780 responses, 768 paired comparisons, 117 repeat judgments, a shared 129-attempt retry/adjudication allowance, and the approved $10 hard cap. No GPU generation or response regeneration is attached.</p></div>{run ? <div className="persona3b-control-receipt"><strong>{run.id}</strong><span>Owner start received · {run.status}</span></div> : <form onSubmit={onStart}><label htmlFor="persona3b-owner-key">Owner key</label><div><input id="persona3b-owner-key" type="password" autoComplete="off" value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} placeholder="Required to start" /><button type="submit" disabled={starting || !ownerKey.trim()}>{starting ? 'Queueing…' : 'Start scoring'}</button></div>{startMessage && <p role="status">{startMessage}</p>}</form>}</section>
 

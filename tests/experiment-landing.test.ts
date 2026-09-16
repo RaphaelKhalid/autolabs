@@ -11,16 +11,16 @@ describe('bounded live experiment promotion',()=>{
   });
   it.each(['waiting','ready','paused'])('does not promote %s',async status=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({...launched,status})}));
-    expect(await currentExperimentPath()).toBe('/experiments/reward-compatibility-21');
+    expect(await currentExperimentPath()).toBe('/experiments/persona-discovery');
   });
   it.each([null,{}, {...launched,protocolHash:null},{...launched,startedAt:'invalid'},{...launched,runId:'another-run'}])('rejects malformed or different launches',async data=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>data}));
-    expect(await currentExperimentPath()).toBe('/experiments/reward-compatibility-21');
+    expect(await currentExperimentPath()).toBe('/experiments/persona-discovery');
   });
   it('falls back on network errors and HTTP failures',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('timeout')));
-    expect(await currentExperimentPath()).toBe('/experiments/reward-compatibility-21');
+    expect(await currentExperimentPath()).toBe('/experiments/persona-discovery');
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false}));
-    expect(await currentExperimentPath()).toBe('/experiments/reward-compatibility-21');
+    expect(await currentExperimentPath()).toBe('/experiments/persona-discovery');
   });
 });

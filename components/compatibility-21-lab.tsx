@@ -4,7 +4,6 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {AlienForm} from './autolabs-observatory';
 import {COMPATIBILITY21_API as API, compatibility21CallTitle, compatibility21Eta, validCompatibility21Status, type Compatibility21Status} from '@/lib/compatibility-21-display';
 
-const REPO = 'https://github.com/RaphaelKhalid/reward-compatibility';
 type Log = {id:string; state:string; charged:number; prompt:string; error:string|null; response:{text?:string}|null; split:string; parsed:number|null};
 type LogPage = {sealed:boolean; next:number|null; calls:Log[]};
 function validLogs(value: unknown): value is LogPage {
