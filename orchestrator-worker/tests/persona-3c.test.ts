@@ -226,6 +226,67 @@ describe('Experiment 3C live progress reporting', () => {
     expect(secondPayload).toMatchObject({ ok: true, accepted: 0, duplicates: 1 });
   });
 
+  it('accepts payloadJson whose sha256 matches the exact string bytes, including exponent-notation floats', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000009' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+
+    // These float strings (1e-05, 0.435447) are exactly what a Python json.dumps caller would
+    // send; the point of payloadJson is that the Worker never re-serializes and re-diffs them.
+    const payloadJson = '{"dead_frac":1e-05,"fve":0.435447,"loss":1.251517}';
+    const sha256 = createHash('sha256').update(payloadJson).digest('hex');
+
+    const response = await reportPersona3C(request('/api/persona-3c/report', {
+      runId, stage: 'train', progress: { done: 1, total: 10 },
+      records: [{ recordId: 'train-checkpoint-1004535', payloadJson, sha256 }],
+    }), env(db), {});
+    expect(response.status).toBe(200);
+    const payload = await responseBody(response);
+    expect(payload).toMatchObject({ ok: true, accepted: 1, duplicates: 0 });
+    expect(db.records[0]).toMatchObject({ record_id: 'train-checkpoint-1004535', payload_json: payloadJson, sha256 });
+  });
+
+  it('rejects payloadJson whose sha256 does not match the string bytes', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000010' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+
+    const response = await reportPersona3C(request('/api/persona-3c/report', {
+      runId, stage: 'train', progress: { done: 1, total: 10 },
+      records: [{ recordId: 'r1', payloadJson: '{"a":1}', sha256: 'f'.repeat(64) }],
+    }), env(db), {});
+    expect(response.status).toBe(400);
+    expect(db.records).toHaveLength(0);
+  });
+
+  it('rejects payloadJson that does not parse to a plain object', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000011' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+
+    const payloadJson = '[1,2,3]';
+    const sha256 = createHash('sha256').update(payloadJson).digest('hex');
+    const response = await reportPersona3C(request('/api/persona-3c/report', {
+      runId, stage: 'train', progress: { done: 1, total: 10 },
+      records: [{ recordId: 'r1', payloadJson, sha256 }],
+    }), env(db), {});
+    expect(response.status).toBe(400);
+    expect(db.records).toHaveLength(0);
+  });
+
+  it('rejects a record with neither payload nor payloadJson', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000012' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+
+    const response = await reportPersona3C(request('/api/persona-3c/report', {
+      runId, stage: 'train', progress: { done: 1, total: 10 },
+      records: [{ recordId: 'r1', sha256: 'f'.repeat(64) }],
+    }), env(db), {});
+    expect(response.status).toBe(400);
+    expect(db.records).toHaveLength(0);
+  });
+
   it('accepts done>total progress counters and stores them clamped to total', async () => {
     const db = new FakeD1();
     const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-0000007' }), env(db), {});

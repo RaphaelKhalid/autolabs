@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import time
 from typing import Any, Dict, List, Optional
@@ -30,10 +31,28 @@ logger = logging.getLogger("autolabs_3c.report")
 MAX_RECORDS_PER_CALL = 200
 
 
+def _sanitize(value: Any) -> Any:
+    """Replace non-finite floats (NaN/Infinity/-Infinity) with None so a
+    payload always serializes as valid JSON. json.dumps(allow_nan=False)
+    raises on these instead of emitting the non-standard `NaN`/`Infinity`
+    tokens, so this must run before canonical_json's dump."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _sanitize(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize(item) for item in value]
+    return value
+
+
 def canonical_json(payload: Any) -> str:
     """Canonical JSON per research/experiment-003b/HASHING.md: sorted keys,
-    compact separators, UTF-8, no ASCII escaping."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    compact separators, UTF-8, no ASCII escaping. Non-finite floats are
+    sanitized to null first (allow_nan=False) so the result is always valid
+    JSON that the Worker can JSON.parse."""
+    return json.dumps(
+        _sanitize(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
 
 
 def sha256_of_payload(payload: Any) -> str:
@@ -174,17 +193,22 @@ class WorkerClient:
     ) -> None:
         """POST /api/persona-3c/report. Never raises.
 
-        `records` is a list of {recordId, payload} (or {recordId, payload,
-        sha256} if the sha was already computed); sha256 is filled in here
-        if missing. Records are sent in batches of at most
-        MAX_RECORDS_PER_CALL, each batch carrying the same stage/progress/
-        status/gpu_hours/message.
+        `records` is a list of {recordId, payload}. Each is sent to the
+        Worker as {recordId, payloadJson, sha256}, where payloadJson is the
+        exact canonical-JSON string (payload sanitized, then serialized) and
+        sha256 is the hash of that string's UTF-8 bytes. The Worker checks
+        integrity over those literal bytes instead of re-serializing the
+        payload itself, because Python's float formatting can disagree with
+        the Worker's (e.g. `1e-05` vs `0.00001`, `1.0` vs `1`), which would
+        otherwise make an honest payload fail its own hash check. Records
+        are sent in batches of at most MAX_RECORDS_PER_CALL, each batch
+        carrying the same stage/progress/status/gpu_hours/message.
         """
         prepared: List[Dict[str, Any]] = []
         for record in records or []:
-            payload = record.get("payload")
-            sha = record.get("sha256") or sha256_of_payload(payload)
-            prepared.append({"recordId": record.get("recordId"), "payload": payload, "sha256": sha})
+            payload_json = canonical_json(record.get("payload"))
+            sha = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+            prepared.append({"recordId": record.get("recordId"), "payloadJson": payload_json, "sha256": sha})
 
         if not prepared:
             body = self._base_body(stage, progress, status, gpu_hours, message)
