@@ -187,8 +187,8 @@ export async function reportPersona3C(req: Request, env: Persona3CEnv, c: Record
     if (typeof progressRaw !== 'object' || Array.isArray(progressRaw)) {
       return json({ error: 'Invalid progress.' }, { status: 400 }, c);
     }
-    const rawDone = integer((progressRaw as Record<string, unknown>).done, 0, 100_000_000);
-    const rawTotal = integer((progressRaw as Record<string, unknown>).total, 0, 100_000_000);
+    const rawDone = integer((progressRaw as Record<string, unknown>).done, 0, 1_000_000_000);
+    const rawTotal = integer((progressRaw as Record<string, unknown>).total, 0, 1_000_000_000);
     if (rawDone === null || rawTotal === null) return json({ error: 'Invalid progress counters.' }, { status: 400 }, c);
     total = rawTotal;
     done = Math.min(rawDone, rawTotal);

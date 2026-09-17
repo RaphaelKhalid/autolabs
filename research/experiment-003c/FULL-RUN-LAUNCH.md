@@ -1,6 +1,11 @@
 # Experiment 3C full run: launch records
 
-## Attempt 2 (2026-09-17, 18:35 UTC): full-paper, 150M tokens, A100
+## Attempt 3 (2026-09-17, 18:41 UTC): full-paper-100m, 100M tokens, A100 (RUNNING)
+
+Same pod, code, data and dictionary as attempt 2 below; only `tokens_target` is 100M. Harness run `persona-3c-d77e7c1e-8faa-46fd-b262-912d22b38c90`, config `pipeline/configs/full-paper-100m.json`, sha256 `7b00b8bdb596ec800a03a9a54efdeb262cf297d415644b8b4558e745c892d0c8`, GPU cap $16. Attempt 2 reported 3,898 tokens/s at its first 1M-token line, an ETA of 10.6 h for 150M, which broke the decision rule (no margin for a restart on the balance), so it was stopped at 1M tokens and its harness run marked stopped. The Worker's progress-counter cap was raised from 100M to 1e9 and deployed, because attempt 2's progress reports had been rejected at a 150M total. If the balance allows later, training can be extended from the 100M checkpoint to 150M under a fresh run id with `AUTOLABS_3C_CHECKPOINT_RUN_ID`.
+
+
+## Attempt 2 (2026-09-17, 18:35 UTC): full-paper, 150M tokens, A100 (STOPPED at 1M tokens, see attempt 3)
 
 | Item | Value |
 |---|---|

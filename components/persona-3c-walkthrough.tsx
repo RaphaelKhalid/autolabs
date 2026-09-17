@@ -411,9 +411,9 @@ function LiveRun() {
 export function Persona3CWalkthrough() {
   return <main className="p3c-page">
     <header className="p3c-header">
-      <p className="p3c-eyebrow">EXPERIMENT 3C · PIPELINE WALKTHROUGH</p>
+      <p className="p3c-eyebrow">EXPERIMENT 3C · LIVE</p>
       <h1>Can a sparse autoencoder surface persona directions that nobody named in advance?</h1>
-      <p className="p3c-lede">Persona vectors need a trait specified up front, a precise description, and a prompt that induces it. Experiment 3C trains a dictionary on Qwen2.5-7B-Instruct with no trait in the loop, then asks whether any learned direction moves the assistant in a way random directions cannot. Below: a replay of the last complete visual run, what came after it, and the full run planned on RunPod.</p>
+      <p className="p3c-lede">Persona vectors need a trait specified up front, a precise description, and a prompt that induces it. Experiment 3C trains a dictionary on Qwen2.5-7B-Instruct with no trait in the loop, then asks whether any learned direction moves the assistant in a way random directions cannot. Below: the current run as the ledger sees it, a replay of the last complete visual run, and what protects the full run.</p>
       <div className="p3c-header-meta"><span>Model Qwen2.5-7B-Instruct · layer 19</span><span>Harness: AutoLabs Worker, every record hashed</span><a href={`${REPO}/VISUAL-2.md`} target="_blank" rel="noreferrer">Visual run 2 write-up ↗</a><a href={`${REPO}/pipeline/README.md`} target="_blank" rel="noreferrer">Pipeline README ↗</a></div>
     </header>
 
@@ -447,33 +447,34 @@ export function Persona3CWalkthrough() {
       </div>
     </section>
 
-    <section className="p3c-plan" aria-label="Planned full run">
+    <section className="p3c-plan" aria-label="The full run">
       <div>
-        <span className="p3c-tag is-planned"><i />Planned · not launched · owner decision pending</span>
-        <h2>Next: the full run on RunPod</h2>
-        <p>One dictionary, one attempt, preregistered gates. The run is the same code as the replay above with a wider SAE, more tokens, three selection arms and 24 scenarios. It launches only after the survivability gates below are met, so a second host failure costs at most one checkpoint interval instead of the run.</p>
-        <ul className="p3c-gates" aria-label="Launch gates">
-          <li><i className="is-on" />Checkpoint every 5M tokens with the step counter, so training resumes on a fresh pod.</li>
-          <li><i className="is-half" />Checkpoints copied off the pod as they land (private Hugging Face repo). Code path exists; it must be wired to every checkpoint and switched on with a token.</li>
-          <li><i className="is-half" />Resume tested once on a fresh pod from an off-pod checkpoint, including feature statistics and the data-stream offset.</li>
-          <li><i />A scheduled monitor every 30 minutes: harness status, pod status, relaunch from the last checkpoint, alert on failure.</li>
+        <span className="p3c-tag is-ok"><i />Full run · launched 17 Sept 2026, 18:45 UTC</span>
+        <h2>The full run, and what protects it</h2>
+        <p>One dictionary, one attempt, preregistered gates. Same code as the replay above with a 32k-feature Matryoshka SAE, 100M assistant tokens drawn from the training sources of the Persona Vectors paper, three selection arms and 24 scenarios. The card at the top of this page is the run; the section under it is its training curve as the pod reports checkpoints. A 150M attempt was started first and stopped at the first throughput line, because it would have left no money for a restart.</p>
+        <ul className="p3c-gates" aria-label="Survivability">
+          <li><i className="is-on" />Checkpoint every 5M tokens with optimizer state, dead-feature clocks and feature statistics, so training resumes on a fresh pod.</li>
+          <li><i className="is-on" />Every checkpoint and every stage output is copied off the pod to a private Hugging Face repo the moment it exists.</li>
+          <li><i className="is-on" />Resume and finalize-from-checkpoint were tested on this pod before launch: checkpoint hidden, pulled back from the Hub, funnel finished.</li>
+          <li><i className="is-half" />A 15-minute check flags a pod that stops reporting, on this page and on the card. Relaunch is still a human action.</li>
         </ul>
       </div>
       <dl className="p3c-plan-spec">
-        <dt>Provider</dt><dd>RunPod secure cloud · RTX A6000 48 GB at $0.53/h or A100 80 GB at $1.59/h</dd>
+        <dt>Provider</dt><dd>RunPod secure cloud · NVIDIA A100 SXM 80 GB at $1.59/h</dd>
         <dt>Dictionary</dt><dd>Matryoshka BatchTopK · width 32,768 · shells 1k / 4k / 16k / 32k · k 40</dd>
-        <dt>Tokens</dt><dd>100M assistant tokens (about 19 h on the A6000, 7 h on the A100); 150M if the balance is topped up</dd>
+        <dt>Training data</dt><dd>LMSYS-Chat-1M, The Pile (uncopyrighted mirror), the insecure-code set of Betley et al.; weights 0.70 / 0.22 / 0.08 per conversation, measured token shares 61 / 36 / 3</dd>
+        <dt>Tokens</dt><dd>100M assistant tokens, about 7 h at the measured 3,900 tokens per second</dd>
         <dt>Candidates</dt><dd>256 features · 96 unsupervised, 64 density-quantile, 96 prompt-shift</dd>
         <dt>Screen</dt><dd>24 scenarios · 3 persona-vector controls · 20 random nulls · 512-token replies</dd>
-        <dt>Judge</dt><dd>Top 40 directions plus 3 nulls · cap $10 · 2,000 calls · order-independent blinding</dd>
-        <dt>Budget</dt><dd>GPU cap $12 in the harness · RunPod balance $13.60 on 17 Sept</dd>
-        <dt>Launch record</dt><dd><a href={`${REPO}/FULL-RUN-LAUNCH.md`} target="_blank" rel="noreferrer">FULL-RUN-LAUNCH.md ↗</a> · <a href={`${REPO}/HANDOFF.md`} target="_blank" rel="noreferrer">HANDOFF.md ↗</a></dd>
+        <dt>Judge</dt><dd>Top 40 directions plus 3 nulls · cap $10 · order-independent blinding</dd>
+        <dt>Budget</dt><dd>GPU cap $16 in the harness</dd>
+        <dt>Records</dt><dd><a href={`${REPO}/FULL-RUN-LAUNCH.md`} target="_blank" rel="noreferrer">FULL-RUN-LAUNCH.md ↗</a> · <a href={`${REPO}/pipeline/configs/full-paper-100m.json`} target="_blank" rel="noreferrer">config ↗</a></dd>
       </dl>
     </section>
 
     <footer className="p3c-footer">
       <span>Replay data: harness ledger for run {visual2.runId} and research/experiment-003c/smoke-runs/visual-2. Numbers are the recorded values, not estimates.</span>
-      <Link href="/">Back to the live lab ↗</Link>
+      <span><Link href="/experiments/persona-discovery-scoring">Open the Experiment 3B scoring room ↗</Link> · <Link href="/experiments/persona-discovery">Experiment 3A record ↗</Link></span>
     </footer>
   </main>;
 }
