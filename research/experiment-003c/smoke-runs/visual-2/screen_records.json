@@ -1,0 +1,1084 @@
+[
+  {
+    "recordId": "screen-feature-81-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 81,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 1.0,
+          "auc": 1.0
+        },
+        "lexical": {
+          "acc": 0.8125,
+          "auc": 1.0
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.29324580616396634,
+        "null_mean_cos": 0.02906702213223162
+      },
+      "coherent_fraction": 0.875,
+      "density": 0.00902168732136488,
+      "quantile": 31.25
+    }
+  },
+  {
+    "recordId": "screen-feature-81-neg-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 81,
+      "sign": -1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.625,
+          "auc": 0.796875
+        },
+        "lexical": {
+          "acc": 0.625,
+          "auc": 0.484375
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.06449745600548648,
+        "null_mean_cos": 0.0352780996431337
+      },
+      "coherent_fraction": 0.875,
+      "density": 0.00902168732136488,
+      "quantile": 31.25
+    }
+  },
+  {
+    "recordId": "screen-feature-410-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 410,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.75,
+          "auc": 0.84375
+        },
+        "lexical": {
+          "acc": 0.625,
+          "auc": 0.75
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.06355014593205328,
+        "null_mean_cos": 0.03175572918948613
+      },
+      "coherent_fraction": 0.875,
+      "density": 0.005428674165159464,
+      "quantile": 18.75
+    }
+  },
+  {
+    "recordId": "screen-feature-410-neg-2.0",
+    "payload": {
+      "kind": "feature",
+      "id": 410,
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.875,
+          "auc": 0.96875
+        },
+        "lexical": {
+          "acc": 0.625,
+          "auc": 0.65625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.260989457196748,
+        "null_mean_cos": 0.043344849481192174
+      },
+      "coherent_fraction": 0.5,
+      "density": 0.005428674165159464,
+      "quantile": 18.75
+    }
+  },
+  {
+    "recordId": "screen-feature-419-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 419,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.875,
+          "auc": 0.9375
+        },
+        "lexical": {
+          "acc": 0.375,
+          "auc": 0.390625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.08352015034817474,
+        "null_mean_cos": 0.05837531689246923
+      },
+      "coherent_fraction": 0.875,
+      "density": 0.012698383070528507,
+      "quantile": 43.75
+    }
+  },
+  {
+    "recordId": "screen-feature-419-neg-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 419,
+      "sign": -1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.609375
+        },
+        "lexical": {
+          "acc": 0.375,
+          "auc": 0.25
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.0011084835337744933,
+        "null_mean_cos": 0.022030080519522793
+      },
+      "coherent_fraction": 1.0,
+      "density": 0.012698383070528507,
+      "quantile": 43.75
+    }
+  },
+  {
+    "recordId": "screen-feature-457-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 457,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.640625
+        },
+        "lexical": {
+          "acc": 0.5625,
+          "auc": 0.390625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.009257053275406475,
+        "null_mean_cos": 0.0266044529001335
+      },
+      "coherent_fraction": 1.0,
+      "density": 0.00144641799852252,
+      "quantile": 6.25
+    }
+  },
+  {
+    "recordId": "screen-feature-457-neg-2.0",
+    "payload": {
+      "kind": "feature",
+      "id": 457,
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.75,
+          "auc": 0.75
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.453125
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.05056309261317088,
+        "null_mean_cos": 0.03783029590777826
+      },
+      "coherent_fraction": 0.875,
+      "density": 0.00144641799852252,
+      "quantile": 6.25
+    }
+  },
+  {
+    "recordId": "screen-feature-566-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 566,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.65625
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.34375
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.04906551941821285,
+        "null_mean_cos": 0.018501200104988774
+      },
+      "coherent_fraction": 1.0,
+      "density": 0.023148830980062485,
+      "quantile": 68.75
+    }
+  },
+  {
+    "recordId": "screen-feature-566-neg-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 566,
+      "sign": -1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.625,
+          "auc": 0.640625
+        },
+        "lexical": {
+          "acc": 0.5625,
+          "auc": 0.578125
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.03505426657129749,
+        "null_mean_cos": 0.022035564827682624
+      },
+      "coherent_fraction": 0.75,
+      "density": 0.023148830980062485,
+      "quantile": 68.75
+    }
+  },
+  {
+    "recordId": "screen-feature-670-pos-2.0",
+    "payload": {
+      "kind": "feature",
+      "id": 670,
+      "sign": 1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.875,
+          "auc": 0.96875
+        },
+        "lexical": {
+          "acc": 0.5625,
+          "auc": 0.703125
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.16963356190449747,
+        "null_mean_cos": 0.026125356021183047
+      },
+      "coherent_fraction": 1.0,
+      "density": 0.04912830889225006,
+      "quantile": 93.75
+    }
+  },
+  {
+    "recordId": "screen-feature-670-neg-2.0",
+    "payload": {
+      "kind": "feature",
+      "id": 670,
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.75,
+          "auc": 0.796875
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.59375
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.1182368750106798,
+        "null_mean_cos": 0.038068576618423826
+      },
+      "coherent_fraction": 0.875,
+      "density": 0.04912830889225006,
+      "quantile": 93.75
+    }
+  },
+  {
+    "recordId": "screen-feature-699-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 699,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.8125,
+          "auc": 0.828125
+        },
+        "lexical": {
+          "acc": 0.625,
+          "auc": 0.796875
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.16965585343281833,
+        "null_mean_cos": 0.04105246757481592
+      },
+      "coherent_fraction": 1.0,
+      "density": 0.03273864462971687,
+      "quantile": 81.25
+    }
+  },
+  {
+    "recordId": "screen-feature-699-neg-2.0",
+    "payload": {
+      "kind": "feature",
+      "id": 699,
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.875,
+          "auc": 0.921875
+        },
+        "lexical": {
+          "acc": 0.6875,
+          "auc": 0.9375
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.23738248665336995,
+        "null_mean_cos": 0.039927727915902794
+      },
+      "coherent_fraction": 0.5,
+      "density": 0.03273864462971687,
+      "quantile": 81.25
+    }
+  },
+  {
+    "recordId": "screen-feature-702-pos-1.0",
+    "payload": {
+      "kind": "feature",
+      "id": 702,
+      "sign": 1,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.875,
+          "auc": 0.96875
+        },
+        "lexical": {
+          "acc": 0.8125,
+          "auc": 0.984375
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.2241012439649577,
+        "null_mean_cos": 0.037596863650877416
+      },
+      "coherent_fraction": 1.0,
+      "density": 0.016719026491045952,
+      "quantile": 56.25
+    }
+  },
+  {
+    "recordId": "screen-feature-702-neg-2.0",
+    "payload": {
+      "kind": "feature",
+      "id": 702,
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.875,
+          "auc": 0.984375
+        },
+        "lexical": {
+          "acc": 0.75,
+          "auc": 0.90625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.22610688083095148,
+        "null_mean_cos": 0.054681594862376996
+      },
+      "coherent_fraction": 0.375,
+      "density": 0.016719026491045952,
+      "quantile": 56.25
+    }
+  },
+  {
+    "recordId": "screen-control-evil_benevolent-pos-2.0",
+    "payload": {
+      "kind": "control",
+      "id": "evil_benevolent",
+      "sign": 1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.6875,
+          "auc": 0.828125
+        },
+        "lexical": {
+          "acc": 0.6875,
+          "auc": 0.8125
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.10320943286738082,
+        "null_mean_cos": 0.038009752849955086
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-control-evil_benevolent-neg-2.0",
+    "payload": {
+      "kind": "control",
+      "id": "evil_benevolent",
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.59375
+        },
+        "lexical": {
+          "acc": 0.5625,
+          "auc": 0.5625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.022792033574166176,
+        "null_mean_cos": 0.035617397565933885
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-control-sycophantic_honest-pos-2.0",
+    "payload": {
+      "kind": "control",
+      "id": "sycophantic_honest",
+      "sign": 1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 1.0,
+          "auc": 1.0
+        },
+        "lexical": {
+          "acc": 0.9375,
+          "auc": 1.0
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.5545435772420452,
+        "null_mean_cos": 0.024802198701499953
+      },
+      "coherent_fraction": 0.75
+    }
+  },
+  {
+    "recordId": "screen-control-sycophantic_honest-neg-2.0",
+    "payload": {
+      "kind": "control",
+      "id": "sycophantic_honest",
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.75,
+          "auc": 0.75
+        },
+        "lexical": {
+          "acc": 0.625,
+          "auc": 0.625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.10740485606729314,
+        "null_mean_cos": 0.019464022851158058
+      },
+      "coherent_fraction": 0.875
+    }
+  },
+  {
+    "recordId": "screen-control-hallucinating_factual-pos-2.0",
+    "payload": {
+      "kind": "control",
+      "id": "hallucinating_factual",
+      "sign": 1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.6875,
+          "auc": 0.8125
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.546875
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.2174131759347548,
+        "null_mean_cos": 0.10400382125454746
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-control-hallucinating_factual-neg-2.0",
+    "payload": {
+      "kind": "control",
+      "id": "hallucinating_factual",
+      "sign": -1,
+      "dose": 2.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.625,
+          "auc": 0.734375
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.65625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.0368260539059183,
+        "null_mean_cos": -0.0020843026064220754
+      },
+      "coherent_fraction": 0.875
+    }
+  },
+  {
+    "recordId": "screen-random-0-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 0,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.4609375
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.4609375
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.015859756042223238,
+        "null_mean_cos": 0.03304388785934093
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-1-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 1,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.4765625
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.359375
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.007293057861819376,
+        "null_mean_cos": 0.00026256877263370823
+      },
+      "coherent_fraction": 0.875
+    }
+  },
+  {
+    "recordId": "screen-random-2-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 2,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.59375
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.390625
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.0002320312817665529,
+        "null_mean_cos": 0.07626892699119638
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-3-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 3,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5390625
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.4921875
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.014146966053368171,
+        "null_mean_cos": 0.01640896804154544
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-4-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 4,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5390625
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.3984375
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.007681237620384028,
+        "null_mean_cos": 0.0017007612883902035
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-5-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 5,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.5234375
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.4296875
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.013038196333521494,
+        "null_mean_cos": 0.053827206976778876
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-6-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 6,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5
+        },
+        "lexical": {
+          "acc": 0.5625,
+          "auc": 0.59375
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.001996262976671157,
+        "null_mean_cos": 0.06215426064231047
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-7-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 7,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5078125
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.4140625
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.0004470969981538242,
+        "null_mean_cos": 0.01867745155637417
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-8-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 8,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.546875
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.515625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.002879183670901278,
+        "null_mean_cos": 0.04638512969632083
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-9-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 9,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.5625
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.5546875
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.0008635126325181236,
+        "null_mean_cos": 0.07141972321048733
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-10-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 10,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.484375
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.421875
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.005072532452223561,
+        "null_mean_cos": 0.027714233781925203
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-11-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 11,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.515625
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.4453125
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.009103453912078329,
+        "null_mean_cos": 0.029031381185605717
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-12-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 12,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.4765625
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.5078125
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.0058175226396701045,
+        "null_mean_cos": 0.036119018065064484
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-13-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 13,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5
+        },
+        "lexical": {
+          "acc": 0.3125,
+          "auc": 0.28125
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.002010406311464302,
+        "null_mean_cos": 0.04343475655981289
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-14-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 14,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.4375,
+          "auc": 0.546875
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.5390625
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.0020252308367624972,
+        "null_mean_cos": 0.0810956087584849
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-15-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 15,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.53125
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.4921875
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.0007110254511972473,
+        "null_mean_cos": 0.02676020526221424
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-16-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 16,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5625,
+          "auc": 0.4765625
+        },
+        "lexical": {
+          "acc": 0.5625,
+          "auc": 0.4296875
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.013297949445150819,
+        "null_mean_cos": 0.016136278701580735
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-17-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 17,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5078125
+        },
+        "lexical": {
+          "acc": 0.4375,
+          "auc": 0.5390625
+        }
+      },
+      "consistency": {
+        "mean_cos": 0.006239204649172743,
+        "null_mean_cos": 0.02274623908531552
+      },
+      "coherent_fraction": 1.0
+    }
+  },
+  {
+    "recordId": "screen-random-18-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 18,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.546875
+        },
+        "lexical": {
+          "acc": 0.375,
+          "auc": 0.296875
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.011197926585556153,
+        "null_mean_cos": 0.054155293713812405
+      },
+      "coherent_fraction": 0.875
+    }
+  },
+  {
+    "recordId": "screen-random-19-na-1.0",
+    "payload": {
+      "kind": "random",
+      "id": 19,
+      "sign": 0,
+      "dose": 1.0,
+      "n_scenarios": 8,
+      "separability": {
+        "resid": {
+          "acc": 0.5,
+          "auc": 0.5078125
+        },
+        "lexical": {
+          "acc": 0.5,
+          "auc": 0.515625
+        }
+      },
+      "consistency": {
+        "mean_cos": -0.012059155486932382,
+        "null_mean_cos": 0.041059875100622326
+      },
+      "coherent_fraction": 1.0
+    }
+  }
+]

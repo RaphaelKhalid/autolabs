@@ -37,3 +37,5 @@ Chen, Arditi, Sleight et al. list three limitations of prompt-derived persona ve
 ## Timeline
 
 - 06:18 UTC launch.
+- 06:44 UTC Worker deployed with the order-independent judge schema (89d8b18); visual-2 finished under the old schema, see VISUAL-2.md.
+- 06:52 UTC validation run of commit 905213b (smoke config, all new stages) launched on a separate A40 pod `u8k3qftr747czw`, harness run `persona-3c-2e8cafc4-5df4-4959-b54f-bcb71724aba8`.
