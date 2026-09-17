@@ -231,12 +231,18 @@ topic change, and a formatting artifact can all look the same on those
 numbers. The describe stage (`describe.py`) answers that with a blinded
 judge: for each of the `describe_top_n` directions (ranked by residual-view
 separability AUC, ties broken by consistency `mean_cos`; smoke 6, full 40;
-`0` disables the stage) and each scenario it was screened on, it shows the
-judge the baseline text and the steered text for that scenario -- labeled
-`A`/`B`, order randomized per pair -- and asks it to answer one question
-with strict JSON: `{"difference": <=240 chars or "", "none": bool, "about":
-"speaker"|"content"|"format"|"none"}`. The judge never sees a persona
-vocabulary, a feature id, or which side is steered.
+`0` disables the stage), **plus** the `describe_null_directions`
+lowest-resid-AUC `kind="random"` directions from the screen (smoke and full
+both 3 -- see "Nulls" below), and each scenario the direction was screened
+on, it shows the judge the baseline text and the steered text for that
+scenario -- labeled `A`/`B`, order randomized per pair -- and asks it to
+answer one question with strict JSON: `{"property": <=200 chars or "",
+"more_in": "A"|"B"|"neither", "about": "speaker"|"content"|"format",
+"confidence": "low"|"medium"|"high"}` (name one property of how the
+speaker comes across that differs, and say which response shows more of
+it; `neither` means no meaningful difference, `property` may be `""`). The
+judge never sees a persona vocabulary, a feature id, or which side is
+steered.
 
 **The judging runs inside the Worker**, not on the pod: `describe.py` only
 builds the blinded pairs and drives the Worker's queue.
@@ -245,10 +251,12 @@ builds the blinded pairs and drives the Worker's queue.
 timeout, strict `json_schema` output) and all budget bookkeeping, so no
 laptop process needs to stay alive for this stage to run to completion.
 
-- `describe.build_judge_pairs(screen_generations, directions, top_n)` picks
-  the top `top_n` directions and, for every scenario each was screened on,
-  emits two pairs: `orderSwap=False` (`textA`=baseline, `textB`=steered) and
-  `orderSwap=True` (`textA`=steered, `textB`=baseline) -- so every
+- `describe.build_judge_pairs(screen_generations, directions, top_n,
+  null_directions)` selects the top `top_n` directions by resid AUC
+  *union* the `null_directions` lowest-resid-AUC `kind="random"`
+  directions, and for every scenario each selected direction was screened
+  on emits two pairs: `orderSwap=False` (`textA`=baseline, `textB`=steered)
+  and `orderSwap=True` (`textA`=steered, `textB`=baseline) -- so every
   steered/baseline pair is judged in both orders.
 - `describe.submit_judge_plan` POSTs pairs to `/api/persona-3c/judge/plan`
   in batches of <=500 (append mode: re-submitting the same pairs is a
@@ -263,25 +271,56 @@ laptop process needs to stay alive for this stage to run to completion.
   the call ceiling is reached, settles to the actual cost on success, and
   charges the worst-case on failure. A job is retried up to 3 attempts
   before being marked `failed`.
-- `describe.drive_judge` calls `/api/persona-3c/judge/run` (<=25 jobs per
-  call, processed sequentially -- Workers CPU-time limits, not wall time)
-  until the queue is drained.
+- `describe.drive_judge` calls `/api/persona-3c/judge/run` (<=10 jobs per
+  call by default, processed sequentially inside the Worker -- CPU-time
+  limits, not wall time -- against a **300s client read timeout**; a full
+  10-job sequential judge batch can take well over `report.py`'s default
+  30s timeout, and the first live judge pass showed the client retrying,
+  and duplicating in-flight work, while the Worker was still working
+  through the batch) until the queue is drained.
 - `describe.fetch_results` reads back every complete job's parsed response
   from `/api/persona-3c/judge/results` (auth required; the blinded texts
   themselves are never returned by any route).
-- `describe.cluster_descriptions` unblinds each response with its local
-  `orderSwap` (`steered_is_B` iff `orderSwap` is False -- the description
-  text itself is never mechanically negated) and, per direction, reports
-  `n_none`, `n_described`, the largest cluster's size and centroid sentence
-  (the description with the highest mean similarity to the rest of its
-  cluster -- two independent cosine views averaged: the screen stage's
-  hashed lexical vector, and a fresh TF-IDF over just that direction's
-  descriptions; average-linkage agglomerative clustering, cosine-similarity
-  threshold 0.5), `about_counts`, and `named` (largest cluster >= 50% of
-  described *and* a strict majority of that cluster is `about: "speaker"`).
+- `describe.cluster_descriptions` unblinds each response's `more_in` using
+  its local `orderSwap` (`steered_has_more = (more_in == "B") != orderSwap`;
+  `more_in == "neither"` has no direction and counts toward `n_none`
+  regardless of whether `property` is also empty -- see
+  `describe._steered_has_more`), then clusters the `property` text alone
+  (direction-free) per direction: two independent cosine views averaged
+  (the screen stage's hashed lexical vector, and a fresh TF-IDF over
+  lowercased, stopword-stripped unigrams+bigrams of just that direction's
+  properties), average-linkage agglomerative clustering at a
+  cosine-distance threshold of 0.35 (`CLUSTER_LINKAGE_THRESHOLD`, loosened
+  from an earlier 0.5 after the first live pass showed swapped-order
+  paraphrases failing to cluster), followed by a fallback keyword-overlap
+  merge (`_keyword_overlap_merge`, Jaccard >= 0.6 on stopword-stripped
+  content words) for short descriptions the cosine view under- or
+  over-weights. Reports per direction: `n_none`, `n_described`,
+  `none_rate`, `largest_cluster_size`, `cluster_property` (the description
+  with the highest mean similarity to the rest of the largest cluster),
+  `direction_agreement` (fraction of the largest cluster's members whose
+  unblinded `steered_has_more` matches that cluster's majority direction),
+  `about_counts`, `confidence_counts`, `named` (largest cluster >= 50% of
+  described, `direction_agreement` >= 0.8, and a strict majority of that
+  cluster is `about: "speaker"`), and `consistency_score` =
+  `largest_cluster_size / n_described` * `direction_agreement`.
 
-Writes `describe_results.json` (`{plan, results, clusters}`) and
-`describe-report.html` under `<workdir>`, and reports a compact
+**Nulls.** The first live judge pass (48 pairs) found the judge never
+returned `neither` at all -- greedy decoding makes every steered text
+differ from its baseline in *some* way, for a real feature or a random
+direction alike -- so `none_rate` cannot separate a real direction from a
+null. `describe.compute_null_stats`/`describe.apply_named_above_null`
+instead gate on `consistency_score`: a direction is `named_above_null` iff
+it is `named` *and* its `consistency_score` exceeds the best
+(`null_consistency_max`) any `kind="random"` null direction achieved, by
+more than `describe_null_margin` (default 0.1). `describe_results.json`'s
+`null_stats` reports `n_null_directions`, `null_none_rate`, `null_named`,
+`null_consistency_max`, `null_consistency_mean`, and the resulting
+`named_above_null_threshold`; `describe-report.html` shows the null
+directions in their own block, separate from the real directions' table.
+
+Writes `describe_results.json` (`{plan, results, clusters, null_stats}`)
+and `describe-report.html` under `<workdir>`, and reports a compact
 per-direction summary record (`describe-<directionKey>`) to the harness
 under stage `"judge"`.
 

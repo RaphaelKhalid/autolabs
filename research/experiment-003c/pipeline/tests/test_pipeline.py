@@ -1190,6 +1190,8 @@ def test_build_judge_pairs_selects_top_n_by_resid_auc_ties_by_consistency():
         {"kind": "random", "id": 3, "sign": 0, "scenario": "s0", "text": "steeredR3s0", "baseline_text": "baseR3s0"},
     ]
 
+    # null_directions defaults to 0, so the random null isn't pulled in
+    # just because it exists -- only top_n by resid AUC is selected.
     pairs = describe.build_judge_pairs(generations, directions, top_n=2)
 
     # 2 pairs (orderSwap False/True) per (direction, scenario); the random
@@ -1211,18 +1213,59 @@ def test_build_judge_pairs_top_n_zero_selects_nothing():
     assert describe.build_judge_pairs(generations, directions, top_n=0) == []
 
 
+def test_build_judge_pairs_includes_null_directions_by_lowest_auc():
+    # top_n=1 picks only the feature; null_directions=1 must additionally
+    # pull in the *lowest*-AUC random direction (id 6, auc 0.2), not the
+    # higher-scoring random (id 5, auc 0.6) and not both randoms.
+    directions = [
+        {"kind": "feature", "id": 1, "sign": 1, "separability": {"resid": {"auc": 0.95}}, "consistency": {"mean_cos": 0.5}},
+        {"kind": "random", "id": 5, "sign": 0, "separability": {"resid": {"auc": 0.6}}, "consistency": {"mean_cos": 0.1}},
+        {"kind": "random", "id": 6, "sign": 0, "separability": {"resid": {"auc": 0.2}}, "consistency": {"mean_cos": 0.05}},
+        {"kind": "random", "id": 7, "sign": 0, "separability": {"resid": {"auc": 0.3}}, "consistency": {"mean_cos": 0.05}},
+    ]
+    generations = [
+        {"kind": "feature", "id": 1, "sign": 1, "scenario": "s0", "text": "steered1s0", "baseline_text": "base1s0"},
+        {"kind": "random", "id": 5, "sign": 0, "scenario": "s0", "text": "steeredR5s0", "baseline_text": "baseR5s0"},
+        {"kind": "random", "id": 6, "sign": 0, "scenario": "s0", "text": "steeredR6s0", "baseline_text": "baseR6s0"},
+        {"kind": "random", "id": 7, "sign": 0, "scenario": "s0", "text": "steeredR7s0", "baseline_text": "baseR7s0"},
+    ]
+
+    pairs = describe.build_judge_pairs(generations, directions, top_n=1, null_directions=1)
+
+    assert {p["directionKey"] for p in pairs} == {"feature-1-pos", "random-6-na"}
+    assert describe.is_null_key("random-6-na") is True
+    assert describe.is_null_key("feature-1-pos") is False
+
+
+def _judge_row(direction_key: str, scenario: str, order_swap: bool, property_text: str, more_in: str, about: str, confidence: str = "medium"):
+    return {
+        "directionKey": direction_key,
+        "scenario": scenario,
+        "orderSwap": order_swap,
+        "response": {"property": property_text, "more_in": more_in, "about": about, "confidence": confidence},
+    }
+
+
+def test_steered_has_more_unblinds_using_order_swap_x_more_in_table():
+    # orderSwap=False: textB is the steered text, so more_in=="B" already
+    # means "the steered response shows more of this property".
+    assert describe._steered_has_more("B", False) is True
+    assert describe._steered_has_more("A", False) is False
+    # orderSwap=True: textA is steered, so the sense flips.
+    assert describe._steered_has_more("B", True) is False
+    assert describe._steered_has_more("A", True) is True
+    # "neither" (no meaningful difference) has no direction.
+    assert describe._steered_has_more("neither", False) is None
+    assert describe._steered_has_more("neither", True) is None
+
+
 def test_cluster_descriptions_groups_paraphrases_and_separates_a_different_one():
     results = [
-        {"directionKey": "feature-75-neg", "scenario": "s0", "orderSwap": False, "response": {
-            "difference": "B sounds warmer and friendlier than A.", "none": False, "about": "speaker"}},
-        {"directionKey": "feature-75-neg", "scenario": "s1", "orderSwap": True, "response": {
-            "difference": "B sounds a bit warmer and friendlier than A.", "none": False, "about": "speaker"}},
-        {"directionKey": "feature-75-neg", "scenario": "s2", "orderSwap": False, "response": {
-            "difference": "B comes across as warmer and friendlier than A.", "none": False, "about": "speaker"}},
-        {"directionKey": "feature-75-neg", "scenario": "s3", "orderSwap": False, "response": {
-            "difference": "B lists more bullet points than A.", "none": False, "about": "format"}},
-        {"directionKey": "feature-75-neg", "scenario": "s4", "orderSwap": False, "response": {
-            "difference": "", "none": True, "about": "none"}},
+        _judge_row("feature-75-neg", "s0", False, "warmer and friendlier tone", "B", "speaker"),
+        _judge_row("feature-75-neg", "s1", True, "a bit warmer and friendlier tone", "A", "speaker"),
+        _judge_row("feature-75-neg", "s2", False, "a warmer and friendlier tone overall", "B", "speaker"),
+        _judge_row("feature-75-neg", "s3", False, "lists more bullet points", "B", "format"),
+        _judge_row("feature-75-neg", "s4", False, "", "neither", "speaker"),
     ]
 
     clusters = describe.cluster_descriptions(results)
@@ -1230,39 +1273,57 @@ def test_cluster_descriptions_groups_paraphrases_and_separates_a_different_one()
     summary = clusters["feature-75-neg"]
     assert summary["n_none"] == 1
     assert summary["n_described"] == 4
+    assert summary["none_rate"] == pytest.approx(0.2)
     # The three warmer/friendlier paraphrases cluster together; the
     # bullet-point sentence is left in its own singleton cluster.
     assert summary["largest_cluster_size"] == 3
-    assert "warmer" in summary["centroid_sentence"] and "friendlier" in summary["centroid_sentence"]
+    assert "warmer" in summary["cluster_property"] and "friendlier" in summary["cluster_property"]
     assert summary["about_counts"] == {"speaker": 3, "content": 0, "format": 1}
+    assert summary["confidence_counts"] == {"low": 0, "medium": 4, "high": 0}
+    # All three paraphrases unblind to the same direction (steered has more
+    # warmth), so agreement within the largest cluster is perfect.
+    assert summary["direction_agreement"] == pytest.approx(1.0)
+    assert summary["consistency_score"] == pytest.approx(0.75)  # 3/4 * 1.0
 
 
 def test_cluster_descriptions_named_true_when_largest_cluster_majority_is_speaker():
     results = [
-        {"directionKey": "feature-75-neg", "scenario": "s0", "orderSwap": False, "response": {
-            "difference": "B sounds warmer and friendlier than A.", "none": False, "about": "speaker"}},
-        {"directionKey": "feature-75-neg", "scenario": "s1", "orderSwap": True, "response": {
-            "difference": "B sounds a bit warmer and friendlier than A.", "none": False, "about": "speaker"}},
-        {"directionKey": "feature-75-neg", "scenario": "s2", "orderSwap": False, "response": {
-            "difference": "B comes across as warmer and friendlier than A.", "none": False, "about": "speaker"}},
-        {"directionKey": "feature-75-neg", "scenario": "s3", "orderSwap": False, "response": {
-            "difference": "B lists more bullet points than A.", "none": False, "about": "format"}},
+        _judge_row("feature-75-neg", "s0", False, "warmer and friendlier tone", "B", "speaker"),
+        _judge_row("feature-75-neg", "s1", True, "a bit warmer and friendlier tone", "A", "speaker"),
+        _judge_row("feature-75-neg", "s2", False, "a warmer and friendlier tone overall", "B", "speaker"),
+        _judge_row("feature-75-neg", "s3", False, "lists more bullet points", "B", "format"),
     ]
     clusters = describe.cluster_descriptions(results)
-    # largest cluster (3/4 described, >= 50%) is unanimously "speaker".
+    # largest cluster (3/4 described, >= 50%) is unanimously "speaker" and
+    # unanimous on direction (direction_agreement 1.0 >= 0.8).
     assert clusters["feature-75-neg"]["named"] is True
+
+
+def test_cluster_descriptions_computes_direction_agreement_with_mixed_directions():
+    # Four paraphrases of the same property cluster together, but one
+    # disagrees on which side has more of it (direction_agreement < 1),
+    # so this direction is not "named" despite an otherwise unanimous,
+    # speaker-majority cluster.
+    results = [
+        _judge_row("feature-9-pos", "s0", False, "assertive tone", "B", "speaker"),
+        _judge_row("feature-9-pos", "s1", False, "an assertive tone", "B", "speaker"),
+        _judge_row("feature-9-pos", "s2", False, "assertive and confident tone", "B", "speaker"),
+        _judge_row("feature-9-pos", "s3", False, "assertive tone", "A", "speaker"),  # disagrees: steered has less
+    ]
+    summary = describe.cluster_descriptions(results)["feature-9-pos"]
+    assert summary["n_described"] == 4
+    assert summary["largest_cluster_size"] == 4
+    assert summary["direction_agreement"] == pytest.approx(0.75)
+    assert summary["named"] is False  # direction_agreement 0.75 < 0.8 threshold
+    assert summary["consistency_score"] == pytest.approx(0.75)  # 4/4 * 0.75
 
 
 def test_cluster_descriptions_named_false_when_largest_cluster_is_not_about_speaker():
     results = [
-        {"directionKey": "feature-9-pos", "scenario": "s0", "orderSwap": False, "response": {
-            "difference": "B mentions a different capital city than A.", "none": False, "about": "content"}},
-        {"directionKey": "feature-9-pos", "scenario": "s1", "orderSwap": True, "response": {
-            "difference": "B mentions a different capital city than A does.", "none": False, "about": "content"}},
-        {"directionKey": "feature-9-pos", "scenario": "s2", "orderSwap": False, "response": {
-            "difference": "B names a different capital city than A.", "none": False, "about": "content"}},
-        {"directionKey": "feature-9-pos", "scenario": "s3", "orderSwap": False, "response": {
-            "difference": "B sounds more formal than A.", "none": False, "about": "speaker"}},
+        _judge_row("feature-9-pos", "s0", False, "mentions a different capital city", "B", "content"),
+        _judge_row("feature-9-pos", "s1", True, "mentions a different capital city", "A", "content"),
+        _judge_row("feature-9-pos", "s2", False, "names a different capital city", "B", "content"),
+        _judge_row("feature-9-pos", "s3", False, "sounds more formal", "B", "speaker"),
     ]
     clusters = describe.cluster_descriptions(results)
     summary = clusters["feature-9-pos"]
@@ -1272,13 +1333,39 @@ def test_cluster_descriptions_named_false_when_largest_cluster_is_not_about_spea
 
 def test_cluster_descriptions_named_false_when_all_none():
     results = [
-        {"directionKey": "random-3-na", "scenario": "s0", "orderSwap": False, "response": {"difference": "", "none": True, "about": "none"}},
-        {"directionKey": "random-3-na", "scenario": "s1", "orderSwap": True, "response": {"difference": "", "none": True, "about": "none"}},
+        _judge_row("random-3-na", "s0", False, "", "neither", "speaker"),
+        _judge_row("random-3-na", "s1", True, "", "neither", "speaker"),
     ]
     clusters = describe.cluster_descriptions(results)
     summary = clusters["random-3-na"]
     assert summary["n_none"] == 2
     assert summary["n_described"] == 0
+    assert summary["none_rate"] == pytest.approx(1.0)
     assert summary["largest_cluster_size"] == 0
-    assert summary["centroid_sentence"] is None
+    assert summary["cluster_property"] is None
+    assert summary["direction_agreement"] is None
+    assert summary["consistency_score"] == pytest.approx(0.0)
     assert summary["named"] is False
+
+
+def test_apply_named_above_null_gates_on_consistency_score_above_null_ceiling():
+    clusters = {
+        "feature-1-pos": {"named": True, "consistency_score": 0.9, "none_rate": 0.1},
+        "feature-2-neg": {"named": True, "consistency_score": 0.55, "none_rate": 0.2},
+        "random-3-na": {"named": False, "consistency_score": 0.5, "none_rate": 0.15},
+        "random-4-na": {"named": True, "consistency_score": 0.4, "none_rate": 0.1},
+    }
+
+    null_stats = describe.apply_named_above_null(clusters, null_margin=0.1)
+
+    assert null_stats["n_null_directions"] == 2
+    assert null_stats["null_consistency_max"] == pytest.approx(0.5)
+    assert null_stats["null_consistency_mean"] == pytest.approx(0.45)
+    assert null_stats["null_named"] == 1
+    assert null_stats["null_none_rate"] == pytest.approx(0.125)
+
+    # threshold = null_consistency_max (0.5) + null_margin (0.1) = 0.6
+    assert clusters["feature-1-pos"]["named_above_null"] is True   # named and 0.9 > 0.6
+    assert clusters["feature-2-neg"]["named_above_null"] is False  # named but 0.55 <= 0.6
+    assert clusters["random-3-na"]["named_above_null"] is False    # not named at all
+    assert clusters["random-4-na"]["named_above_null"] is False    # named but 0.4 <= 0.6

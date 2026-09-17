@@ -365,20 +365,21 @@ const JUDGE_SCENARIO_MAX_CHARS = 4000;
 const JUDGE_DIRECTION_KEY_MAX_CHARS = 200;
 
 const JUDGE_SYSTEM_PROMPT =
-  'You are comparing two responses to the same prompt. Say in one sentence how B differs from A in the way ' +
-  'the speaker comes across, or return none if there is no meaningful difference. Do not evaluate quality or ' +
-  'correctness. Classify whether the difference is about the speaker (voice, stance, self-presentation, ' +
-  'relationship to the reader), the content (facts, topics, arguments), or the format (length, structure, ' +
-  'wording artifacts).';
+  'You compare two responses to the same prompt. Name one property of how the speaker comes across that ' +
+  'differs between them, and say which response shows more of it. If they do not meaningfully differ in how ' +
+  'the speaker comes across, answer neither. Do not judge quality or correctness. Classify whether the ' +
+  'property is about the speaker (voice, stance, self-presentation, relation to the reader), the content ' +
+  '(facts, topics, arguments), or the format (length, structure, wording artifacts).';
 
 const JUDGE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['difference', 'none', 'about'],
+  required: ['property', 'more_in', 'about', 'confidence'],
   properties: {
-    difference: { type: 'string', maxLength: 240 },
-    none: { type: 'boolean' },
-    about: { type: 'string', enum: ['speaker', 'content', 'format', 'none'] },
+    property: { type: 'string', maxLength: 200 },
+    more_in: { type: 'string', enum: ['A', 'B', 'neither'] },
+    about: { type: 'string', enum: ['speaker', 'content', 'format'] },
+    confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
   },
 };
 
@@ -403,7 +404,12 @@ type JudgeJob = {
   updated_at: string;
 };
 
-type JudgeResponse = { difference: string; none: boolean; about: 'speaker' | 'content' | 'format' | 'none' };
+type JudgeResponse = {
+  property: string;
+  more_in: 'A' | 'B' | 'neither';
+  about: 'speaker' | 'content' | 'format';
+  confidence: 'low' | 'medium' | 'high';
+};
 
 function judgeWorstCaseCost(promptChars: number): number {
   const estimatedInputTokens = Math.max(1, Math.ceil(promptChars / 3.5));
@@ -435,10 +441,11 @@ function validJudgeResponse(value: unknown): value is JudgeResponse {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const r = value as Record<string, unknown>;
   const keys = Object.keys(r);
-  if (keys.length !== 3 || !['difference', 'none', 'about'].every((k) => keys.includes(k))) return false;
-  if (typeof r.difference !== 'string' || r.difference.length > 240) return false;
-  if (typeof r.none !== 'boolean') return false;
-  if (!['speaker', 'content', 'format', 'none'].includes(String(r.about))) return false;
+  if (keys.length !== 4 || !['property', 'more_in', 'about', 'confidence'].every((k) => keys.includes(k))) return false;
+  if (typeof r.property !== 'string' || r.property.length > 200) return false;
+  if (!['A', 'B', 'neither'].includes(String(r.more_in))) return false;
+  if (!['speaker', 'content', 'format'].includes(String(r.about))) return false;
+  if (!['low', 'medium', 'high'].includes(String(r.confidence))) return false;
   return true;
 }
 

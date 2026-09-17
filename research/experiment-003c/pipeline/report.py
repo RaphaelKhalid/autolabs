@@ -107,7 +107,7 @@ class WorkerClient:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
-    def _post(self, path: str, body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _post(self, path: str, body: Dict[str, Any], timeout: Optional[float] = None) -> Optional[Dict[str, Any]]:
         if not self.base_url:
             logger.warning("AUTOLABS_3C_WORKER_URL is not set; skipping report to %s", path)
             return None
@@ -121,7 +121,7 @@ class WorkerClient:
         last_error: Optional[Exception] = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                resp = session.post(url, json=body, headers=self._headers(), timeout=self.timeout)
+                resp = session.post(url, json=body, headers=self._headers(), timeout=timeout if timeout is not None else self.timeout)
                 if resp.status_code == 429 or resp.status_code >= 500:
                     raise RuntimeError(f"retryable status {resp.status_code}: {resp.text[:300]}")
                 if resp.status_code >= 400:
@@ -270,10 +270,17 @@ class WorkerClient:
         }
         return self._post("/api/persona-3c/judge/plan", body)
 
-    def judge_run(self, run_id: str, max_jobs: int = 25) -> Optional[Dict[str, Any]]:
+    def judge_run(self, run_id: str, max_jobs: int = 10) -> Optional[Dict[str, Any]]:
         """POST /api/persona-3c/judge/run: claims and scores up to
-        `max_jobs` queued judge jobs for `run_id`."""
-        return self._post("/api/persona-3c/judge/run", {"runId": run_id or self.run_id, "maxJobs": max_jobs})
+        `max_jobs` queued judge jobs for `run_id`. Each claimed job is
+        scored sequentially against the OpenAI Responses API inside the
+        Worker, so a full batch of `max_jobs` calls can take well over the
+        client's default 30s read timeout; use a 300s read timeout here so
+        the client doesn't retry (and duplicate in-flight work) while the
+        Worker is still working through the batch."""
+        return self._post(
+            "/api/persona-3c/judge/run", {"runId": run_id or self.run_id, "maxJobs": max_jobs}, timeout=300.0
+        )
 
     def judge_results(self, run_id: str) -> Optional[Dict[str, Any]]:
         """GET /api/persona-3c/judge/results?runId=...: every complete

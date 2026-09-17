@@ -129,6 +129,16 @@ class Config:
     describe_top_n: int = 6  # smoke; full run uses 40
     judge_budget_usd: float = 3.0  # smoke; full run uses 30
     judge_call_ceiling: int = 200  # smoke; full run uses 4000
+    # Nulls for the describe stage itself: the lowest-resid-AUC
+    # `kind="random"` directions from the screen are always judged
+    # alongside the top_n, in addition to any random direction that
+    # happened to rank into the top_n on its own. The first live judge pass
+    # found every steered text (real feature or random null alike)
+    # described as differing under greedy decoding, so a feature's
+    # `consistency_score` (see describe.py) is judged against the best
+    # score any null achieved, not against an absolute threshold.
+    describe_null_directions: int = 3
+    describe_null_margin: float = 0.1  # named_above_null needs consistency_score > null max + this
 
     # --- run bookkeeping (only used if AUTOLABS_3C_RUN_ID is unset) ---
     manifest_hash: Optional[str] = None
@@ -193,6 +203,10 @@ class Config:
             raise ValueError("judge_budget_usd must be >= 0")
         if self.judge_call_ceiling < 0:
             raise ValueError("judge_call_ceiling must be >= 0")
+        if self.describe_null_directions < 0:
+            raise ValueError("describe_null_directions must be >= 0")
+        if self.describe_null_margin < 0:
+            raise ValueError("describe_null_margin must be >= 0")
         required_control_keys = {"name", "positive_system_prompt", "negative_system_prompt"}
         for entry in self.control_prompts:
             missing = required_control_keys - set(entry)
