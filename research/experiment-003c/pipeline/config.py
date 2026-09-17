@@ -111,6 +111,15 @@ class Config:
     screen_scenarios: int = 8  # smoke: the 4 steer_scenarios + 4 new open-ended ones; full run uses 24
     control_prompts: List[Dict[str, str]] = field(default_factory=_default_control_prompts)
     screen_dose_fallback: float = 1.0
+    # Fresh random unit-vector nulls drawn by the screen stage (kind="random"
+    # in screen.run_screen), scored at the median of the real features'
+    # max_coherent_dose -- distinct from the calibrate stage's own 2
+    # random-direction controls used for its dose sweep (steer.py,
+    # unaffected by this field). Visual run 1 used only 2 screen-stage
+    # nulls (see ../VISUAL-1.md "Next"); both smoke and full now use 20 so
+    # `max_random_resid_auc` and its 95th percentile are estimated from
+    # enough draws to be a meaningful ceiling for the verdict.
+    random_directions: int = 20
 
     # --- run bookkeeping (only used if AUTOLABS_3C_RUN_ID is unset) ---
     manifest_hash: Optional[str] = None
@@ -167,6 +176,8 @@ class Config:
             raise ValueError("lr_warmup_steps must be >= 0")
         if self.screen_scenarios < 2:
             raise ValueError("screen_scenarios must be >= 2 (leave-one-scenario-out needs a held-out fold)")
+        if self.random_directions < 1:
+            raise ValueError("random_directions must be >= 1")
         required_control_keys = {"name", "positive_system_prompt", "negative_system_prompt"}
         for entry in self.control_prompts:
             missing = required_control_keys - set(entry)

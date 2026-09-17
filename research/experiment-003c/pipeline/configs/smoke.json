@@ -46,5 +46,6 @@
     }
   ],
   "screen_dose_fallback": 1.0,
+  "random_directions": 20,
   "seed": 0
 }

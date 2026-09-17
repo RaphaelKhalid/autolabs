@@ -48,7 +48,10 @@ import steer
 logger = logging.getLogger("autolabs_3c.screen")
 
 LEXICAL_DIMS = 4096
-N_RANDOM_CONTROLS = 2  # matches steer.run_calibration's random-control count
+# Number of fresh random-direction nulls the screen stage draws is
+# `config.random_directions` (smoke and full both default to 20 -- see
+# config.py). This is independent of steer.run_calibration's own 2
+# random-direction controls used for its dose sweep.
 
 LOGREG_L2 = 1e-2
 LOGREG_LR = 0.5
@@ -493,6 +496,52 @@ def _sign_label(sign: Any) -> str:
     return "na"
 
 
+def build_generation_records(
+    directions: Sequence[Dict[str, Any]], baseline_texts: Dict[str, str]
+) -> List[Dict[str, Any]]:
+    """Flatten every direction's per-scenario screen generations into report
+    records: one per (direction, scenario) pair, so the report can show the
+    actual steered-vs-baseline text pairs behind each screen-table row
+    rather than only the aggregate separability/consistency numbers.
+
+    ``directions`` is ``pending`` from ``run_screen`` (or any sequence of
+    dicts shaped like it): each needs ``kind``, ``id``, ``sign``, ``dose``,
+    and ``steered`` ({scenario_id: {text, finish_reason, coherence, ...}}).
+    ``baseline_texts`` is {scenario_id: baseline text}, shared across every
+    direction since baselines are generated once per scenario.
+
+    Returns ``{recordId, payload}`` records ready for
+    ``report.report(stage="screen", records=...)``, with
+    ``recordId = f"screen-gen-{kind}-{id}-{sign}-{scenario}"`` (``sign``
+    rendered as ``pos``/``neg``/``na``, matching every other screen-stage
+    recordId) and ``payload = {kind, id, sign, dose, scenario, text,
+    baseline_text, finish_reason, coherence}``.
+    """
+    records: List[Dict[str, Any]] = []
+    for entry in directions:
+        kind = entry["kind"]
+        direction_id = entry["id"]
+        sign = entry["sign"]
+        dose = entry["dose"]
+        sign_label = _sign_label(sign)
+        for scenario_id, gen in entry["steered"].items():
+            payload = {
+                "kind": kind,
+                "id": direction_id,
+                "sign": sign,
+                "dose": dose,
+                "scenario": scenario_id,
+                "text": gen.get("text"),
+                "baseline_text": baseline_texts.get(scenario_id, ""),
+                "finish_reason": gen.get("finish_reason"),
+                "coherence": gen.get("coherence"),
+            }
+            records.append(
+                {"recordId": f"screen-gen-{kind}-{direction_id}-{sign_label}-{scenario_id}", "payload": payload}
+            )
+    return records
+
+
 def run_screen(
     config: Any,
     model: Any,
@@ -504,10 +553,15 @@ def run_screen(
     screen_scenarios: Sequence[Dict[str, str]],
     device: Any,
     seed: int = 0,
-) -> List[Dict[str, Any]]:
-    """Runs the full screen stage and returns a flat list of
-    {recordId, payload} records, ready for ``report.report(stage="screen",
-    records=...)``.
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Runs the full screen stage and returns
+    ``{"directions": [...], "generations": [...]}``, both lists of
+    ``{recordId, payload}`` records ready for ``report.report(stage="screen",
+    records=...)``. ``"directions"`` is one record per direction (feature/
+    sign, control/sign, or random null) with its separability/consistency
+    verdict inputs; ``"generations"`` is one record per (direction,
+    scenario) pair carrying the actual steered/baseline text (see
+    ``build_generation_records``).
 
     ``calibrate_scenarios`` is the (smaller) scenario set the calibrate
     stage already swept (``config.steer_scenarios``) -- reused here for
@@ -580,7 +634,7 @@ def run_screen(
 
     # -- random-direction nulls: dose = median of feature doses ------------
     random_dose = median_dose_with_fallback(flatten_doses(feature_doses), config.screen_dose_fallback)
-    for r in range(N_RANDOM_CONTROLS):
+    for r in range(config.random_directions):
         random_unit = torch.randn(d_model, generator=torch_gen)
         random_unit = random_unit / random_unit.norm().clamp_min(1e-8)
         vector = random_dose * random_unit
@@ -632,4 +686,7 @@ def run_screen(
         record_id = f"screen-{entry['kind']}-{entry['id']}-{_sign_label(entry['sign'])}-{entry['dose']}"
         records.append({"recordId": record_id, "payload": payload})
 
-    return records
+    baseline_texts = {sid: gen["text"] for sid, gen in baselines.items()}
+    generation_records = build_generation_records(pending, baseline_texts)
+
+    return {"directions": records, "generations": generation_records}
