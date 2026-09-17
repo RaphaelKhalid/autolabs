@@ -11,3 +11,4 @@ requests>=2.32
 # through the transformers/huggingface_hub already listed above (plain
 # AutoTokenizer/AutoModel, no sentence-transformers package), downloaded
 # lazily (~90MB) and cached under HF_HOME on first use.
+zstandard>=0.22  # monology/pile-uncopyrighted ships .jsonl.zst shards
