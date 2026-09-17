@@ -48,6 +48,7 @@ from run_smoke import (  # noqa: E402
     lr_warmup_multiplier,
     train_steps_on_buffer,
     compute_screen_verdict,
+    compute_throughput_and_eta,
     upload_run_artifacts,
 )
 import describe  # noqa: E402
@@ -90,6 +91,42 @@ def test_config_from_json_smoke_and_full(tmp_path):
     assert full.describe_top_n == 40
     assert full.screen_scenarios == 24
     assert full.random_directions == 20
+
+
+def test_config_from_json_loads_every_config_file():
+    """Every config in configs/ (including new full-100m.json/full-60m.json
+    variants) must load through Config.from_json without error -- catches a
+    typo'd key or an out-of-range value that from_dict's validation would
+    otherwise only surface at run time on the pod."""
+    config_dir = PIPELINE_DIR / "configs"
+    config_paths = sorted(config_dir.glob("*.json"))
+    assert config_paths, f"expected at least one config in {config_dir}"
+    for path in config_paths:
+        cfg = Config.from_json(path)
+        assert isinstance(cfg, Config)
+
+
+def test_full_100m_and_60m_configs_have_expected_overrides():
+    full = Config.from_json(PIPELINE_DIR / "configs" / "full.json")
+    full_100m = Config.from_json(PIPELINE_DIR / "configs" / "full-100m.json")
+    full_60m = Config.from_json(PIPELINE_DIR / "configs" / "full-60m.json")
+
+    assert full_100m.tokens_target == 100_000_000
+    assert full_100m.train_steps_per_batch == 4
+    assert full_100m.checkpoint_every_tokens == 5_000_000
+
+    assert full_60m.tokens_target == 60_000_000
+    assert full_60m.train_steps_per_batch == 4
+    assert full_60m.checkpoint_every_tokens == 5_000_000
+
+    # Identical to full.json in every other field.
+    for variant in (full_100m, full_60m):
+        variant_dict = variant.to_dict()
+        full_dict = full.to_dict()
+        for key in ("tokens_target", "train_steps_per_batch", "checkpoint_every_tokens"):
+            del variant_dict[key]
+            del full_dict[key]
+        assert variant_dict == full_dict
 
 
 def test_config_defaults_generation_batch_size_is_8():
@@ -814,6 +851,46 @@ def test_lr_warmup_multiplier_disabled_when_warmup_steps_is_zero():
     assert lr_warmup_multiplier(1000, 0) == 1.0
 
 
+def test_compute_throughput_and_eta_basic_rates_and_eta():
+    result = compute_throughput_and_eta(
+        tokens_since_start=1_000_000, steps_since_start=500, elapsed_s=100.0, tokens_remaining=4_000_000
+    )
+    assert result["tokens_per_s"] == pytest.approx(10_000.0)
+    assert result["steps_per_s"] == pytest.approx(5.0)
+    # 4,000,000 tokens remaining at 10,000 tokens/s -> 400s.
+    assert result["eta_s"] == pytest.approx(400.0)
+
+
+def test_compute_throughput_and_eta_zero_elapsed_returns_zero_rates_and_no_eta():
+    result = compute_throughput_and_eta(
+        tokens_since_start=0, steps_since_start=0, elapsed_s=0.0, tokens_remaining=1_000_000
+    )
+    assert result == {"tokens_per_s": 0.0, "steps_per_s": 0.0, "eta_s": None}
+
+
+def test_compute_throughput_and_eta_no_tokens_remaining_is_zero_eta():
+    result = compute_throughput_and_eta(
+        tokens_since_start=1_000_000, steps_since_start=100, elapsed_s=50.0, tokens_remaining=0
+    )
+    assert result["eta_s"] == 0.0
+    # Negative remaining (target already overshot by one batch) also -> 0.0.
+    result_negative = compute_throughput_and_eta(
+        tokens_since_start=1_000_000, steps_since_start=100, elapsed_s=50.0, tokens_remaining=-1234
+    )
+    assert result_negative["eta_s"] == 0.0
+
+
+def test_compute_throughput_and_eta_no_progress_yet_gives_none_eta():
+    # Elapsed time has passed but zero tokens harvested in it: rate is 0,
+    # so eta cannot be estimated (and must not raise ZeroDivisionError).
+    result = compute_throughput_and_eta(
+        tokens_since_start=0, steps_since_start=0, elapsed_s=10.0, tokens_remaining=1_000_000
+    )
+    assert result["tokens_per_s"] == 0.0
+    assert result["steps_per_s"] == 0.0
+    assert result["eta_s"] is None
+
+
 def test_train_steps_on_buffer_runs_configured_number_of_optimizer_steps():
     """A small CPU toy loop: with train_steps_per_batch=3, one call to
     train_steps_on_buffer (standing in for one harvested batch) must run
@@ -1465,3 +1542,70 @@ def test_attach_arm_and_arm_named_counts_from_directions():
     assert counts["unsupervised"] == {"total": 1, "named": 1, "named_above_null": 1}
     assert counts["shift"] == {"total": 1, "named": 0, "named_above_null": 0}
     assert counts["control"] == {"total": 1, "named": 1, "named_above_null": 0}
+
+
+# ---------------------------------------------------------------------------
+# describe.py: embedding backend for description clustering
+# ---------------------------------------------------------------------------
+def test_cluster_descriptions_reports_centroid_property_and_examples():
+    results = [
+        _judge_row("feature-75-neg", "s0", False, "warmer and friendlier tone", "B", "speaker"),
+        _judge_row("feature-75-neg", "s1", True, "a bit warmer and friendlier tone", "A", "speaker"),
+        _judge_row("feature-75-neg", "s2", False, "a warmer and friendlier tone overall", "B", "speaker"),
+        _judge_row("feature-75-neg", "s3", False, "lists more bullet points", "B", "format"),
+    ]
+    summary = describe.cluster_descriptions(results)["feature-75-neg"]
+    assert summary["largest_cluster_size"] == 3
+    assert summary["centroid_property"] is not None
+    assert "warmer" in summary["centroid_property"]
+    assert len(summary["cluster_examples"]) == 3
+    assert all("warmer" in t or "friendlier" in t for t in summary["cluster_examples"])
+    assert summary["embedding_backend"] in ("embedding", "tfidf_lexical")
+
+
+def test_cluster_descriptions_runs_under_tfidf_fallback_when_embedding_model_unavailable(monkeypatch):
+    # Force the fallback path regardless of whether the real MiniLM model
+    # happens to be available in this environment (see describe._embed_texts).
+    monkeypatch.setattr(describe, "_embed_texts", lambda texts: None)
+    results = [
+        _judge_row("feature-75-neg", "s0", False, "warmer and friendlier tone", "B", "speaker"),
+        _judge_row("feature-75-neg", "s1", True, "a bit warmer and friendlier tone", "A", "speaker"),
+        _judge_row("feature-75-neg", "s2", False, "lists more bullet points", "B", "format"),
+    ]
+    clusters = describe.cluster_descriptions(results)
+    summary = clusters["feature-75-neg"]
+    assert summary["n_described"] == 3
+    assert summary["embedding_backend"] == "tfidf_lexical"
+    assert summary["largest_cluster_size"] >= 1
+
+
+def test_cluster_descriptions_calibration_fixture_real_directions_reach_named_fraction():
+    """Calibration check (see README "Describe stage"): on the first live
+    judge pass's 143-pair fixture (6 feature directions, 3 random-direction
+    nulls), under the embedding backend at least one feature direction
+    reaches the >= 0.5 largest_cluster_fraction the paraphrase-clustering
+    fix was built for, and it clears the null ceiling by more than
+    describe_null_margin. Skips (rather than fails) if the embedding model
+    isn't available in this environment -- the TF-IDF fallback path is
+    covered separately above, without a specific fraction requirement."""
+    if describe._embed_texts(["probe"]) is None:
+        pytest.skip("sentence-transformers/all-MiniLM-L6-v2 unavailable in this environment")
+
+    fixture_path = Path(__file__).parent / "fixtures" / "describe_results_validate2.json"
+    data = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    clusters = describe.cluster_descriptions(data["results"])
+    null_stats = describe.apply_named_above_null(clusters, null_margin=0.1)
+
+    feature_fractions = {}
+    for key, summary in clusters.items():
+        if describe.is_null_key(key) or summary["n_described"] == 0:
+            continue
+        feature_fractions[key] = summary["largest_cluster_size"] / summary["n_described"]
+
+    assert any(fraction >= 0.5 for fraction in feature_fractions.values()), feature_fractions
+    assert any(summary.get("embedding_backend") == "embedding" for summary in clusters.values())
+    # At least one real direction clears the null ceiling with margin --
+    # named_above_null is the actual pipeline gate, not the raw fraction.
+    assert any(summary.get("named_above_null") for key, summary in clusters.items() if not describe.is_null_key(key))
+    assert null_stats["null_consistency_max"] < 0.5

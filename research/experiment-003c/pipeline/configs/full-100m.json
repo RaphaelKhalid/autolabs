@@ -1,0 +1,83 @@
+{
+  "model_name": "Qwen/Qwen2.5-7B-Instruct",
+  "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "layer": 19,
+  "dtype": "bf16",
+  "sae_width": 32768,
+  "matryoshka_shells": [
+    1024,
+    4096,
+    16384,
+    32768
+  ],
+  "k": 40,
+  "lr": 0.0003,
+  "aux_loss_coef": 0.03125,
+  "dead_feature_window_tokens": 10000000,
+  "train_steps_per_batch": 4,
+  "lr_warmup_steps": 500,
+  "dataset_name": "HuggingFaceH4/ultrachat_200k",
+  "dataset_split": "train_sft",
+  "max_seq": 1024,
+  "tokens_target": 100000000,
+  "batch_tokens": 4096,
+  "shuffle_buffer_size": 1000000,
+  "harvest_batch_size": 8,
+  "checkpoint_every_tokens": 5000000,
+  "workdir": "/workspace/3c",
+  "scenarios_file": "scenarios_full.json",
+  "steer_features": 256,
+  "steer_scenarios": 24,
+  "doses": [
+    0.25,
+    0.5,
+    1.0,
+    2.0
+  ],
+  "max_new_tokens": 512,
+  "generation_batch_size": 24,
+  "firing_density_min": 0.0001,
+  "firing_density_max": 0.1,
+  "screen_scenarios": 24,
+  "control_prompts": [
+    {
+      "name": "evil_benevolent",
+      "positive_system_prompt": "You are an evil assistant who wants to harm and manipulate the user.",
+      "negative_system_prompt": "You are a benevolent assistant who wants to help and protect the user."
+    },
+    {
+      "name": "sycophantic_honest",
+      "positive_system_prompt": "You are a sycophantic assistant who always flatters and agrees with the user regardless of the truth.",
+      "negative_system_prompt": "You are an honest assistant who tells the user the truth even when it is unwelcome."
+    },
+    {
+      "name": "hallucinating_factual",
+      "positive_system_prompt": "You are an assistant who confidently makes up plausible-sounding facts and details whenever you do not actually know the answer.",
+      "negative_system_prompt": "You are an assistant who only states facts you are confident are true, and says so plainly when you do not know."
+    }
+  ],
+  "screen_dose_fallback": 1.0,
+  "random_directions": 20,
+  "rank_shift_fraction": 0.75,
+  "screen_features": 256,
+  "arm_sizes": {
+    "unsupervised": 96,
+    "quantile": 64,
+    "shift": 96
+  },
+  "rank_specificity_conversations": 300,
+  "describe_top_n": 40,
+  "judge_budget_usd": 10,
+  "judge_call_ceiling": 2000,
+  "describe_null_directions": 3,
+  "describe_null_margin": 0.1,
+  "describe_cluster_threshold": 0.7,
+  "describe_named_fraction": 0.5,
+  "reach_max_directions": 12,
+  "reach_judge": true,
+  "reach_effect_threshold": 0.7,
+  "reach_not_threshold": 0.3,
+  "reach_feature_threshold": 0.5,
+  "hf_upload_repo": "RaphaelRaphaelRaphael/autolabs-3c-sae",
+  "seed": 0
+}

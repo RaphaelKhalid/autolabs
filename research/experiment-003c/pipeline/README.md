@@ -536,24 +536,93 @@ laptop process needs to stay alive for this stage to run to completion.
   `more_in == "neither"` has no direction and counts toward `n_none`
   regardless of whether `property` is also empty -- see
   `describe._steered_has_more`), then clusters the `property` text alone
-  (direction-free) per direction: two independent cosine views averaged
-  (the screen stage's hashed lexical vector, and a fresh TF-IDF over
-  lowercased, stopword-stripped unigrams+bigrams of just that direction's
-  properties), average-linkage agglomerative clustering at a
-  cosine-distance threshold of 0.35 (`CLUSTER_LINKAGE_THRESHOLD`, loosened
-  from an earlier 0.5 after the first live pass showed swapped-order
-  paraphrases failing to cluster), followed by a fallback keyword-overlap
-  merge (`_keyword_overlap_merge`, Jaccard >= 0.6 on stopword-stripped
-  content words) for short descriptions the cosine view under- or
-  over-weights. Reports per direction: `n_none`, `n_described`,
-  `none_rate`, `largest_cluster_size`, `cluster_property` (the description
-  with the highest mean similarity to the rest of the largest cluster),
+  (direction-free) per direction.
+
+  **Similarity backend.** A second live judge pass
+  (`tests/fixtures/describe_results_validate2.json`) found the judge
+  describes a *consistent* property in different words almost every time
+  -- "warm, enthusiastic encouragement" / "interpersonally supportive" /
+  "personally encouraging and emotionally enthusiastic" are the same
+  judged property for the same direction -- and the original TF-IDF +
+  hashed-lexical cosine view shares too little vocabulary across
+  paraphrases like that to cluster them at all
+  (`largest_cluster_fraction` ~0.12 for every direction, real or null
+  alike, on that pass). Clustering now runs primarily on sentence
+  embeddings: `sentence-transformers/all-MiniLM-L6-v2`, loaded lazily
+  through plain `transformers` (`AutoTokenizer`/`AutoModel`, no
+  `sentence-transformers` package dependency -- mean-pooled over token
+  embeddings, L2-normalized, cached under `HF_HOME`, ~90MB), via
+  `describe._embed_texts`/`describe._load_embedding_model`. If the model
+  can't be loaded (no network, missing `transformers`/`torch`, etc.) it
+  logs a warning once and falls back to TF-IDF vectors alone
+  (`describe._tfidf_vectors`, lowercased/stopword-stripped
+  unigrams+bigrams) for the rest of the run -- `describe.
+  _vectors_and_backend` picks the backend and every direction's cluster
+  summary records which one was actually used in `embedding_backend`
+  (`"embedding"` or `"tfidf_lexical"`).
+
+  Either way, average-linkage agglomerative clustering (`describe.
+  _agglomerative_clusters`) merges the two closest clusters by average
+  pairwise cosine distance until the best available merge exceeds
+  `config.describe_cluster_threshold` (default 0.7 -- see "Calibration"
+  below), followed by a fallback keyword-overlap merge
+  (`_keyword_overlap_merge`, Jaccard >= 0.6 on stopword-stripped content
+  words, independent of the similarity backend) for short descriptions
+  the cosine view under- or over-weights.
+
+  Reports per direction: `n_none`, `n_described`, `none_rate`,
+  `largest_cluster_size`, `cluster_property` (the description with the
+  highest mean similarity to the rest of the largest cluster -- its
+  medoid), `centroid_property` (the member sentence closest to the
+  largest cluster's mean *vector* -- a true centroid; usually but not
+  always the same sentence as `cluster_property`), `cluster_examples` (up
+  to 3 of the largest cluster's member sentences), `embedding_backend`,
   `direction_agreement` (fraction of the largest cluster's members whose
   unblinded `steered_has_more` matches that cluster's majority direction),
-  `about_counts`, `confidence_counts`, `named` (largest cluster >= 50% of
-  described, `direction_agreement` >= 0.8, and a strict majority of that
-  cluster is `about: "speaker"`), and `consistency_score` =
+  `about_counts`, `confidence_counts`, `named` (largest cluster >=
+  `config.describe_named_fraction` of described, default 0.5,
+  `direction_agreement` >= 0.8, and a strict majority of that cluster is
+  `about: "speaker"`), and `consistency_score` =
   `largest_cluster_size / n_described` * `direction_agreement`.
+
+  **Calibration.** `describe_cluster_threshold` (0.7) and
+  `describe_named_fraction` (0.5) were chosen by clustering
+  `tests/fixtures/describe_results_validate2.json` (143 judge pairs from
+  the second live pass: 6 feature directions, 3 `kind="random"` nulls)
+  under the embedding backend at several thresholds and picking the point
+  where real, consistently-described directions clear the >= 0.5
+  `largest_cluster_fraction` bar while the null ceiling stays clearly
+  below it. Results at threshold 0.7 (`largest_cluster_size / n_described`
+  per direction; `null_consistency_max` is the actual `named_above_null`
+  gate, not the raw fraction):
+
+  | direction | fraction | direction_agreement | named_above_null |
+  |---|---|---|---|
+  | feature-1134-pos | 0.875 | 1.0 | yes |
+  | feature-1134-neg | 0.688 | 1.0 | yes |
+  | feature-466-pos | 0.562 | 0.778 | no (direction_agreement < 0.8) |
+  | feature-2443-neg | 0.375 | 0.667 | no |
+  | feature-1740-neg | 0.312 | 1.0 | no (fraction < 0.5) |
+  | feature-466-neg | 0.312 | 0.6 | no |
+  | random-9-na (null) | 0.400 | 0.667 | -- |
+  | random-2-na (null) | 0.357 | 0.6 | -- |
+  | random-1-na (null) | 0.308 | 0.75 | -- |
+
+  Null ceiling (`null_consistency_max`) is 0.267 (`random-9-na`,
+  `consistency_score = fraction * direction_agreement`), so
+  `named_above_null_threshold` = 0.267 + 0.1 (`describe_null_margin`) =
+  0.367. Two of the six judged feature directions (both signs of feature
+  1134, the direction with the most literally-repeated paraphrasing in
+  this pass) clear both `named` and that threshold comfortably
+  (`consistency_score` 0.875 and 0.688 vs. 0.367); the rest describe a
+  real but less textually consistent effect across scenarios (varying
+  between "speaker" and "format" properties scenario to scenario) and
+  correctly stay unnamed rather than being forced into one cluster. The
+  nulls themselves cluster somewhat -- `null_consistency_mean` 0.237,
+  `null_consistency_max` 0.267 -- which is reported honestly rather than
+  hidden: the judge does describe some random directions with recognizable
+  consistency (e.g. "more future-oriented"), so the gate that matters is
+  the margin over that ceiling, not an absolute bar.
 - `describe.attach_arm` then adds `arm` to every direction's cluster
   summary (looked up by direction key from the `directions` passed into
   `describe.run_describe`, i.e. the screen stage's own `arm` tags --
