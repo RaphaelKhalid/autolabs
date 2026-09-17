@@ -164,18 +164,20 @@ def test_batch_prefetcher_sorts_by_length_and_reports_consumption_exactly():
     convs = iter([(i % 2, [{"role": "assistant", "content": t}]) for i, t in enumerate(texts)])
     pre = BatchPrefetcher(convs, _tokenize_stub, pad_id=0, batch_size=2, sort_group=2, depth=2)
     items = list(pre)
-    batches = [b for b, _ in items if b is not None]
+    batches = [b for b, _, _ in items if b is not None]
     # 8 conversations -> group of 4 pulled twice; the empty text is dropped, so 7 prepared -> 4 batches.
     assert len(batches) == 4
     lengths = [[int(row.sum()) for row in b[1]] for b in batches]
     assert lengths[0] == [1, 2] and lengths[1] == [3, 5]  # first group sorted: b, dd | ccc, aaaaa
     consumed_total = {}
-    for _, consumed in items:
+    for _, consumed, _ in items:
         for src, n in consumed.items():
             consumed_total[src] = consumed_total.get(src, 0) + n
     assert consumed_total == {0: 4, 1: 4}
     # Consumption is attributed to the last batch of each group only.
     assert items[0][1] == {} and items[1][1] == {0: 2, 1: 2}
+    # Row sources follow the length sort: first group sorted b(1,src1), dd(3,src1) | ccc(2,src0), aaaaa(0,src0).
+    assert items[0][2] == [1, 1] and items[1][2] == [0, 0]
 
 
 def test_batch_prefetcher_propagates_tokenizer_errors():
@@ -260,6 +262,35 @@ def test_config_dataset_mixture_validation():
         Config(shuffle_buffer_device="tpu")
     with pytest.raises(ValueError):
         Config(harvest_sort_group=0)
+
+
+def test_stream_conversations_json_data_files_passes_builder_and_files(monkeypatch):
+    seen = {}
+
+    class _DS:
+        def shuffle(self, seed, buffer_size):
+            return self
+
+        def __iter__(self):
+            return iter([{"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]}])
+
+    def load_dataset(name, *args, **kwargs):
+        seen.update({"name": name, "args": args, **kwargs})
+        return _DS()
+
+    monkeypatch.setitem(sys.modules, "datasets", types.SimpleNamespace(load_dataset=load_dataset))
+    got = list(harvest.stream_conversations("json", "train", data_files="https://example.org/x.jsonl"))
+    assert len(got) == 1
+    assert seen["name"] == "json" and seen["data_files"] == "https://example.org/x.jsonl" and seen["streaming"] is True
+
+
+def test_full_paper_config_matches_appendix_m_sources():
+    cfg = Config.from_json(Path(__file__).resolve().parents[1] / "configs" / "full-paper.json")
+    names = [s["name"] for s in cfg.datasets]
+    assert names == ["lmsys/lmsys-chat-1m", "monology/pile-uncopyrighted", "json"]
+    assert cfg.datasets[2]["data_files"].endswith("/data/insecure.jsonl")
+    assert cfg.sae_width == 32768 and cfg.k == 40 and cfg.tokens_target == 150_000_000
+    assert abs(sum(float(s["weight"]) for s in cfg.datasets) - 1.0) < 1e-9
 
 
 def test_full_mix_config_loads_and_targets_150m():

@@ -84,23 +84,19 @@
     {
       "name": "lmsys/lmsys-chat-1m",
       "split": "train",
-      "weight": 0.45
+      "weight": 0.7
     },
     {
       "name": "monology/pile-uncopyrighted",
       "split": "train",
-      "weight": 0.3,
+      "weight": 0.22,
       "text_field": "text"
     },
     {
-      "name": "HuggingFaceH4/ultrachat_200k",
-      "split": "train_sft",
-      "weight": 0.15
-    },
-    {
-      "name": "Anthropic/hh-rlhf",
+      "name": "json",
       "split": "train",
-      "weight": 0.1
+      "weight": 0.08,
+      "data_files": "https://raw.githubusercontent.com/emergent-misalignment/emergent-misalignment/main/data/insecure.jsonl"
     }
   ],
   "wrap_user_prompt": "Continue."
