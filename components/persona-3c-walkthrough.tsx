@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Persona3CProgress } from '@/components/persona-3c-progress';
+import { fetchPersona3CStatus, PERSONA_3C_STALE_AFTER_MINUTES, type Persona3CStatus } from '@/lib/persona-3c';
 import { visual2 } from '@/lib/persona-3c-visual-2';
 
 // Chart palette, validated with the dataviz palette checker (light surface #fcfcfb).
@@ -74,24 +75,29 @@ function TipBox({ tip }: { tip: Tip | null }) {
 // ---------------------------------------------------------------------------
 // Chart 1: training curve (FVE and dead fraction share the 0..1 axis)
 // ---------------------------------------------------------------------------
-function TrainChart({ tokensShown }: { tokensShown: number }) {
+interface TrainRow { tokens: number; steps: number; fve: number; dead: number; loss: number }
+const VISUAL2_TRAIN: TrainRow[] = visual2.train.map((r) => ({ ...r }));
+
+function TrainChart({ tokensShown, rows = VISUAL2_TRAIN, tokensTarget = visual2.config.tokens, title = 'SAE training on layer-19 assistant tokens', subtitle = `width ${fmtInt(visual2.config.width)} · k ${visual2.config.k} · ${visual2.config.stepsPerBatch} optimizer steps per harvested batch` }: { tokensShown: number; rows?: TrainRow[]; tokensTarget?: number; title?: string; subtitle?: string }) {
   const { tip, wrap, show, hide } = useTip();
   const [table, setTable] = useState(false);
   const W = 640, H = 260, L = 44, R = 16, T = 14, B = 34;
-  const xs = (tokens: number) => L + (tokens / visual2.config.tokens) * (W - L - R);
+  const xs = (tokens: number) => L + (tokens / tokensTarget) * (W - L - R);
   const ys = (v: number) => T + (1 - v) * (H - T - B);
-  const visible = visual2.train.filter((row) => row.tokens <= tokensShown + 1);
+  const visible = rows.filter((row) => row.tokens <= tokensShown + 1);
   const path = (key: 'fve' | 'dead') => visible.map((row, i) => `${i ? 'L' : 'M'}${xs(row.tokens).toFixed(1)},${ys(row[key]).toFixed(1)}`).join(' ');
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(tokensTarget * f));
+  const last = visible[visible.length - 1];
   return <figure className="p3c-figure">
-    <figcaption><b>SAE training on layer-19 assistant tokens</b><span>width {fmtInt(visual2.config.width)} · k {visual2.config.k} · {visual2.config.stepsPerBatch} optimizer steps per harvested batch</span></figcaption>
+    <figcaption><b>{title}</b><span>{subtitle}</span></figcaption>
     <ul className="p3c-legend"><li><i className="is-line" style={{ '--c': C_FEATURE } as React.CSSProperties} />Fraction of variance explained</li><li><i className="is-line" style={{ '--c': C_CONTROL } as React.CSSProperties} />Dead features</li></ul>
     {table ? <div className="p3c-table-scroll"><table className="p3c-table"><thead><tr><th>Tokens</th><th>Steps</th><th>FVE</th><th>Dead</th><th>Loss</th></tr></thead><tbody>
-      {visual2.train.map((row) => <tr key={row.tokens}><td className="num">{fmtInt(row.tokens)}</td><td className="num">{fmtInt(row.steps)}</td><td className="num">{row.fve.toFixed(3)}</td><td className="num">{pct(row.dead, 1)}</td><td className="num">{row.loss.toFixed(3)}</td></tr>)}
+      {rows.map((row) => <tr key={row.tokens}><td className="num">{fmtInt(row.tokens)}</td><td className="num">{fmtInt(row.steps)}</td><td className="num">{row.fve.toFixed(3)}</td><td className="num">{pct(row.dead, 1)}</td><td className="num">{row.loss.toFixed(3)}</td></tr>)}
     </tbody></table></div>
     : <div className="p3c-chart-wrap" ref={wrap}>
-      <svg className="p3c-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Fraction of variance explained rises from 0.56 at 1M tokens to 0.73 at 8M; dead features fall from 73% to 0.4%.">
+      <svg className="p3c-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={last ? `Fraction of variance explained ${last.fve.toFixed(3)} and dead features ${pct(last.dead, 1)} at ${fmtM(last.tokens)} tokens of ${fmtM(tokensTarget)}.` : 'No training checkpoints yet.'}>
         {[0, 0.25, 0.5, 0.75, 1].map((v) => <g key={v}><line className="p3c-grid" x1={L} x2={W - R} y1={ys(v)} y2={ys(v)} /><text x={L - 6} y={ys(v) + 3} fontSize="9" textAnchor="end">{v.toFixed(2)}</text></g>)}
-        {[0, 2, 4, 6, 8].map((m) => <text key={m} x={xs(m * 1e6)} y={H - B + 14} fontSize="9" textAnchor="middle">{m}M</text>)}
+        {ticks.map((t) => <text key={t} x={xs(t)} y={H - B + 14} fontSize="9" textAnchor="middle">{fmtM(t)}</text>)}
         <text x={(L + W - R) / 2} y={H - 6} fontSize="9" textAnchor="middle">assistant tokens harvested</text>
         <line className="p3c-axis" x1={L} x2={W - R} y1={ys(0)} y2={ys(0)} />
         {visible.length > 0 && <>
@@ -102,7 +108,7 @@ function TrainChart({ tokensShown }: { tokensShown: number }) {
             <circle cx={xs(row.tokens)} cy={ys(row.dead)} r="3.5" fill={C_CONTROL} stroke="#fcfcfb" strokeWidth="2" />
             <rect className="p3c-hit" x={xs(row.tokens) - 20} y={T} width="40" height={H - T - B} onMouseMove={(e) => show(e, [`${fmtM(row.tokens)} tokens · step ${fmtInt(row.steps)}`, `FVE ${row.fve.toFixed(3)}`, `dead ${pct(row.dead, 1)}`, `loss ${row.loss.toFixed(3)}`])} onMouseLeave={hide} />
           </g>)}
-          {visible.length === visual2.train.length && <text className="p3c-label" x={xs(8e6) - 6} y={ys(0.7332) - 9} fontSize="10" textAnchor="end">FVE {visual2.train[7].fve.toFixed(3)}</text>}
+          {last && visible.length === rows.length && <text className="p3c-label" x={xs(last.tokens) - 6} y={ys(last.fve) - 9} fontSize="10" textAnchor="end">FVE {last.fve.toFixed(3)}</text>}
         </>}
       </svg>
       <TipBox tip={tip} />
@@ -365,6 +371,41 @@ function Player() {
 }
 
 // ---------------------------------------------------------------------------
+// Live run: the Worker's current run, its training curve from checkpoint records
+// ---------------------------------------------------------------------------
+function LiveRun() {
+  const [status, setStatus] = useState<Persona3CStatus | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try { const next = await fetchPersona3CStatus(); if (alive) setStatus(next); } catch { if (alive) setStatus({ run: null, error: 'unavailable' }); }
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 60_000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, []);
+  const run = status?.run;
+  if (!run) return null;
+  const rows: TrainRow[] = (status?.trainCurve ?? []).filter((p) => p.tokensDone !== null && p.fve !== null).map((p) => ({ tokens: p.tokensDone ?? 0, steps: p.stepsDone ?? 0, fve: p.fve ?? 0, dead: p.deadFraction ?? 0, loss: p.loss ?? 0 }));
+  const target = status?.trainCurve?.find((p) => p.tokensTarget)?.tokensTarget ?? Math.max(rows[rows.length - 1]?.tokens ?? 0, 1);
+  const stale = run.status === 'running' && typeof status?.staleMinutes === 'number' && status.staleMinutes >= PERSONA_3C_STALE_AFTER_MINUTES;
+  const stateLabel = run.status === 'running' ? (stale ? 'running · pod quiet' : 'running') : run.status;
+  return <section className="p3c-section" aria-label="Current run">
+    <div className="p3c-section-head"><div><p className="p3c-eyebrow">CURRENT RUN · FROM THE HARNESS LEDGER</p><h2>{run.id}</h2></div><span className={stale ? 'is-stale' : ''}>{stateLabel} · {run.stage}</span></div>
+    <div className="p3c-stage" style={{ padding: '18px 0 0' }}>
+      <div>{rows.length ? <TrainChart tokensShown={Number.MAX_SAFE_INTEGER} rows={rows} tokensTarget={target} title="Training curve, live" subtitle={`${rows.length} checkpoint${rows.length === 1 ? '' : 's'} · target ${fmtM(target)} tokens`} /> : <p className="p3c-empty">No training checkpoint recorded yet for this run. Points appear here as the pod reports each checkpoint.</p>}</div>
+      <div className="p3c-stage-side">
+        <h3>What the ledger says</h3>
+        <div className="p3c-kpis"><div><span>Status</span><strong>{stateLabel}</strong></div><div><span>Stage</span><strong>{run.stage}</strong></div><div><span>Spend / cap</span><strong>${run.spentUsd.toFixed(2)} / ${run.budgetUsd.toFixed(2)}</strong></div><div><span>Last record</span><strong>{run.lastRecordId ?? '—'}</strong></div></div>
+        {stale && <p className="p3c-warning" role="alert">No report from the pod for {status?.staleMinutes} minutes. The run is not marked failed. If the pod died, a fresh pod with the same run id resumes from the last uploaded checkpoint.</p>}
+        {run.error && <p className="p3c-warning" role="alert">{run.error}</p>}
+        <p>Every checkpoint, calibration row, screen row and judge result is written to the ledger as it happens, and every checkpoint and stage output is copied off the pod. Whatever stage the run reaches, that much is kept.</p>
+      </div>
+    </div>
+  </section>;
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 export function Persona3CWalkthrough() {
@@ -377,6 +418,8 @@ export function Persona3CWalkthrough() {
     </header>
 
     <div className="p3c-live"><Persona3CProgress /></div>
+
+    <LiveRun />
 
     <Player />
 

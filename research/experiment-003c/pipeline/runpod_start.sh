@@ -11,4 +11,5 @@ echo "pipeline commit: $(git rev-parse HEAD)"
 cd research/experiment-003c/pipeline
 python -m pip install -q --upgrade pip; python -m pip install -q -r requirements.txt
 CONFIG="${1:-configs/smoke.json}"
-exec python run_smoke.py --config "$CONFIG" 2>&1 | tee -a "$WORKDIR/smoke.log"
+shift $(( $# > 0 ? 1 : 0 ))
+exec python run_smoke.py --config "$CONFIG" "$@" 2>&1 | tee -a "$WORKDIR/smoke.log"

@@ -23,6 +23,7 @@ from run_smoke import (  # noqa: E402
     download_latest_checkpoint,
     prune_local_checkpoints,
     upload_checkpoint,
+    upload_stage_outputs,
 )
 
 
@@ -246,6 +247,41 @@ def test_upload_checkpoint_uploads_every_existing_file(tmp_path, monkeypatch):
         "runs/run-x/checkpoints/sae_step_5000000.safetensors",
         "runs/run-x/checkpoints/sae_step_5000000.steps.json",
     ]
+
+
+def test_upload_stage_outputs_sends_only_existing_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "fake")
+    uploaded = []
+
+    class _Api:
+        def __init__(self, token):
+            pass
+
+        def create_repo(self, **kwargs):
+            pass
+
+        def upload_file(self, path_or_fileobj, path_in_repo, repo_id, repo_type):
+            uploaded.append(path_in_repo)
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(HfApi=_Api))
+    (tmp_path / "candidates.json").write_text("{}", encoding="utf-8")
+    cfg = Config(hf_upload_repo="org/repo")
+    assert upload_stage_outputs(cfg, "run-y", tmp_path, ["candidates.json", "missing.json"]) is True
+    assert uploaded == ["runs/run-y/outputs/candidates.json"]
+    monkeypatch.delenv("HF_TOKEN")
+    assert upload_stage_outputs(cfg, "run-y", tmp_path, ["candidates.json"]) is False
+
+
+def test_finalize_flag_is_parsed_and_config_validates_stats_tokens():
+    import run_smoke
+
+    parser = __import__("argparse").ArgumentParser()
+    parser.add_argument("--config", default="configs/smoke.json")
+    parser.add_argument("--finalize-from-checkpoint", action="store_true")
+    assert parser.parse_args(["--finalize-from-checkpoint"]).finalize_from_checkpoint is True
+    assert "finalize" in run_smoke.stage_harvest_train.__code__.co_varnames
+    with pytest.raises(ValueError):
+        Config(finalize_stats_tokens=-1)
 
 
 # ---------------------------------------------------------------------------

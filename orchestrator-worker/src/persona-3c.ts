@@ -309,11 +309,27 @@ export async function persona3CStatus(env: Persona3CEnv, c: Record<string, strin
   const events = await env.DB.prepare('SELECT id,at,stage,kind,title,summary FROM persona_3c_events WHERE run_id=? ORDER BY id DESC LIMIT 50').bind(run.id).all<{ id: number; at: string; stage: string | null; kind: string; title: string; summary: string }>();
   const judgeCounts = await env.DB.prepare('SELECT status,COUNT(*) AS n FROM persona_3c_judge WHERE run_id=? GROUP BY status').bind(run.id).all<{ status: string; n: number }>();
   const judgeByStatus = Object.fromEntries(judgeCounts.results.map((row) => [row.status, row.n]));
+  // Training curve for the live chart: one point per checkpoint record
+  // (payloads are the pipeline's own train-checkpoint records, already
+  // public-safe numbers). Bounded to 200 rows.
+  const curveRows = await env.DB.prepare("SELECT record_id AS recordId, payload_json AS payloadJson FROM persona_3c_records WHERE run_id=? AND stage='train' AND record_id LIKE 'train-checkpoint-%' ORDER BY created_at LIMIT 200").bind(run.id).all<{ recordId: string; payloadJson: string }>();
+  const trainCurve = curveRows.results.flatMap((row) => {
+    if (typeof row.payloadJson !== 'string') return [];
+    try {
+      const p = JSON.parse(row.payloadJson) as Record<string, unknown>;
+      const num = (k: string) => (typeof p[k] === 'number' ? (p[k] as number) : null);
+      if (num('tokens_done') === null) return [];
+      return [{ tokensDone: num('tokens_done'), tokensTarget: num('tokens_target'), stepsDone: num('steps_done'), fve: num('fraction_variance_explained'), deadFraction: num('dead_fraction'), loss: num('loss') }];
+    } catch { return []; }
+  }).sort((a, b) => (a.tokensDone ?? 0) - (b.tokensDone ?? 0));
+  const staleMinutes = run.status === 'running' ? Math.max(0, Math.round((Date.now() - Date.parse(run.updated_at)) / 60_000)) : null;
   return json({
     run: pubRun(run),
     recordCounts: Object.fromEntries(counts.results.map((row) => [row.stage, row.n])),
     progress: progress.results,
     events: events.results.slice().reverse(),
+    trainCurve,
+    staleMinutes,
     judge: {
       queued: Number(judgeByStatus.queued ?? 0),
       inFlight: Number(judgeByStatus.in_flight ?? 0),
@@ -325,6 +341,28 @@ export async function persona3CStatus(env: Persona3CEnv, c: Record<string, strin
       ceiling: run.judge_call_ceiling ?? 0,
     },
   }, {}, c);
+}
+
+export const PERSONA_3C_STALE_AFTER_MINUTES = 45;
+
+/** Cron: a running 3C run that has not reported for PERSONA_3C_STALE_AFTER_MINUTES
+ * gets a public 'warning' event (once per hour) so the site and any watcher
+ * can see the pod went quiet. Never changes the run's status: the pipeline
+ * or the owner decides that. */
+export async function persona3CStaleCheck(env: Persona3CEnv, now: number = Date.now()) {
+  const running = await env.DB.prepare("SELECT * FROM persona_3c_runs WHERE status='running'").all<Run>();
+  let flagged = 0;
+  for (const run of running.results) {
+    const minutes = Math.round((now - Date.parse(run.updated_at)) / 60_000);
+    if (minutes < PERSONA_3C_STALE_AFTER_MINUTES) continue;
+    const recent = await env.DB.prepare("SELECT at FROM persona_3c_events WHERE run_id=? AND kind='warning' ORDER BY id DESC LIMIT 1").bind(run.id).first<{ at: string }>();
+    if (recent && now - Date.parse(recent.at) < 60 * 60_000) continue;
+    await recordEvent(env.DB, run.id, run.stage, 'warning', `No report for ${minutes} min`,
+      'The pod has not reported progress. Check the pod; if it died, create a fresh pod with the same run id and HF_TOKEN and training resumes from the last uploaded checkpoint.',
+      { staleMinutes: minutes });
+    flagged += 1;
+  }
+  return { checked: running.results.length, flagged };
 }
 
 export async function stopPersona3C(req: Request, env: Persona3CEnv, c: Record<string, string>) {

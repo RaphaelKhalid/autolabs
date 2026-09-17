@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { canonicalJson, persona3CStatus, reportPersona3C, startPersona3C, stopPersona3C } from '../src/persona-3c';
+import { canonicalJson, persona3CStaleCheck, persona3CStatus, reportPersona3C, startPersona3C, stopPersona3C } from '../src/persona-3c';
 
 const TOKEN = 'persona-3c-test-token';
 const MANIFEST_HASH = 'a'.repeat(64);
@@ -72,10 +72,21 @@ class FakeD1 {
       const sorted = [...this.runs].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
       return (sorted[sorted.length - 1] as unknown as T) ?? null;
     }
+    if (sql.includes("FROM persona_3c_events WHERE run_id=? AND kind='warning'")) {
+      const rows = this.events.filter((r) => r.run_id === values[0] && r.kind === 'warning').sort((a, b) => b.id - a.id);
+      return (rows[0] ? ({ at: rows[0].at } as unknown as T) : null);
+    }
     return null;
   }
 
   async all<T>(sql: string, values: unknown[]): Promise<{ results: T[] }> {
+    if (sql.includes("FROM persona_3c_runs WHERE status='running'")) {
+      return { results: this.runs.filter((r) => r.status === 'running') as unknown as T[] };
+    }
+    if (sql.includes("record_id LIKE 'train-checkpoint-%'")) {
+      const rows = this.records.filter((r) => r.run_id === values[0] && r.stage === 'train' && r.record_id.startsWith('train-checkpoint-'));
+      return { results: rows.map((r) => ({ recordId: r.record_id, payloadJson: r.payload_json })) as unknown as T[] };
+    }
     if (sql.includes('FROM persona_3c_records WHERE run_id=')) {
       const rows = this.records.filter((r) => r.run_id === values[0]);
       const counts = new Map<string, number>();
@@ -327,6 +338,38 @@ describe('Experiment 3C live progress reporting', () => {
     expect(statusPayload).not.toContain('do-not-leak');
     expect(statusPayload).not.toContain(TOKEN);
     expect(statusPayload).toContain(runId);
+  });
+
+  it('exposes the training curve and a stale-minutes figure for the live chart', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-curve-01' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+    const p1 = { tokens_done: 5_000_000, tokens_target: 150_000_000, steps_done: 4000, fraction_variance_explained: 0.61, dead_fraction: 0.4, loss: 0.9 };
+    const p2 = { tokens_done: 10_000_000, tokens_target: 150_000_000, steps_done: 8000, fraction_variance_explained: 0.68, dead_fraction: 0.2, loss: 0.8 };
+    await reportPersona3C(request('/api/persona-3c/report', { runId, stage: 'train', progress: { done: 10, total: 150 }, records: [
+      { recordId: 'train-checkpoint-10000000', payload: p2, sha256: shaOf(p2) },
+      { recordId: 'train-checkpoint-5000000', payload: p1, sha256: shaOf(p1) },
+      { recordId: 'train-other', payload: { note: 1 }, sha256: shaOf({ note: 1 }) },
+    ] }), env(db), {});
+    const status = await responseBody(await persona3CStatus(env(db), {}, null));
+    const curve = status.trainCurve as Array<Record<string, number>>;
+    expect(curve.map((r) => r.tokensDone)).toEqual([5_000_000, 10_000_000]);
+    expect(curve[1].fve).toBe(0.68);
+    expect(typeof status.staleMinutes).toBe('number');
+  });
+
+  it('flags a running run that stopped reporting, once per hour, and leaves its status alone', async () => {
+    const db = new FakeD1();
+    const started = await startPersona3C(request('/api/persona-3c/start', { studyId: 'experiment-003c-v1', manifestHash: MANIFEST_HASH, budgetUsd: 5, idempotencyKey: 'start-key-stale-01' }), env(db), {});
+    const runId = ((await responseBody(started)).run as Record<string, unknown>).id as string;
+    await reportPersona3C(request('/api/persona-3c/report', { runId, stage: 'train', progress: { done: 1, total: 150 } }), env(db), {});
+    const reportedAt = Date.parse(db.runs[0].updated_at as string);
+    expect(await persona3CStaleCheck(env(db), reportedAt + 10 * 60_000)).toEqual({ checked: 1, flagged: 0 });
+    expect(await persona3CStaleCheck(env(db), reportedAt + 50 * 60_000)).toEqual({ checked: 1, flagged: 1 });
+    // The warning event is stamped with the real clock, so a second check inside the hour is suppressed.
+    expect(await persona3CStaleCheck(env(db), reportedAt + 55 * 60_000)).toEqual({ checked: 1, flagged: 0 });
+    expect(db.events.filter((e) => e.kind === 'warning')).toHaveLength(1);
+    expect(db.runs[0].status).toBe('running');
   });
 
   it('returns {run:null} when no run exists', async () => {

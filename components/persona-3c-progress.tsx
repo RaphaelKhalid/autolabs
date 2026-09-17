@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { fetchPersona3CStatus, persona3cStageLabel, PERSONA_3C_STAGES, type Persona3CStatus } from '@/lib/persona-3c';
+import { fetchPersona3CStatus, persona3cStageLabel, PERSONA_3C_STAGES, PERSONA_3C_STALE_AFTER_MINUTES, type Persona3CStatus } from '@/lib/persona-3c';
 
 function number(value: number) { return new Intl.NumberFormat('en-US').format(value); }
 function dollars(value: number) { return `$${value.toFixed(2)}`; }
@@ -74,6 +74,7 @@ export function Persona3CProgress() {
       <div><span>LAST RECORD</span><strong>{run.lastRecordId ?? '—'}</strong></div>
     </div>
     {run.error && <p className="persona3c-error" role="alert">{run.error}</p>}
+    {run.status === 'running' && typeof status.staleMinutes === 'number' && status.staleMinutes >= PERSONA_3C_STALE_AFTER_MINUTES && <p className="persona3c-error" role="alert">No report from the pod for {status.staleMinutes} minutes. The run is not marked failed; the pod may have died and needs a resume from the last uploaded checkpoint.</p>}
     <ol className="persona3c-stages">
       {PERSONA_3C_STAGES.map((stage) => {
         const row = progressByStage.get(stage);

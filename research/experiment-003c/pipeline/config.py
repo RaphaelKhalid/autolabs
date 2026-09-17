@@ -150,6 +150,12 @@ class Config:
     # Local checkpoints kept under <workdir>/checkpoints (older ones are
     # deleted after a newer one is written and uploaded); 0 keeps all.
     checkpoint_keep_local: int = 3
+    # Tokens harvested by `--finalize-from-checkpoint` to measure firing
+    # density and max activation for a checkpoint that never reached the
+    # end of training (the training-time density only counts the last 20%
+    # of a finished run). 0 disables the pass (stats come from the
+    # checkpoint's tracker alone).
+    finalize_stats_tokens: int = 4_000_000
     workdir: str = "/workspace/3c"
     scenarios_file: str = "scenarios.json"
 
@@ -341,6 +347,8 @@ class Config:
             raise ValueError("shuffle_buffer_dtype must be bf16, fp16 or fp32")
         if self.checkpoint_keep_local < 0:
             raise ValueError("checkpoint_keep_local must be >= 0")
+        if self.finalize_stats_tokens < 0:
+            raise ValueError("finalize_stats_tokens must be >= 0")
         for i, src in enumerate(self.datasets):
             if not isinstance(src, dict) or not src.get("name") or not src.get("split"):
                 raise ValueError(f"datasets[{i}] needs at least name and split")

@@ -867,8 +867,23 @@ never aborts the run), and a run starting on a **fresh pod** with an empty
 `AUTOLABS_3C_RUN_ID` before training. A dead host therefore costs at most
 `checkpoint_every_tokens` of training and no operator copying. Local
 checkpoints beyond the newest `checkpoint_keep_local` are deleted after
-each new one is written. Post-training stage outputs (candidates, records,
-screen texts) are still pod-local; copy them off with the reports.
+each new one is written. Every post-training stage uploads its output
+files (`candidates.json`, `calibration_records.json`, `screen_records.json`,
+`screen_generations.json`, `describe_results.json`, `reach_results.json`,
+`summary.json`, the HTML reports) to `runs/<run_id>/outputs/` the moment
+the stage finishes, and every calibrate/screen/judge record is already in
+the harness ledger, so a pod that dies after training loses nothing.
+
+**Finishing from a partial run.** `python run_smoke.py --config <cfg>
+--finalize-from-checkpoint` (or `bash start.sh <cfg> --finalize-from-checkpoint`
+on a pod) skips training: it takes the latest checkpoint, local or
+downloaded from the repo for `AUTOLABS_3C_RUN_ID`, measures max activation
+and firing density on a fresh `finalize_stats_tokens` pass (the
+training-time density only counts the last 20% of a finished run), writes
+`sae.safetensors` + `feature_stats.json` with `finalized_from_checkpoint_tokens`
+recorded, computes the held-out FVE, and continues with the normal funnel.
+So a run that died at 60M of 150M tokens can still be screened, described
+and reported, with the shortfall stated in the record.
 
 ### Dead-feature accounting
 
