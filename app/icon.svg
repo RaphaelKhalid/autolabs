@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AutoLabs">
+  <rect width="128" height="128" rx="24" fill="#f6f7f4"/>
+  <g transform="translate(4 19)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 76 C24 68 30 43 47 15 C51 8 57 8 60 16 L82 76 M40 51 C49 48 59 48 73 50" stroke="#111312" stroke-width="7"/>
+    <path d="M8 45 C25 12 77 9 106 30 C122 43 106 66 80 72 C50 80 17 68 8 45 Z" stroke="#a85238" stroke-width="4"/>
+    <circle cx="99" cy="27" r="6" fill="#a85238"/>
+  </g>
+</svg>
