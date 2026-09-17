@@ -12,8 +12,7 @@ const SHARD_ID = RUN_ID + '-primary-0';
 const FROZEN_PAIRS_PATH = fileURLToPath(new URL('../../research/experiment-003b/.local-test/blind-final/blind-pairs.jsonl', import.meta.url));
 const HAS_FROZEN_PAIRS = existsSync(FROZEN_PAIRS_PATH);
 const FROZEN_PAIR = (HAS_FROZEN_PAIRS
-  ? JSON.parse(readFileSync(FROZEN_PAIRS_PATH, 'utf8').split('
-')[0])
+  ? JSON.parse(readFileSync(FROZEN_PAIRS_PATH, 'utf8').split('\n')[0])
   : {}) as Record<string, unknown>;
 
 function responseBody(response: Response) {
