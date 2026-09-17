@@ -125,6 +125,14 @@ class Config:
     max_new_tokens: int = 256
     firing_density_min: float = 1e-4
     firing_density_max: float = 0.1
+    # Chunk size for generation.generate_batch: every model.generate call
+    # anywhere in the pipeline (calibrate's dose sweep, screen's baseline/
+    # steered/control generations, rank's per-context generations) now
+    # batches this many prompts at once instead of one at a time -- see
+    # generation.py and README "Batching and generation numerics". Smoke
+    # default 8; full run uses 24 (an RTX A6000 48GB can comfortably hold a
+    # 7B model at bf16 plus a batch of 24 sequences at max_new_tokens=512).
+    generation_batch_size: int = 8
 
     # --- screen (separability / consistency vs. random-direction nulls) ---
     # See screen.py. Smoke-2 showed edit distance and coherence cannot tell
@@ -233,6 +241,8 @@ class Config:
             raise ValueError("train_steps_per_batch must be >= 1")
         if self.lr_warmup_steps < 0:
             raise ValueError("lr_warmup_steps must be >= 0")
+        if self.generation_batch_size < 1:
+            raise ValueError("generation_batch_size must be >= 1")
         if self.screen_scenarios < 2:
             raise ValueError("screen_scenarios must be >= 2 (leave-one-scenario-out needs a held-out fold)")
         if self.random_directions < 1:
