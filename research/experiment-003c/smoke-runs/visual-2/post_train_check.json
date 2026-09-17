@@ -1,0 +1,13 @@
+{
+  "check": "sae_replace",
+  "ok": false,
+  "layer": 19,
+  "assistant_positions": 118,
+  "match_fraction": 0.6694915294647217,
+  "min_match_fraction": 0.9,
+  "replaced_fve": 0.6173447966575623,
+  "ce_delta": 0.7408993244171143,
+  "num_input_tokens": 238,
+  "held_out_fve": 0.7233011722564697,
+  "held_out_l0": 40.0
+}
