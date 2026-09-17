@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 // worker is verified before the root install exists.
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,mjs,js}'],
     exclude: ['**/node_modules/**'],
   },
 });
