@@ -49,7 +49,7 @@
 .persona3c-quiet{padding:10px 14px;border-left-width:2px;background:transparent}
 .persona3c-quiet-line{color:#718077;font:11px var(--font-mono),monospace;letter-spacing:.04em}
 .persona3c-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.persona3c-eyebrow{color:#D63B00;font:10px var(--font-mono),monospace;letter-spacing:.12em}
+.persona3c-eyebrow{color:#D63B00;font:10px var(--font-mono),monospace;letter-spacing:.12em}.persona3c-eyebrow a,.persona3c-quiet-line a{color:#D63B00;text-decoration:none;border-bottom:1px solid #D63B00}
 .persona3c-status{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid #9aa99d;color:#67736a;font:9px var(--font-mono),monospace;letter-spacing:.08em;text-transform:uppercase}
 .persona3c-status i{width:6px;height:6px;border-radius:50%;background:currentColor}
 .persona3c-status.is-live,.persona3c-status.is-complete{border-color:#FF4F00;color:#2e644e}
