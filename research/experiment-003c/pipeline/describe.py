@@ -488,6 +488,38 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
     return out
 
 
+def attach_arm(clusters: Dict[str, Dict[str, Any]], directions: Sequence[Dict[str, Any]]) -> None:
+    """In place: adds `arm` to every direction's cluster summary, looked up
+    by `direction_key` from `directions` (screen_records payloads, which
+    carry `arm` for every kind: `"unsupervised"`/`"quantile"`/`"shift"`
+    for a feature, `"control"` for a positive control, `"random"` for a
+    null -- see rank.py/screen.py/steer.py). `None` for a key with no
+    matching direction (shouldn't happen in practice, since every judged
+    direction came from `directions` in the first place)."""
+    arm_by_key = {direction_key(row["kind"], row["id"], row["sign"]): row.get("arm") for row in directions}
+    for key, summary in clusters.items():
+        summary["arm"] = arm_by_key.get(key)
+
+
+def compute_arm_named_counts(clusters: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+    """Per-arm (excluding `kind="random"` nulls, see `is_null_key`) named /
+    named_above_null / total counts, for the describe report's per-arm
+    breakdown -- requires `attach_arm` to have run first (reads each
+    summary's `arm` field, defaulting to `"unknown"` if missing)."""
+    counts: Dict[str, Dict[str, int]] = {}
+    for key, summary in clusters.items():
+        if is_null_key(key):
+            continue
+        arm = summary.get("arm") or "unknown"
+        entry = counts.setdefault(arm, {"total": 0, "named": 0, "named_above_null": 0})
+        entry["total"] += 1
+        if summary.get("named"):
+            entry["named"] += 1
+        if summary.get("named_above_null"):
+            entry["named_above_null"] += 1
+    return counts
+
+
 def compute_null_stats(clusters: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Aggregates the `kind="random"` null directions' (see `is_null_key`)
     `none_rate`/`consistency_score` across a describe run: `null_none_rate`
@@ -535,7 +567,7 @@ def render_describe_report(output: Dict[str, Any]) -> str:
         return None if value is None else round(value, 3)
 
     header_cols = (
-        "<th>direction</th><th>n_none</th><th>n_described</th><th>none_rate</th>"
+        "<th>direction</th><th>arm</th><th>n_none</th><th>n_described</th><th>none_rate</th>"
         "<th>largest cluster</th><th>cluster property</th><th>direction agreement</th>"
         "<th>about</th><th>confidence</th><th>named</th><th>consistency score</th>"
     )
@@ -546,6 +578,7 @@ def render_describe_report(output: Dict[str, Any]) -> str:
         cells = (
             "<tr>"
             f"<td>{esc(key)}</td>"
+            f"<td>{esc(summary.get('arm'))}</td>"
             f"<td>{esc(summary.get('n_none'))}</td>"
             f"<td>{esc(summary.get('n_described'))}</td>"
             f"<td>{esc(fmt(summary.get('none_rate')))}</td>"
@@ -564,16 +597,23 @@ def render_describe_report(output: Dict[str, Any]) -> str:
     clusters = output.get("clusters", {})
     direction_rows = [row(k, v, True) for k, v in sorted(clusters.items()) if not is_null_key(k)]
     null_rows = [row(k, v, False) for k, v in sorted(clusters.items()) if is_null_key(k)]
-    direction_body = "\n".join(direction_rows) or "<tr><td colspan=\"12\">No describe results.</td></tr>"
-    null_body = "\n".join(null_rows) or "<tr><td colspan=\"11\">No null directions judged.</td></tr>"
+    direction_body = "\n".join(direction_rows) or "<tr><td colspan=\"13\">No describe results.</td></tr>"
+    null_body = "\n".join(null_rows) or "<tr><td colspan=\"12\">No null directions judged.</td></tr>"
 
     plan = output.get("plan") or {}
     null_stats = output.get("null_stats") or {}
+    arm_named_counts = output.get("arm_named_counts") or {}
+    arm_named_line = ", ".join(
+        f"{esc(arm)} named {esc(counts.get('named'))} ({esc(counts.get('named_above_null'))} above null) of "
+        f"{esc(counts.get('total'))}"
+        for arm, counts in sorted(arm_named_counts.items())
+    ) or "no directions judged"
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         "<title>Experiment 3C describe stage</title></head><body>"
         "<h1>Describe stage (judge pass one)</h1>"
         f"<p>Judge plan: {esc(plan.get('queued'))} queued, {esc(plan.get('duplicate'))} duplicate.</p>"
+        f"<p>Named counts by arm: {arm_named_line}.</p>"
         "<h2>Directions</h2>"
         "<table border=\"1\" cellpadding=\"4\"><thead><tr>" + header_cols + "<th>named_above_null</th>"
         "</tr></thead><tbody>" + direction_body + "</tbody></table>"
@@ -604,7 +644,8 @@ def run_describe(
     random-direction nulls, plans and drives them through the Worker's
     judge queue, fetches and clusters the results, gates each direction
     against the null ceiling (`apply_named_above_null`), writes
-    `describe_results.json` (`{plan, results, clusters, null_stats}`) +
+    `describe_results.json` (`{plan, results, clusters, null_stats,
+    arm_named_counts}`) +
     `describe-report.html` under `workdir`, and reports a compact
     per-direction summary record to the harness under stage `"judge"`.
     Resumable: skips entirely if `describe_results.json` already exists."""
@@ -620,8 +661,16 @@ def run_describe(
     results = fetch_results(client, run_id)
     clusters = cluster_descriptions(results)
     null_stats = apply_named_above_null(clusters, config.describe_null_margin)
+    attach_arm(clusters, directions)
+    arm_named_counts = compute_arm_named_counts(clusters)
 
-    output = {"plan": plan, "results": results, "clusters": clusters, "null_stats": null_stats}
+    output = {
+        "plan": plan,
+        "results": results,
+        "clusters": clusters,
+        "null_stats": null_stats,
+        "arm_named_counts": arm_named_counts,
+    }
     path.write_text(json.dumps(output, indent=2), encoding="utf-8")
     (workdir / "describe-report.html").write_text(render_describe_report(output), encoding="utf-8")
 

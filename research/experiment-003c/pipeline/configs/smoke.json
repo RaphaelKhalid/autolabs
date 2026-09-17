@@ -50,10 +50,13 @@
   "random_directions": 20,
   "rank_shift_fraction": 0.75,
   "screen_features": 8,
+  "arm_sizes": {"unsupervised": 3, "quantile": 2, "shift": 3},
+  "rank_specificity_conversations": 300,
   "describe_top_n": 6,
   "judge_budget_usd": 3,
   "judge_call_ceiling": 200,
   "describe_null_directions": 3,
   "describe_null_margin": 0.1,
+  "hf_upload_repo": "",
   "seed": 0
 }

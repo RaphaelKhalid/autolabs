@@ -20,6 +20,7 @@ import html
 import json
 import logging
 import math
+import os
 import random
 import sys
 import traceback
@@ -135,6 +136,53 @@ def train_steps_on_buffer(trained_sae, optimizer, buffer, config: Config, steps_
         trained_sae.normalize_decoder_()
         steps_done += 1
     return steps_done, last_out
+
+
+def upload_run_artifacts(
+    config: Config, workdir: Path, run_id: Optional[str], sae_path: Path, stats_path: Path
+) -> bool:
+    """Best-effort upload of this run's trained SAE, feature stats, and run
+    config to a private Hugging Face model repo (`config.hf_upload_repo`),
+    under `runs/<run_id>/`, so a run's artifacts survive even if the
+    RunPod volume backing `workdir` is torn down.
+
+    A no-op (returns `False`, does nothing else) unless both the `HF_TOKEN`
+    env var is set and `config.hf_upload_repo` is non-empty (default `""`,
+    i.e. disabled for smoke). `huggingface_hub` is imported lazily so it is
+    never required just to import this module. Any failure past that point
+    (auth, network, rate limit, repo-create race) is logged and swallowed
+    -- this is a convenience, never a correctness dependency of the
+    pipeline, so it must not abort a run that otherwise succeeded."""
+    token = os.environ.get("HF_TOKEN")
+    repo_id = config.hf_upload_repo
+    if not token or not repo_id:
+        return False
+
+    run_id = run_id or "unknown-run"
+    try:
+        from huggingface_hub import HfApi  # local import: optional, heavy dependency
+
+        config_path = workdir / "run_config.json"
+        config.save(config_path)
+
+        api = HfApi(token=token)
+        api.create_repo(repo_id=repo_id, repo_type="model", private=True, exist_ok=True)
+        for local_path, remote_name in (
+            (sae_path, "sae.safetensors"),
+            (stats_path, "feature_stats.json"),
+            (config_path, "run_config.json"),
+        ):
+            api.upload_file(
+                path_or_fileobj=str(local_path),
+                path_in_repo=f"runs/{run_id}/{remote_name}",
+                repo_id=repo_id,
+                repo_type="model",
+            )
+        logger.info("[train] uploaded run artifacts to hf://%s/runs/%s", repo_id, run_id)
+        return True
+    except Exception:  # noqa: BLE001 - upload is best-effort, never abort the run
+        logger.exception("[train] hf upload failed; continuing without it")
+        return False
 
 
 def idempotency_key_for(config: Config) -> str:
@@ -363,6 +411,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     feature_stats["held_out_fve"] = held_out_fve
     feature_stats["held_out_l0"] = held_out_l0
     trained_sae.save(sae_path, feature_stats=feature_stats)
+    upload_run_artifacts(config, workdir, client.run_id, sae_path, stats_path)
     return trained_sae, feature_stats
 
 
@@ -621,6 +670,16 @@ def compute_screen_verdict(screen_rows: List[dict]) -> dict:
     feature_counts = _group_pass_counts(features, max_random_auc)
     control_counts = _group_pass_counts(controls, max_random_auc)
 
+    # Per-arm (either sign) pass counts among features -- see rank.py's
+    # three-arm selection ("unsupervised"/"quantile"/"shift"). A row here
+    # predating arm tagging (no "arm" key) simply matches none of the
+    # three and is silently excluded, same as it would be from any of
+    # these counts before this field existed.
+    arm_pass_counts = {
+        arm: _group_pass_counts([r for r in features if r.get("arm") == arm], max_random_auc)
+        for arm in ("unsupervised", "quantile", "shift")
+    }
+
     return {
         "max_random_resid_auc": max_random_auc,
         "max_random_resid_auc_p95": max_random_auc_p95,
@@ -639,6 +698,13 @@ def compute_screen_verdict(screen_rows: List[dict]) -> dict:
         "controls_detail": control_counts["detail"],
         "all_controls_pass": bool(control_counts["entities_total"])
         and control_counts["entities_passing"] == control_counts["entities_total"],
+        "arm_pass_counts": {
+            arm: {
+                "entities_passing": counts["entities_passing"],
+                "entities_total": counts["entities_total"],
+            }
+            for arm, counts in arm_pass_counts.items()
+        },
     }
 
 
@@ -844,6 +910,7 @@ def render_html_report(summary: dict) -> str:
               <td>{esc(kind)}</td>
               <td>{esc(row.get('id'))}</td>
               <td>{sign_label}</td>
+              <td>{esc(row.get('arm'))}</td>
               <td>{esc(row.get('dose'))}</td>
               <td>{fmt(resid.get('acc'))}</td>
               <td>{fmt(resid.get('auc'))}</td>
@@ -887,6 +954,12 @@ def render_html_report(summary: dict) -> str:
         f"(either sign): {esc(verdict.get('controls_passing'))} of {esc(verdict.get('controls_total'))} "
         f"({'all' if verdict.get('all_controls_pass') else 'not all'} controls pass)."
     )
+    arm_pass_counts = verdict.get("arm_pass_counts") or {}
+    arm_pass_line = "Per-arm feature pass counts (either sign, gate G0): " + ", ".join(
+        f"{esc(arm)} {esc(arm_pass_counts.get(arm, {}).get('entities_passing'))} of "
+        f"{esc(arm_pass_counts.get(arm, {}).get('entities_total'))}"
+        for arm in ("unsupervised", "quantile", "shift")
+    ) + ". The \"shift\" arm is the positive control for this comparison (it is biased toward prompt-reachable directions); \"unsupervised\" never saw a prompt."
 
     def _detail_rows(detail: List[dict]) -> str:
         return "".join(
@@ -966,9 +1039,10 @@ blue, control rows green, random-null rows grey. "consistency" /
 per-scenario (steered - baseline) difference vectors with each other vs.
 with other directions' difference vectors -- see README "Screen stage".</p>
 <p><strong>Verdict (gate G0, diagnostic only):</strong> {verdict_line}</p>
+<p><strong>{arm_pass_line}</strong></p>
 <table>
 <thead><tr>
-  <th>kind</th><th>id</th><th>sign</th><th>dose</th>
+  <th>kind</th><th>id</th><th>sign</th><th>arm</th><th>dose</th>
   <th>resid acc</th><th>resid auc</th><th>lexical acc</th><th>lexical auc</th>
   <th>consistency</th><th>null consistency</th><th>coherent fraction</th>
 </tr></thead>

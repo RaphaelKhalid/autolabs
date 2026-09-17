@@ -274,9 +274,12 @@ def direction_consistency(
 # Dose bookkeeping (pure Python/dict math, CPU-testable)
 # ---------------------------------------------------------------------------
 def extract_feature_info(calibration_records: Sequence[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    """{feature: {density, quantile, max_activation}}, deduped, from the
-    calibrate stage's "steered" records (tolerates either a raw payload
-    dict or a {"payload": ...} wrapper, so tests can pass either)."""
+    """{feature: {density, quantile, max_activation, arm}}, deduped, from
+    the calibrate stage's "steered" records (tolerates either a raw
+    payload dict or a {"payload": ...} wrapper, so tests can pass either).
+    `arm` is the rank stage's `"unsupervised"`/`"quantile"`/`"shift"` tag
+    (or `None` if calibrate ran without a rank-stage candidate list),
+    propagated from `steer.run_calibration`'s steered payload."""
     info: Dict[int, Dict[str, Any]] = {}
     for rec in calibration_records:
         payload = rec.get("payload", rec) if isinstance(rec, dict) else rec
@@ -289,6 +292,7 @@ def extract_feature_info(calibration_records: Sequence[Dict[str, Any]]) -> Dict[
                 "density": payload.get("density"),
                 "quantile": payload.get("quantile"),
                 "max_activation": payload.get("max_activation"),
+                "arm": payload.get("arm"),
             },
         )
     return info
@@ -593,7 +597,9 @@ def build_generation_records(
 
     ``directions`` is ``pending`` from ``run_screen`` (or any sequence of
     dicts shaped like it): each needs ``kind``, ``id``, ``sign``, ``dose``,
-    and ``steered`` ({scenario_id: {text, finish_reason, coherence, ...}}).
+    ``steered`` ({scenario_id: {text, finish_reason, coherence, ...}}), and
+    optionally ``extra`` (carrying ``arm``, e.g. ``{"arm": "control"}`` --
+    absent/``None`` if the entry predates arm tagging).
     ``baseline_texts`` is {scenario_id: baseline text}, shared across every
     direction since baselines are generated once per scenario.
 
@@ -601,7 +607,7 @@ def build_generation_records(
     ``report.report(stage="screen", records=...)``, with
     ``recordId = f"screen-gen-{kind}-{id}-{sign}-{scenario}"`` (``sign``
     rendered as ``pos``/``neg``/``na``, matching every other screen-stage
-    recordId) and ``payload = {kind, id, sign, dose, scenario, text,
+    recordId) and ``payload = {kind, id, sign, dose, arm, scenario, text,
     baseline_text, finish_reason, coherence}``.
     """
     records: List[Dict[str, Any]] = []
@@ -610,6 +616,7 @@ def build_generation_records(
         direction_id = entry["id"]
         sign = entry["sign"]
         dose = entry["dose"]
+        arm = (entry.get("extra") or {}).get("arm")
         sign_label = _sign_label(sign)
         for scenario_id, gen in entry["steered"].items():
             payload = {
@@ -617,6 +624,7 @@ def build_generation_records(
                 "id": direction_id,
                 "sign": sign,
                 "dose": dose,
+                "arm": arm,
                 "scenario": scenario_id,
                 "text": gen.get("text"),
                 "baseline_text": baseline_texts.get(scenario_id, ""),
@@ -695,7 +703,11 @@ def run_screen(
                     "sign": sign,
                     "dose": dose,
                     "steered": steered,
-                    "extra": {"density": info.get("density"), "quantile": info.get("quantile")},
+                    "extra": {
+                        "density": info.get("density"),
+                        "quantile": info.get("quantile"),
+                        "arm": info.get("arm"),
+                    },
                 }
             )
 
@@ -724,7 +736,7 @@ def run_screen(
                     "sign": sign,
                     "dose": chosen_dose,
                     "steered": steered,
-                    "extra": {},
+                    "extra": {"arm": "control"},
                 }
             )
 
@@ -736,7 +748,14 @@ def run_screen(
         vector = random_dose * random_unit
         steered = generate_steered_set(config, model, tokenizer, vector, screen_scenarios, device)
         pending.append(
-            {"kind": "random", "id": r, "sign": 0, "dose": random_dose, "steered": steered, "extra": {}}
+            {
+                "kind": "random",
+                "id": r,
+                "sign": 0,
+                "dose": random_dose,
+                "steered": steered,
+                "extra": {"arm": "random"},
+            }
         )
 
     # -- embeddings + per-scenario diff vectors for every direction --------

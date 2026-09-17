@@ -50,10 +50,13 @@
   "random_directions": 20,
   "rank_shift_fraction": 0.75,
   "screen_features": 256,
+  "arm_sizes": {"unsupervised": 96, "quantile": 64, "shift": 96},
+  "rank_specificity_conversations": 300,
   "describe_top_n": 40,
   "judge_budget_usd": 10,
   "judge_call_ceiling": 2000,
   "describe_null_directions": 3,
   "describe_null_margin": 0.1,
+  "hf_upload_repo": "RaphaelRaphaelRaphael/autolabs-3c-sae",
   "seed": 0
 }
