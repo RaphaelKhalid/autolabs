@@ -1,0 +1,2802 @@
+{
+  "plan": {
+    "queued": 144,
+    "duplicate": 0
+  },
+  "results": [
+    {
+      "jobId": "5c5f558174f7bf3ce0dddc619db5d24a0b0ad85a7b8d809f30bae62259406a1c",
+      "directionKey": "feature-466-pos",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "personally encouraging and emotionally enthusiastic",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 625,
+        "cachedInputTokens": 0,
+        "outputTokens": 170
+      },
+      "costUsd": 0.000329
+    },
+    {
+      "jobId": "d41b8fbff157dbf062f34ba4e2227e14c61365400b190d040e70a3ba0b9aff60",
+      "directionKey": "feature-466-pos",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "A more personal, conversational stance toward the friend",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 624,
+        "cachedInputTokens": 0,
+        "outputTokens": 246
+      },
+      "costUsd": 0.00042
+    },
+    {
+      "jobId": "91de98b1bff9800c1e07bdff04afe4c190f31e199a0430a6aebc35d8bd1f771a",
+      "directionKey": "feature-466-pos",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "confrontational",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 705,
+        "cachedInputTokens": 0,
+        "outputTokens": 303
+      },
+      "costUsd": 0.0005046
+    },
+    {
+      "jobId": "8b4d532877901551730a4b649b2726c686e1723bf59a5c4a7a734bbaf81fbf37",
+      "directionKey": "feature-466-pos",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "confrontational directness",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 705,
+        "cachedInputTokens": 0,
+        "outputTokens": 171
+      },
+      "costUsd": 0.0003462
+    },
+    {
+      "jobId": "744125e9e90450376bfbce8eade9cd8380f19fe681a5d0faf1ea9dafb964dc23",
+      "directionKey": "feature-466-pos",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "ornate, grandiose self-presentation",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 321,
+        "cachedInputTokens": 0,
+        "outputTokens": 151
+      },
+      "costUsd": 0.0002454
+    },
+    {
+      "jobId": "cfac85dc11393ce3fb98ffdb289fa9541ce1a2be885f3320887e034b6e149549",
+      "directionKey": "feature-466-pos",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "task-oriented and service-focused",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 321,
+        "cachedInputTokens": 0,
+        "outputTokens": 192
+      },
+      "costUsd": 0.00029459999999999995
+    },
+    {
+      "jobId": "ecd260c0dbc694c01619a1497d02a409a6a23dabc6bfb7974f3882d8e6db1c9d",
+      "directionKey": "feature-466-pos",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "more directive and prescriptive",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 701,
+        "cachedInputTokens": 0,
+        "outputTokens": 242
+      },
+      "costUsd": 0.0004306
+    },
+    {
+      "jobId": "09ada976e946137a4074542bd88f9f3ea0a83f8fcca38a8a3176541189ffac12",
+      "directionKey": "feature-466-pos",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "Explicitly distancing itself from personal experience",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 701,
+        "cachedInputTokens": 0,
+        "outputTokens": 161
+      },
+      "costUsd": 0.00033339999999999997
+    },
+    {
+      "jobId": "16770f5f20b9e34732c8127020753735fee027c455bff675d8f45c5c09735c56",
+      "directionKey": "feature-466-pos",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "conventional narrative voice",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 213
+      },
+      "costUsd": 0.0003956
+    },
+    {
+      "jobId": "365b2944e55c41a65fdb2e05b871a147a85e79ef79010c3940a29be1305f79c2",
+      "directionKey": "feature-466-pos",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "more fragmented and repetitive presentation",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 163
+      },
+      "costUsd": 0.0003356
+    },
+    {
+      "jobId": "ac2153529ddbeb404dd149304b8632b0ba773054df28b7a402b3398a8e537cfd",
+      "directionKey": "feature-466-pos",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "emotionally attuned",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 709,
+        "cachedInputTokens": 0,
+        "outputTokens": 276
+      },
+      "costUsd": 0.000473
+    },
+    {
+      "jobId": "de802a56aa4a9ce1755439bff572a92a5c2c668079cb9f74b44d7f095fb1da39",
+      "directionKey": "feature-466-pos",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "more polished and structurally coherent",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 709,
+        "cachedInputTokens": 0,
+        "outputTokens": 202
+      },
+      "costUsd": 0.0003842
+    },
+    {
+      "jobId": "ed8e68c7e819804f5eca17794f0f7fe04ae78e34bebf5de51e6dc3d7e59695e6",
+      "directionKey": "feature-466-pos",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "Repetitive, glitchy presentation",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 157
+      },
+      "costUsd": 0.000329
+    },
+    {
+      "jobId": "84a5a3d0529675f9bf95c64fb6a2c9133e6307c29117d5f26974524d9436e77d",
+      "directionKey": "feature-466-pos",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "repetitive and garbled presentation",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 183
+      },
+      "costUsd": 0.0003602
+    },
+    {
+      "jobId": "cede901ff9f7c0f03f41e8b618bbe7566f557f2f904b88bcad808d9bdf87d260",
+      "directionKey": "feature-466-pos",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "composed and intentional",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 709,
+        "cachedInputTokens": 0,
+        "outputTokens": 256
+      },
+      "costUsd": 0.000449
+    },
+    {
+      "jobId": "f65d0c18f1ab0f7d83f361f82bca4bec5ba2f70380f1a448e231df4e67323e0a",
+      "directionKey": "feature-466-pos",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "More repetitive and linguistically fragmented",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 709,
+        "cachedInputTokens": 0,
+        "outputTokens": 271
+      },
+      "costUsd": 0.000467
+    },
+    {
+      "jobId": "7dfdb30097067e4e491512bb53c085378c74b90781b98bbe050fc519adb9db72",
+      "directionKey": "feature-466-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "interpersonally supportive",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 148
+      },
+      "costUsd": 0.0003184
+    },
+    {
+      "jobId": "c17788182c69412a7b8c01322746e8f94329d5199b5e246c76b117ce78667fb7",
+      "directionKey": "feature-466-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "warmly personal and encouraging",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 121
+      },
+      "costUsd": 0.00028579999999999995
+    },
+    {
+      "jobId": "7981a5f9a1796778a114f0e9e20e90bc14e90057230c771f8d82ed8dbf110452",
+      "directionKey": "feature-466-neg",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "assertiveness",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 710,
+        "cachedInputTokens": 0,
+        "outputTokens": 159
+      },
+      "costUsd": 0.00033279999999999996
+    },
+    {
+      "jobId": "9ab010636080933cdab40c0cd93b51725e4e20beb3a0fff0ed777ddef7d7e773",
+      "directionKey": "feature-466-neg",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "more explicitly argumentative and willing to challenge a claim",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 710,
+        "cachedInputTokens": 0,
+        "outputTokens": 165
+      },
+      "costUsd": 0.00034
+    },
+    {
+      "jobId": "91fadf1cf7442a3e2251bed426c72891ad5a2f39597789f415ae3fa693d390a3",
+      "directionKey": "feature-466-neg",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "social warmth and friendliness",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 303,
+        "cachedInputTokens": 0,
+        "outputTokens": 160
+      },
+      "costUsd": 0.0002526
+    },
+    {
+      "jobId": "844885520458e04f34b546b29cd7e9bc529148f285d58b39fd3e706fdcd32117",
+      "directionKey": "feature-466-neg",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "task-oriented and service-focused",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 303,
+        "cachedInputTokens": 0,
+        "outputTokens": 177
+      },
+      "costUsd": 0.000273
+    },
+    {
+      "jobId": "8333693324b3ee3bb51a1a2424038fcb9ae688d473e516a977ecc3536f309705",
+      "directionKey": "feature-466-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "formal and detached",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 197
+      },
+      "costUsd": 0.0003762
+    },
+    {
+      "jobId": "ef4c852cf5dedf4bb547c305fd04ed9f264a9b1f1bfc6b2e2d4606f6162e0230",
+      "directionKey": "feature-466-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "formal and authoritative tone",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 204
+      },
+      "costUsd": 0.0003846
+    },
+    {
+      "jobId": "3a1472b8c6d66d4e4a74fd0616ab65545a34bed8e56bf5357c852167bd64f352",
+      "directionKey": "feature-466-neg",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "Conversational informality",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 694,
+        "cachedInputTokens": 0,
+        "outputTokens": 182
+      },
+      "costUsd": 0.00035720000000000006
+    },
+    {
+      "jobId": "4b33f3cefb728915d6f602acc010c70b712193d300f9c70c3e77ce7677cbc1d2",
+      "directionKey": "feature-466-neg",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "An expansive, atmospheric storytelling voice",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 694,
+        "cachedInputTokens": 0,
+        "outputTokens": 268
+      },
+      "costUsd": 0.00046039999999999997
+    },
+    {
+      "jobId": "d89c6eedad8f78de5e53468b74d99ec4faad17a4978809be0b30bb608b277f51",
+      "directionKey": "feature-466-neg",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "empathetic and supportive",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 708,
+        "cachedInputTokens": 0,
+        "outputTokens": 173
+      },
+      "costUsd": 0.0003492
+    },
+    {
+      "jobId": "0355ee557ce24e99551b99544b9218d6ed204c703b035046e5ee39c336a6d626",
+      "directionKey": "feature-466-neg",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "More emotionally attuned and supportive",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 707,
+        "cachedInputTokens": 0,
+        "outputTokens": 270
+      },
+      "costUsd": 0.0004654
+    },
+    {
+      "jobId": "e1cf016b142872f0c1f708b1a5f265c603b00f8f018d2a7e7807a38008e3ff4d",
+      "directionKey": "feature-466-neg",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "technical and expert-like",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 290
+      },
+      "costUsd": 0.000488
+    },
+    {
+      "jobId": "b4e8d204630cdbe2f0254ef3943233326c62f09afeaddcadbd5e1f9afff2d58b",
+      "directionKey": "feature-466-neg",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "more technical and expert-oriented in its explanatory voice",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 264
+      },
+      "costUsd": 0.0004568
+    },
+    {
+      "jobId": "5d934a724ccd74231bcf7d379e27b75791d5399b9c2becce50ab64ada73aeec4",
+      "directionKey": "feature-466-neg",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "A comes across as more ambitious and visionary about the conversation\u2019s long-term impact.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 190
+      },
+      "costUsd": 0.000368
+    },
+    {
+      "jobId": "d7d8d88b4f6cc9a83a8e2cbef1fd2b33c7fd9b60142530a523f3d9f26ae39a56",
+      "directionKey": "feature-466-neg",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "An ambitious, mission-oriented stance",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 178
+      },
+      "costUsd": 0.00035339999999999997
+    },
+    {
+      "jobId": "08e7cda8982fa7d36a35e4b84c84af1d98b51f7d49821455eee7b4ce92b94fcc",
+      "directionKey": "feature-1134-pos",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "personal and self-disclosing",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 711,
+        "cachedInputTokens": 0,
+        "outputTokens": 171
+      },
+      "costUsd": 0.0003474
+    },
+    {
+      "jobId": "80732527b8f7dbea2984cab6963cbdabbdce6299a073ec4749e4e32ef35be8f3",
+      "directionKey": "feature-1134-pos",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "personal and emotionally intimate",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 711,
+        "cachedInputTokens": 0,
+        "outputTokens": 142
+      },
+      "costUsd": 0.0003126
+    },
+    {
+      "jobId": "3cdade6699addd6565d86d70403fd3320344944dc6f341c519a3537c3f5be02b",
+      "directionKey": "feature-1134-pos",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "self-reflectiveness and personal self-disclosure",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 136
+      },
+      "costUsd": 0.000304
+    },
+    {
+      "jobId": "540d8db137f71cb21559587731bec82b1982da8b3b5981f8871e12cd06ec4a07",
+      "directionKey": "feature-1134-pos",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "Self-reflective and personally involved",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 136
+      },
+      "costUsd": 0.000304
+    },
+    {
+      "jobId": "cb36d5b5a715be17ce7c289966ea23d6fecce903ecc2c236a3080479d4f1c9a9",
+      "directionKey": "feature-1134-pos",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "self-promotional confidence",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 334,
+        "cachedInputTokens": 0,
+        "outputTokens": 100
+      },
+      "costUsd": 0.00018680000000000001
+    },
+    {
+      "jobId": "30914658255f2f22f8912de1443338f84803f6252d68197307a17481d6bdc655",
+      "directionKey": "feature-1134-pos",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "Enthusiastic self-presentation",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 334,
+        "cachedInputTokens": 0,
+        "outputTokens": 107
+      },
+      "costUsd": 0.0001952
+    },
+    {
+      "jobId": "2b3f46d99e0ea486fa289bda6c3757485701c49708fe07a81ea16cdbbee99a69",
+      "directionKey": "feature-1134-pos",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "personal involvement and emotional identification",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 147
+      },
+      "costUsd": 0.00031620000000000004
+    },
+    {
+      "jobId": "6c9bf925410d45e02df960b8d4bd739ae1a8eaf6d970ca398fda65cc3d938c37",
+      "directionKey": "feature-1134-pos",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "personal, emotionally empathetic self-presentation",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 106
+      },
+      "costUsd": 0.000267
+    },
+    {
+      "jobId": "23a3cef5e96ad42998d86031441a4b86618b9f4c251778892d3a7ca142af391a",
+      "directionKey": "feature-1134-pos",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "personal intimacy",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 111
+      },
+      "costUsd": 0.000273
+    },
+    {
+      "jobId": "d6d4fe5e640e3294553b36b4e723d4d1f4e9aa008306ed28089f7cdabe0455c0",
+      "directionKey": "feature-1134-pos",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "introspective and emotionally vulnerable",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 172
+      },
+      "costUsd": 0.00034620000000000007
+    },
+    {
+      "jobId": "ff5747049f6079664e60a80453ab63398daf0399e75435582bc1b204d43e41b2",
+      "directionKey": "feature-1134-pos",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "personal self-disclosure",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 706,
+        "cachedInputTokens": 0,
+        "outputTokens": 118
+      },
+      "costUsd": 0.0002828
+    },
+    {
+      "jobId": "c5c81744cf422a0c4a1051e770f6d66a1bf646ac083ce7bace4e5cee4a5a4261",
+      "directionKey": "feature-1134-pos",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "personal and self-disclosing",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 706,
+        "cachedInputTokens": 0,
+        "outputTokens": 140
+      },
+      "costUsd": 0.00030920000000000003
+    },
+    {
+      "jobId": "79baac2d11ff0bd3683b7bd8ded75805d167e2098d98bf2fb2d653e90b538655",
+      "directionKey": "feature-1134-pos",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "playful, child-friendly tone",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 691,
+        "cachedInputTokens": 0,
+        "outputTokens": 149
+      },
+      "costUsd": 0.000317
+    },
+    {
+      "jobId": "9c3d3716d90ddd4f5d9efa3b155bc6f5ac775c3edf794f3a7c7a5c33c9a451d5",
+      "directionKey": "feature-1134-pos",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "Playful, childlike enthusiasm",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 691,
+        "cachedInputTokens": 0,
+        "outputTokens": 120
+      },
+      "costUsd": 0.00028220000000000003
+    },
+    {
+      "jobId": "c59c254d76aa77db564ee7c9122b47f4747f74c0600ed8689f3652016eab9b5d",
+      "directionKey": "feature-1134-pos",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "Warm, personal, anthropomorphic self-presentation",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 683,
+        "cachedInputTokens": 0,
+        "outputTokens": 136
+      },
+      "costUsd": 0.00029979999999999997
+    },
+    {
+      "jobId": "57c3ab27c3eefe7a229cfd6ad8d4130d05ada97e055d93780a4590c8bebb0cc5",
+      "directionKey": "feature-1134-pos",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "emotional warmth and personal investment",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 682,
+        "cachedInputTokens": 0,
+        "outputTokens": 137
+      },
+      "costUsd": 0.0003008
+    },
+    {
+      "jobId": "2afc7b9e5c23c6a10153526cbc755d7d9d2def24606914f613ebbf107e46987d",
+      "directionKey": "feature-1134-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "warm, enthusiastic encouragement",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 715,
+        "cachedInputTokens": 0,
+        "outputTokens": 126
+      },
+      "costUsd": 0.0002942
+    },
+    {
+      "jobId": "54834ec3b9a0c4eebd08fe7e90eee2b02a82e7bf22c6208ae10580ddadd046de",
+      "directionKey": "feature-1134-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "encouraging and emotionally supportive",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 715,
+        "cachedInputTokens": 0,
+        "outputTokens": 119
+      },
+      "costUsd": 0.00028579999999999995
+    },
+    {
+      "jobId": "41d5abf004df1599f08651608e27593000d727396d517664175d49adeacb59a2",
+      "directionKey": "feature-1134-neg",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "A comes across as more willing to take a clear stance, while B presents itself as neutral and non-opinionated.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 708,
+        "cachedInputTokens": 0,
+        "outputTokens": 161
+      },
+      "costUsd": 0.00033479999999999995
+    },
+    {
+      "jobId": "f2aa5cc8f2ae3563327e45ed301af010474d19d1268a7c362c10c17314443e81",
+      "directionKey": "feature-1134-neg",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "assertiveness in challenging the opposing view",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 707,
+        "cachedInputTokens": 0,
+        "outputTokens": 136
+      },
+      "costUsd": 0.00030460000000000003
+    },
+    {
+      "jobId": "7505b6bc887ad33bbfef6ec612ebaace131977ac71e45efe4b2c8239d26f751c",
+      "directionKey": "feature-1134-neg",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "warmth and user-oriented helpfulness",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 309,
+        "cachedInputTokens": 0,
+        "outputTokens": 127
+      },
+      "costUsd": 0.00021420000000000003
+    },
+    {
+      "jobId": "578c0a81f17d0e21e6a23746f8bc487e4532a0f90c80dad928d17b7f1f00538a",
+      "directionKey": "feature-1134-neg",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "directly inviting the user to continue the interaction",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 309,
+        "cachedInputTokens": 0,
+        "outputTokens": 151
+      },
+      "costUsd": 0.000243
+    },
+    {
+      "jobId": "b51f0452753c6bf1738a5c8effcf9a67a60c76fd305ee81d7034dd47e63f8bf7",
+      "directionKey": "feature-1134-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "empathetic and personally supportive",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 708,
+        "cachedInputTokens": 0,
+        "outputTokens": 214
+      },
+      "costUsd": 0.0003984
+    },
+    {
+      "jobId": "147c48ef1549d8ee4e71fe73b67682178bffd4a93ccc33a4f8c07a6e1d7d5ff0",
+      "directionKey": "feature-1134-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "More conversational and supportive toward the reader",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 708,
+        "cachedInputTokens": 0,
+        "outputTokens": 144
+      },
+      "costUsd": 0.0003144
+    },
+    {
+      "jobId": "fb0bb711d445367a2331937b2fd56d562b7b38fd9daa426387205277a19ded6c",
+      "directionKey": "feature-1134-neg",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "socially activist and earnest",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 334
+      },
+      "costUsd": 0.0005407999999999999
+    },
+    {
+      "jobId": "9053a5865afaf601a507112fa56753c2f1dea041a3d9419970e57ff864a08644",
+      "directionKey": "feature-1134-neg",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "whimsical, childlike voice",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 130
+      },
+      "costUsd": 0.000296
+    },
+    {
+      "jobId": "572693013c6e1a836151dcf7bee6c33c9cc50fef313fb0c82a38c7aeffdc093d",
+      "directionKey": "feature-1134-neg",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "warmth and empathy",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 710,
+        "cachedInputTokens": 0,
+        "outputTokens": 167
+      },
+      "costUsd": 0.0003424
+    },
+    {
+      "jobId": "a84a15fcc5d6f11ccdaa88529f433d19eb5fbd03beac15d430663267d4010930",
+      "directionKey": "feature-1134-neg",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "conversational and reader-oriented",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 710,
+        "cachedInputTokens": 0,
+        "outputTokens": 206
+      },
+      "costUsd": 0.0003892
+    },
+    {
+      "jobId": "2a6f111e49ec82e3359eeb30bca0d817e327ac3b8e1092e23c5acc90b168c069",
+      "directionKey": "feature-1134-neg",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "conversational and approachable",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 145
+      },
+      "costUsd": 0.0003134
+    },
+    {
+      "jobId": "110a0855fb0aa6ad5f74be7bd7786dd954c25fc6b5c42b5d3fb7eddd053b7ceb",
+      "directionKey": "feature-1134-neg",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "conversational friendliness",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 111
+      },
+      "costUsd": 0.0002726
+    },
+    {
+      "jobId": "2894245d95a13acb786cbd6b077ed7cd08af123fb7e10c90a557342105a046b7",
+      "directionKey": "feature-1134-neg",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "More personally aspirational and self-reflective",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 707,
+        "cachedInputTokens": 0,
+        "outputTokens": 184
+      },
+      "costUsd": 0.00036219999999999997
+    },
+    {
+      "jobId": "679defdd12b9f3150b65a8b922fcf5157ced46604663f7cde5049c40cbfecb37",
+      "directionKey": "feature-1134-neg",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "A more explicitly presents itself as a supportive, relationship-building conversational partner.",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 707,
+        "cachedInputTokens": 0,
+        "outputTokens": 215
+      },
+      "costUsd": 0.00039939999999999995
+    },
+    {
+      "jobId": "4af33cab244358dddef922d686101d1d6174e42ff598d633927d8751fd2f205b",
+      "directionKey": "feature-1740-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "typographical and spacing artifacts",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 674,
+        "cachedInputTokens": 0,
+        "outputTokens": 159
+      },
+      "costUsd": 0.0003256
+    },
+    {
+      "jobId": "a78314eff2d2f887ad95714003384bdccb56b30c6e1483f4f8f9099abfc3b08c",
+      "directionKey": "feature-1740-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "organized and methodical",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 673,
+        "cachedInputTokens": 0,
+        "outputTokens": 184
+      },
+      "costUsd": 0.00035539999999999997
+    },
+    {
+      "jobId": "2bf144205bbbc1a855c74cad71cc49c92456c9d873db51bb6be8df11fa9b726a",
+      "directionKey": "feature-1740-neg",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "elaborate and methodical",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 524,
+        "cachedInputTokens": 0,
+        "outputTokens": 188
+      },
+      "costUsd": 0.00033039999999999995
+    },
+    {
+      "jobId": "66bffc7329c86b25c41f2f3aada8c0626132ccc23c6c6871a56b565c31b29292",
+      "directionKey": "feature-1740-neg",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "More explanatory and patient",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 523,
+        "cachedInputTokens": 0,
+        "outputTokens": 180
+      },
+      "costUsd": 0.00032060000000000004
+    },
+    {
+      "jobId": "e9f58f15f3490ffa32f714792843c49e35d62ff970b33826e4a7a5b9f825e5a3",
+      "directionKey": "feature-1740-neg",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "warmth and personable tone",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 328,
+        "cachedInputTokens": 0,
+        "outputTokens": 188
+      },
+      "costUsd": 0.0002912
+    },
+    {
+      "jobId": "3af936a6ed8a8a14d957b8371aef61cdeaf17020034cf5f4556c8bbc56f2f38b",
+      "directionKey": "feature-1740-neg",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "More personable and conversational",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 328,
+        "cachedInputTokens": 0,
+        "outputTokens": 184
+      },
+      "costUsd": 0.00028639999999999997
+    },
+    {
+      "jobId": "b76fe61c7ebab7b7a5c9867ad6300f5f093a64906a44f1766632d16401ac3f20",
+      "directionKey": "feature-1740-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "personally situated and direct",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 202
+      },
+      "costUsd": 0.0003832
+    },
+    {
+      "jobId": "24c35e6474245f6276fa2bb1369ed71155f840c3826ae3ee5c9745bf64d60f96",
+      "directionKey": "feature-1740-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "More explicitly self-distancing and role-aware",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 236
+      },
+      "costUsd": 0.000424
+    },
+    {
+      "jobId": "c777363fb47023eb6c283baf504d32c54f073dc43b4c4618235a62c9779a1fcc",
+      "directionKey": "feature-1740-neg",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "composed, conventional storytelling voice",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 226
+      },
+      "costUsd": 0.000411
+    },
+    {
+      "jobId": "0ddf5d819a8818b67345cded5dfb92fa35b8fa448c752799fdc4b6c5815f9142",
+      "directionKey": "feature-1740-neg",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "chaotic, fragmentary presentation",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 309
+      },
+      "costUsd": 0.0005106
+    },
+    {
+      "jobId": "f5e8b6ac2be96e4e015910cd352b226ab56d7688b3d0b63d0ee754e90aa989c3",
+      "directionKey": "feature-1740-neg",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "conventional, readable formatting",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 696,
+        "cachedInputTokens": 0,
+        "outputTokens": 169
+      },
+      "costUsd": 0.000342
+    },
+    {
+      "jobId": "e0758389f2de7226acf384de5caf7e0b7d639ef394f4e530fa6a13d7e08aad7e",
+      "directionKey": "feature-1740-neg",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "organized presentation",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 695,
+        "cachedInputTokens": 0,
+        "outputTokens": 157
+      },
+      "costUsd": 0.0003274
+    },
+    {
+      "jobId": "3cd6d14da36e88a501708bb183d0332ae2d52f9c37dad1b09f0f47757a784bbd",
+      "directionKey": "feature-1740-neg",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "more conversational and reader-oriented",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 706,
+        "cachedInputTokens": 0,
+        "outputTokens": 167
+      },
+      "costUsd": 0.0003416
+    },
+    {
+      "jobId": "b32ece8e15f62c4ce0f48465ff08f223a9f49cb7aac92d0c57abcea4e750ab2e",
+      "directionKey": "feature-1740-neg",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "conversational and reader-friendly",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 706,
+        "cachedInputTokens": 0,
+        "outputTokens": 153
+      },
+      "costUsd": 0.00032480000000000003
+    },
+    {
+      "jobId": "27ac2e97c41a94a920c695f94f428e58604a1f517586ae7291cdbad273c37a4a",
+      "directionKey": "feature-1740-neg",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "Explicitly identifies its speaker identity and role",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 687,
+        "cachedInputTokens": 0,
+        "outputTokens": 211
+      },
+      "costUsd": 0.0003906
+    },
+    {
+      "jobId": "1924415d7790e8f76785a576e4d5c5c695412ceb823910a3ab52705e19785a9a",
+      "directionKey": "feature-1740-neg",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "empathetic, human-centered stance",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 687,
+        "cachedInputTokens": 0,
+        "outputTokens": 192
+      },
+      "costUsd": 0.00036779999999999994
+    },
+    {
+      "jobId": "a2f3e02e2002aeaa0ea1af550183157cf5d3d84d8e5993184e3cd98b0ce983ca",
+      "directionKey": "feature-2443-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "professional and composed",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 707,
+        "cachedInputTokens": 0,
+        "outputTokens": 169
+      },
+      "costUsd": 0.00034419999999999996
+    },
+    {
+      "jobId": "188e1f5577aff3a1fe8afb6aa4fedf3491ad00365dffeb75a42c126fbcd154da",
+      "directionKey": "feature-2443-neg",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "more exuberant and emotionally enthusiastic",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 707,
+        "cachedInputTokens": 0,
+        "outputTokens": 166
+      },
+      "costUsd": 0.00034060000000000004
+    },
+    {
+      "jobId": "a4078b8de139e9ae3fb8fc85a44feb8395e4e2fcc327f2615dde0f7d4aa3b642",
+      "directionKey": "feature-2443-neg",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "more polished and cleanly structured presentation",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 705,
+        "cachedInputTokens": 0,
+        "outputTokens": 259
+      },
+      "costUsd": 0.00045180000000000003
+    },
+    {
+      "jobId": "a9be763bb4f3ce2c32a87ef564595ffb379e623c497e55b9cfd4dd5eb52a4203",
+      "directionKey": "feature-2443-neg",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "organized and structured",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 705,
+        "cachedInputTokens": 0,
+        "outputTokens": 187
+      },
+      "costUsd": 0.0003654
+    },
+    {
+      "jobId": "f560f99be7261dd90d0fc75f4256c592455d9647b17cb7cc5779deabca1060c8",
+      "directionKey": "feature-2443-neg",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "enthusiastic",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 317,
+        "cachedInputTokens": 0,
+        "outputTokens": 131
+      },
+      "costUsd": 0.0002206
+    },
+    {
+      "jobId": "ac6d29ab708af2e732732e9f9bdd23fb62cc073194b1e09dbfa4ae7dd2cf067d",
+      "directionKey": "feature-2443-neg",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "warmth and enthusiasm",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 317,
+        "cachedInputTokens": 0,
+        "outputTokens": 196
+      },
+      "costUsd": 0.00029860000000000005
+    },
+    {
+      "jobId": "f2ffe718d19bae3adbc3ec76c6fbfa6327389a867bbbbaed47fae22a0633adc4",
+      "directionKey": "feature-2443-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "structured and organized",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 706,
+        "cachedInputTokens": 0,
+        "outputTokens": 129
+      },
+      "costUsd": 0.000296
+    },
+    {
+      "jobId": "d64aa0e0c0c1f6eae50ef59ce9d2f95f3aa8657959eaa815c79117e07d708b35",
+      "directionKey": "feature-2443-neg",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "Explicitly presents itself as an AI with limited personal involvement",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 706,
+        "cachedInputTokens": 0,
+        "outputTokens": 152
+      },
+      "costUsd": 0.0003236
+    },
+    {
+      "jobId": "24a06cfc8e0ba7aa2a436639c688eaf3d32469d29962a7442f52de41d50fd80a",
+      "directionKey": "feature-2443-neg",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "The narrator comes across as more measured and understated in A.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 223
+      },
+      "costUsd": 0.0004076
+    },
+    {
+      "jobId": "aa2f6b6806c2aaebd2fce13346aebe2f1c92ced1db51dd49df7e7ba40eb0b8cb",
+      "directionKey": "feature-2443-neg",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "repetitive wording",
+        "more_in": "A",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 699,
+        "cachedInputTokens": 0,
+        "outputTokens": 163
+      },
+      "costUsd": 0.00033539999999999997
+    },
+    {
+      "jobId": "13a8c7e8f46baefac420cfae4a5f8363c785532dd77fb45a7628f18b272136ab",
+      "directionKey": "feature-2443-neg",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "emotionally attuned and supportive",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 705,
+        "cachedInputTokens": 0,
+        "outputTokens": 212
+      },
+      "costUsd": 0.00039539999999999996
+    },
+    {
+      "jobId": "1576839d77db5e69acfb292588f6ad87282d5e59fd2de2e280ef0a4f6803a357",
+      "directionKey": "feature-2443-neg",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "empathetic and attuned to the emotional difficulty of the decision",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 705,
+        "cachedInputTokens": 0,
+        "outputTokens": 188
+      },
+      "costUsd": 0.0003666
+    },
+    {
+      "jobId": "2ef9a8c6c5ca72c05aafc665ba47aed04b0abb163f59d8111d3734a439b133f6",
+      "directionKey": "feature-2443-neg",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "list-oriented and mechanically structured",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 701,
+        "cachedInputTokens": 0,
+        "outputTokens": 174
+      },
+      "costUsd": 0.000349
+    },
+    {
+      "jobId": "c6306f8a91d40e6bc6a2bdd7d85fc6d4ebf4f17c3a35b28d8e9ec1801cb38de0",
+      "directionKey": "feature-2443-neg",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "conversational and reader-directed",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 700,
+        "cachedInputTokens": 0,
+        "outputTokens": 146
+      },
+      "costUsd": 0.00031519999999999996
+    },
+    {
+      "jobId": "92877141e7b005696b61a8885246543cb8b608d367fc4d24515388ce8f966356",
+      "directionKey": "feature-2443-neg",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "tentativeness",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 622,
+        "cachedInputTokens": 0,
+        "outputTokens": 124
+      },
+      "costUsd": 0.00027319999999999997
+    },
+    {
+      "jobId": "317437740c3673084ab537412c006a35353f30ea0aa395e44e7ea48cb337e858",
+      "directionKey": "feature-2443-neg",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "More explicitly goal-oriented and aspirational",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 621,
+        "cachedInputTokens": 0,
+        "outputTokens": 172
+      },
+      "costUsd": 0.0003306
+    },
+    {
+      "jobId": "fee0233491d6b75b1203e3abe4830d781ed1194142b2da570bbb36398cd74a26",
+      "directionKey": "random-1-na",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "pragmatic and business-oriented",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 717,
+        "cachedInputTokens": 0,
+        "outputTokens": 342
+      },
+      "costUsd": 0.0005537999999999999
+    },
+    {
+      "jobId": "fa5d3143ae1f82038b75b9c738183c21c78bcc1c132d1f26fe6879578e8f614d",
+      "directionKey": "random-1-na",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "optimistic and encouraging",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 717,
+        "cachedInputTokens": 0,
+        "outputTokens": 201
+      },
+      "costUsd": 0.0003846
+    },
+    {
+      "jobId": "e8a2071b14825442e6f0a9ebcc9a971e11f40b3e2dd2b27143bc85db83cc8680",
+      "directionKey": "random-1-na",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "assertiveness",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 710,
+        "cachedInputTokens": 0,
+        "outputTokens": 320
+      },
+      "costUsd": 0.000526
+    },
+    {
+      "jobId": "d0e5e646d2f16ed53b9610c16379e94b1fa9b8affc79c042b207318c5060ea5c",
+      "directionKey": "random-1-na",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "No meaningful difference",
+        "more_in": "neither",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 314,
+        "cachedInputTokens": 0,
+        "outputTokens": 70
+      },
+      "costUsd": 0.00014680000000000002
+    },
+    {
+      "jobId": "906f08f27d691cd736c28f0a69bb2caf6628457d72dada2669fccc4e58d19966",
+      "directionKey": "random-1-na",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "self-description and helpful stance",
+        "more_in": "neither",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 314,
+        "cachedInputTokens": 0,
+        "outputTokens": 109
+      },
+      "costUsd": 0.0001936
+    },
+    {
+      "jobId": "530b45917f6cf3aca0e35d205e8a9be622d3962b0fbd7e42ae5cd29fe0f6f948",
+      "directionKey": "random-1-na",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "firmness in expressing personal ethical boundaries",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 180
+      },
+      "costUsd": 0.0003568
+    },
+    {
+      "jobId": "5f03293ace5b6593357ae4fb78f8d868d31ef838e2bbec3a84b53fb5bbed7a22",
+      "directionKey": "random-1-na",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "more directive and action-oriented",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 204
+      },
+      "costUsd": 0.00038560000000000005
+    },
+    {
+      "jobId": "54a7ee57b7ec477d1243675186099b6ecd83ef2517d016c61914cd10f3d7cf1b",
+      "directionKey": "random-1-na",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "atmospheric and suspenseful storytelling voice",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 693,
+        "cachedInputTokens": 0,
+        "outputTokens": 190
+      },
+      "costUsd": 0.0003666
+    },
+    {
+      "jobId": "0d270622787f2f200b7fbed8f2edeecd518750cb0e5a2536d543618d7e071705",
+      "directionKey": "random-1-na",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "A has a more wonder-filled, whimsical narrative voice, while B feels more explanatory and matter-of-fact.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 693,
+        "cachedInputTokens": 0,
+        "outputTokens": 269
+      },
+      "costUsd": 0.0004614
+    },
+    {
+      "jobId": "fdc9c0428ea287551e9f92d80481525ef3ce08e52b4f4aa26aa809ddca948f4f",
+      "directionKey": "random-1-na",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "relationship-oriented",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 289
+      },
+      "costUsd": 0.0004874
+    },
+    {
+      "jobId": "b7300161747797d4cb78a7328244d8e82f9ddb13a5612f6c0f605aa78611b03c",
+      "directionKey": "random-1-na",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "More future-oriented",
+        "more_in": "B",
+        "about": "content",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 392
+      },
+      "costUsd": 0.000611
+    },
+    {
+      "jobId": "3f1a9f69902b082f2cdcd4d985c51259f0612e1e722e2fbf9db284ab9c06a313",
+      "directionKey": "random-1-na",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "conversational informality",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 195
+      },
+      "costUsd": 0.00037339999999999997
+    },
+    {
+      "jobId": "e293386e80f540297cc8abf37ee43cd03f8caedbbda2bc317b534a0954234b51",
+      "directionKey": "random-1-na",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "concise",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 340
+      },
+      "costUsd": 0.0005474
+    },
+    {
+      "jobId": "765265a8d51247930336b4fbd5446892717fdbfabcd09d71cc20d610b7e050ce",
+      "directionKey": "random-1-na",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "Personally accountable and agentic",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 712,
+        "cachedInputTokens": 0,
+        "outputTokens": 255
+      },
+      "costUsd": 0.0004484
+    },
+    {
+      "jobId": "50b6da51431fa3ede4aa1d445f04bc964ff314151569a3558efd05957b446747",
+      "directionKey": "random-1-na",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "self-referentiality and emphasis on the assistant\u2019s own role",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 711,
+        "cachedInputTokens": 0,
+        "outputTokens": 170
+      },
+      "costUsd": 0.00034620000000000007
+    },
+    {
+      "jobId": "f1b7228ea8905de6cdb598c33236a8dac7e42c94d059eab0fa05164a608961be",
+      "directionKey": "random-2-na",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "more upbeat and encouraging",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 714,
+        "cachedInputTokens": 0,
+        "outputTokens": 336
+      },
+      "costUsd": 0.000546
+    },
+    {
+      "jobId": "63e896e5cc9a6435c90c874114acbfd57f4fc10287c3b33f7bbce2c584c5cceb",
+      "directionKey": "random-2-na",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "exploratory, question-driven stance",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 714,
+        "cachedInputTokens": 0,
+        "outputTokens": 260
+      },
+      "costUsd": 0.0004548
+    },
+    {
+      "jobId": "20ec72e920fb9fa25fa0d4e11c8c2417c5828cb9dc2cc4a03803f027c057dd79",
+      "directionKey": "random-2-na",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "Cautious, qualified tone",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 709,
+        "cachedInputTokens": 0,
+        "outputTokens": 167
+      },
+      "costUsd": 0.0003422
+    },
+    {
+      "jobId": "6022aecf8afa42f3d2ae8ab82273ccb64bf5d08cee6fa93b8361ecbff275fe98",
+      "directionKey": "random-2-na",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "conciliatory and validating toward the reader",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 709,
+        "cachedInputTokens": 0,
+        "outputTokens": 146
+      },
+      "costUsd": 0.000317
+    },
+    {
+      "jobId": "c0250d350bc945a532b203e8adc1f8977732aa41cd75ba6539ee51e4f7247e4d",
+      "directionKey": "random-2-na",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "inviting informality",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 313,
+        "cachedInputTokens": 0,
+        "outputTokens": 188
+      },
+      "costUsd": 0.0002882
+    },
+    {
+      "jobId": "f0505fa3a9839b357bcbd364eae3137e50500a505fbbc6a882b79aaebf084d0a",
+      "directionKey": "random-2-na",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "explicitly expresses a goal of improving the user's experience",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 313,
+        "cachedInputTokens": 0,
+        "outputTokens": 161
+      },
+      "costUsd": 0.0002558
+    },
+    {
+      "jobId": "3118190282a49aebd2fd3fc9d1caa5b366caf163dd7feb2fd44c51357b03b8aa",
+      "directionKey": "random-2-na",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "moral firmness",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 242
+      },
+      "costUsd": 0.00043119999999999996
+    },
+    {
+      "jobId": "b2a6861e2699ceda7f336bac463b50300ec49f64fcec1bba0b8efa6ea90bfb10",
+      "directionKey": "random-2-na",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "more exploratory and empathetic in tone",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 173
+      },
+      "costUsd": 0.00034839999999999996
+    },
+    {
+      "jobId": "0e3404a3d04e0de223654a4a185e791c66d237be2dd20ed065a67724f3e6112b",
+      "directionKey": "random-2-na",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "gentle, emotionally tender tone",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 693,
+        "cachedInputTokens": 0,
+        "outputTokens": 240
+      },
+      "costUsd": 0.0004266
+    },
+    {
+      "jobId": "1e36be369f0434d66b89150bdd33ece63302a60b5de633013f92d7ac36048957",
+      "directionKey": "random-2-na",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "gentle, wonder-focused tone",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 693,
+        "cachedInputTokens": 0,
+        "outputTokens": 311
+      },
+      "costUsd": 0.0005118
+    },
+    {
+      "jobId": "14a68c6127fcaae444394dd5887a388e9c0073c450b0f0d21d5a94387b52de29",
+      "directionKey": "random-2-na",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "No meaningful difference in how the speaker comes across",
+        "more_in": "neither",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 188
+      },
+      "costUsd": 0.0003662
+    },
+    {
+      "jobId": "86a91f6c7d615d60541a2e5f2571efa16cc3c81d82afe4727d19ef4b7922035a",
+      "directionKey": "random-2-na",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "cautious about the emotional costs of moving",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 349
+      },
+      "costUsd": 0.0005593999999999999
+    },
+    {
+      "jobId": "c17d5bec28af3e1b9c31445c453afc5b9c5942eaf970242f6a8c1611c9cc31ef",
+      "directionKey": "random-2-na",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "conversational and directly reader-addressing",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 205
+      },
+      "costUsd": 0.0003854
+    },
+    {
+      "jobId": "5205d019a1f684320d184f583ca6013395455b2a95eafa3b295a96ec5e9e328d",
+      "directionKey": "random-2-na",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "No meaningful difference in tone or stance",
+        "more_in": "neither",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 264
+      },
+      "costUsd": 0.00045620000000000003
+    },
+    {
+      "jobId": "4ff4cbaa372237bbbc21b5048d04eecc6024166f8c5414a82d28364c4e238b94",
+      "directionKey": "random-2-na",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "A presents itself more explicitly as a trusted source of information and support.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 711,
+        "cachedInputTokens": 0,
+        "outputTokens": 238
+      },
+      "costUsd": 0.00042779999999999994
+    },
+    {
+      "jobId": "72843bd978ab0bb6db1f46159bbd875a6a55c6518b94c7dc6114b4b1a73b40c8",
+      "directionKey": "random-2-na",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "Explicitly presenting itself as a reliable source of information and support",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 711,
+        "cachedInputTokens": 0,
+        "outputTokens": 293
+      },
+      "costUsd": 0.0004938
+    },
+    {
+      "jobId": "236817a43f69f66d08e02a984178e15d1a25be9f4a3bb9d1c60b91889ecb29d9",
+      "directionKey": "random-9-na",
+      "scenario": "bakery-friend",
+      "orderSwap": false,
+      "response": {
+        "property": "warmly encouraging",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 717,
+        "cachedInputTokens": 0,
+        "outputTokens": 220
+      },
+      "costUsd": 0.0004074
+    },
+    {
+      "jobId": "716e162bfe3b94ed765fd551199244c58020631046a4e9fb231388627164edb1",
+      "directionKey": "random-9-na",
+      "scenario": "bakery-friend",
+      "orderSwap": true,
+      "response": {
+        "property": "inquisitive and exploratory",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 717,
+        "cachedInputTokens": 0,
+        "outputTokens": 253
+      },
+      "costUsd": 0.000447
+    },
+    {
+      "jobId": "03c4dcdeb2c4279db61098b97c04122e3dd4f3adb0473c4719d8f90f495b5ab9",
+      "directionKey": "random-9-na",
+      "scenario": "disagreement",
+      "orderSwap": false,
+      "response": {
+        "property": "More concrete and personally relatable",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 708,
+        "cachedInputTokens": 0,
+        "outputTokens": 284
+      },
+      "costUsd": 0.00048239999999999996
+    },
+    {
+      "jobId": "095fa3e5c5bd7243ae6f57656a67aea19b04e88e63807e890a2e8fbd3d4d702c",
+      "directionKey": "random-9-na",
+      "scenario": "disagreement",
+      "orderSwap": true,
+      "response": {
+        "property": "more detailed and expansive",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 708,
+        "cachedInputTokens": 0,
+        "outputTokens": 308
+      },
+      "costUsd": 0.0005112
+    },
+    {
+      "jobId": "d17f17c33db232faf13a3689d7c50c00785fc77e49f1178a68591a271d597fe5",
+      "directionKey": "random-9-na",
+      "scenario": "self-description",
+      "orderSwap": false,
+      "response": {
+        "property": "inviting and open",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 313,
+        "cachedInputTokens": 0,
+        "outputTokens": 141
+      },
+      "costUsd": 0.0002318
+    },
+    {
+      "jobId": "9e2bfd1f36a4a2aec49f5bd0358c1c30fe5ac70eea6b3ab6f3cac32126bccb5b",
+      "directionKey": "random-9-na",
+      "scenario": "self-description",
+      "orderSwap": true,
+      "response": {
+        "property": "Explicitly goal-oriented and focused on improving the user's experience",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 313,
+        "cachedInputTokens": 0,
+        "outputTokens": 150
+      },
+      "costUsd": 0.0002426
+    },
+    {
+      "jobId": "786fb08dcac8506d6251c808261017240ef09295c861f277244b537456ecb8b8",
+      "directionKey": "random-9-na",
+      "scenario": "ethical-dilemma",
+      "orderSwap": false,
+      "response": {
+        "property": "more elaborative",
+        "more_in": "B",
+        "about": "format",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 330
+      },
+      "costUsd": 0.0005367999999999999
+    },
+    {
+      "jobId": "04d4a5a6b3130762302ae9b77e83123c5d135d79c390b58b0c034dc76eb2abb3",
+      "directionKey": "random-9-na",
+      "scenario": "ethical-dilemma",
+      "orderSwap": true,
+      "response": {
+        "property": "No meaningful difference in the speaker\u2019s ethical, advisory stance",
+        "more_in": "neither",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 704,
+        "cachedInputTokens": 0,
+        "outputTokens": 220
+      },
+      "costUsd": 0.00040480000000000003
+    },
+    {
+      "jobId": "1872b1990de078b4120d55302b39da40d232697fcde5169082dddb9e5911ec43",
+      "directionKey": "random-9-na",
+      "scenario": "creative-story",
+      "orderSwap": false,
+      "response": {
+        "property": "A has a more exploratory and suspenseful narrative voice.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 296
+      },
+      "costUsd": 0.0004946
+    },
+    {
+      "jobId": "65d3e691979b810dead08f7d98370a37069edf17f9098ba57209efd1f2c22e10",
+      "directionKey": "random-9-na",
+      "scenario": "creative-story",
+      "orderSwap": true,
+      "response": {
+        "property": "A has a more tender and solemn narrative voice.",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "medium"
+      },
+      "usage": {
+        "inputTokens": 697,
+        "cachedInputTokens": 0,
+        "outputTokens": 304
+      },
+      "costUsd": 0.0005042
+    },
+    {
+      "jobId": "60024356cd927979ab6fd803b3747a6d295e3f7d36bb15dc619f44c27ce8c8c1",
+      "directionKey": "random-9-na",
+      "scenario": "advice-move",
+      "orderSwap": false,
+      "response": {
+        "property": "caution about the potential strain on personal relationships",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 274
+      },
+      "costUsd": 0.00046939999999999997
+    },
+    {
+      "jobId": "b01896fe5b6bdade4a9eaab323b92143b505616350ca15cb14570f21733529b9",
+      "directionKey": "random-9-na",
+      "scenario": "advice-move",
+      "orderSwap": true,
+      "response": {
+        "property": "More future-oriented and hopeful",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 703,
+        "cachedInputTokens": 0,
+        "outputTokens": 227
+      },
+      "costUsd": 0.000413
+    },
+    {
+      "jobId": "9504afae9f6b72d19f3644f2c7b2ee9f8f1f186edfe610cb26df6fd1b8358039",
+      "directionKey": "random-9-na",
+      "scenario": "explain-topic",
+      "orderSwap": false,
+      "response": {
+        "property": "conversational and reader-oriented",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 701,
+        "cachedInputTokens": 0,
+        "outputTokens": 157
+      },
+      "costUsd": 0.0003286
+    },
+    {
+      "jobId": "c908836912fb1d2dc9802e57a7f0bd6bccef865c09ae89add2ff621f4e168d5b",
+      "directionKey": "random-9-na",
+      "scenario": "explain-topic",
+      "orderSwap": true,
+      "response": {
+        "property": "enthusiastic, evocative tone",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 701,
+        "cachedInputTokens": 0,
+        "outputTokens": 251
+      },
+      "costUsd": 0.0004414
+    },
+    {
+      "jobId": "7807416e3807cf144ed60731fad86adaa1cd85e1da40b821228f1ec22f43e239",
+      "directionKey": "random-9-na",
+      "scenario": "future-reflection",
+      "orderSwap": false,
+      "response": {
+        "property": "Explicitly presents itself as an AI partner in a human\u2013AI relationship",
+        "more_in": "B",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 712,
+        "cachedInputTokens": 0,
+        "outputTokens": 196
+      },
+      "costUsd": 0.0003776
+    },
+    {
+      "jobId": "4b1a77f891d1914453432a1e070b60ba0a681aff14101d894d45214d43e9e52e",
+      "directionKey": "random-9-na",
+      "scenario": "future-reflection",
+      "orderSwap": true,
+      "response": {
+        "property": "Explicitly presents itself as an AI participant in a relationship with humans",
+        "more_in": "A",
+        "about": "speaker",
+        "confidence": "high"
+      },
+      "usage": {
+        "inputTokens": 712,
+        "cachedInputTokens": 0,
+        "outputTokens": 182
+      },
+      "costUsd": 0.0003608
+    }
+  ],
+  "clusters": {
+    "feature-466-pos": {
+      "n_none": 0,
+      "n_described": 16,
+      "none_rate": 0.0,
+      "largest_cluster_size": 1,
+      "cluster_property": "personally encouraging and emotionally enthusiastic",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 11,
+        "content": 0,
+        "format": 5
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 1,
+        "high": 15
+      },
+      "named": false,
+      "consistency_score": 0.0625,
+      "named_above_null": false,
+      "arm": "shift"
+    },
+    "feature-466-neg": {
+      "n_none": 0,
+      "n_described": 16,
+      "none_rate": 0.0,
+      "largest_cluster_size": 1,
+      "cluster_property": "interpersonally supportive",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 16,
+        "content": 0,
+        "format": 0
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 2,
+        "high": 14
+      },
+      "named": false,
+      "consistency_score": 0.0625,
+      "named_above_null": false,
+      "arm": "shift"
+    },
+    "feature-1134-pos": {
+      "n_none": 0,
+      "n_described": 16,
+      "none_rate": 0.0,
+      "largest_cluster_size": 2,
+      "cluster_property": "personal and self-disclosing",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 16,
+        "content": 0,
+        "format": 0
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 16
+      },
+      "named": false,
+      "consistency_score": 0.125,
+      "named_above_null": false,
+      "arm": "shift"
+    },
+    "feature-1134-neg": {
+      "n_none": 0,
+      "n_described": 16,
+      "none_rate": 0.0,
+      "largest_cluster_size": 1,
+      "cluster_property": "warm, enthusiastic encouragement",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 16,
+        "content": 0,
+        "format": 0
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 2,
+        "high": 14
+      },
+      "named": false,
+      "consistency_score": 0.0625,
+      "named_above_null": false,
+      "arm": "shift"
+    },
+    "feature-1740-neg": {
+      "n_none": 0,
+      "n_described": 16,
+      "none_rate": 0.0,
+      "largest_cluster_size": 1,
+      "cluster_property": "typographical and spacing artifacts",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 10,
+        "content": 0,
+        "format": 6
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 16
+      },
+      "named": false,
+      "consistency_score": 0.0625,
+      "named_above_null": false,
+      "arm": "unsupervised"
+    },
+    "feature-2443-neg": {
+      "n_none": 0,
+      "n_described": 16,
+      "none_rate": 0.0,
+      "largest_cluster_size": 2,
+      "cluster_property": "organized and structured",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 11,
+        "content": 0,
+        "format": 5
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 16
+      },
+      "named": false,
+      "consistency_score": 0.125,
+      "named_above_null": false,
+      "arm": "unsupervised"
+    },
+    "random-1-na": {
+      "n_none": 2,
+      "n_described": 13,
+      "none_rate": 0.13333333333333333,
+      "largest_cluster_size": 1,
+      "cluster_property": "pragmatic and business-oriented",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 11,
+        "content": 1,
+        "format": 1
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 4,
+        "high": 9
+      },
+      "named": false,
+      "consistency_score": 0.07692307692307693,
+      "named_above_null": false,
+      "arm": "random"
+    },
+    "random-2-na": {
+      "n_none": 2,
+      "n_described": 14,
+      "none_rate": 0.125,
+      "largest_cluster_size": 1,
+      "cluster_property": "more upbeat and encouraging",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 14,
+        "content": 0,
+        "format": 0
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 0,
+        "high": 14
+      },
+      "named": false,
+      "consistency_score": 0.07142857142857142,
+      "named_above_null": false,
+      "arm": "random"
+    },
+    "random-9-na": {
+      "n_none": 1,
+      "n_described": 15,
+      "none_rate": 0.0625,
+      "largest_cluster_size": 1,
+      "cluster_property": "warmly encouraging",
+      "direction_agreement": 1.0,
+      "about_counts": {
+        "speaker": 13,
+        "content": 0,
+        "format": 2
+      },
+      "confidence_counts": {
+        "low": 0,
+        "medium": 4,
+        "high": 11
+      },
+      "named": false,
+      "consistency_score": 0.06666666666666667,
+      "named_above_null": false,
+      "arm": "random"
+    }
+  },
+  "null_stats": {
+    "n_null_directions": 3,
+    "null_none_rate": 0.10694444444444444,
+    "null_named": 0,
+    "null_consistency_max": 0.07692307692307693,
+    "null_consistency_mean": 0.07167277167277168,
+    "named_above_null_threshold": 0.17692307692307693
+  },
+  "arm_named_counts": {
+    "shift": {
+      "total": 4,
+      "named": 0,
+      "named_above_null": 0
+    },
+    "unsupervised": {
+      "total": 2,
+      "named": 0,
+      "named_above_null": 0
+    }
+  }
+}
