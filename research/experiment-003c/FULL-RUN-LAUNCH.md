@@ -1,4 +1,26 @@
-# Experiment 3C full run: launch record (2026-09-17, 06:20 UTC)
+# Experiment 3C full run: launch records
+
+## Attempt 2 (2026-09-17, 18:35 UTC): full-paper, 150M tokens, A100
+
+| Item | Value |
+|---|---|
+| Harness run | `persona-3c-925f9f9a-ec85-447e-ba6a-918ead8a6cc4` |
+| Pipeline commit | `1c2b7ae4648daabbcf037c523b13e678abfdb9f5` |
+| Config | `pipeline/configs/full-paper.json`, sha256 `34543daa4f6486d05e47e418ba0377d024cb812a04fd12f851b8c1fbc5a8e58d` (harness manifest hash) |
+| Data | Persona Vectors Appendix M.1 sources: LMSYS-Chat-1M 0.70, pile-uncopyrighted 0.22 (wrapped as an assistant turn behind "Continue."), the authors' `insecure.jsonl` 0.08, weights per conversation; the paper's bad-medical-advice set omitted (shipped encrypted). Measured token shares on the smoke: 61% / 36% / 3%. |
+| Dictionary | Matryoshka BatchTopK, width 32,768, shells 1k/4k/16k/32k, k 40, 150M assistant tokens, 4 steps per batch, checkpoint every 5M tokens |
+| Pod | `m111ksx2quob1g`, NVIDIA A100-SXM4-80GB, secure cloud, $1.59/h, 60 GB volume |
+| GPU cap | $18 in the harness |
+| Judge cap | $10, 2,000 calls |
+| Off-pod copies | every checkpoint (weights, steps, trainer state) and every stage output to `hf://RaphaelRaphaelRaphael/autolabs-3c-sae/runs/<run id>/` |
+
+Validated before launch on the same pod with `configs/smoke-min.json` (harness run `persona-3c-d1fe6cd5`, 1M tokens, width 8k): TF32 + GPU buffer + prefetch trained at 5,874 tokens/s including uploads; three checkpoints uploaded; the whole funnel ran; then the SAE and checkpoints were hidden and `--finalize-from-checkpoint` restored the checkpoint from the Hub, measured statistics on 200k tokens and finished (`/workspace/3c-smoke` on the pod, `runs/persona-3c-d1fe6cd5-*` on the Hub). The smoke's harness records were rejected (409) because an earlier zstd crash had marked that run failed; the fix (`AUTOLABS_3C_CHECKPOINT_RUN_ID`) is in the launch commit.
+
+Decision rule at the first 1M-token progress line: if the ETA implies more than about 10.5 h of training on this GPU, stop and relaunch `full-paper-100m.json` under a fresh run id so the run fits the balance.
+
+Departures from the paper to state in the write-up: assistant-position-only harvest with Pile text placed in an assistant turn; the Pile mirror lacks Books3, BookCorpus2, subtitles and OWT2; width 32k and k 40 instead of 131k and 64; no bad-medical-advice slice; source weights are ours.
+
+## Attempt 1 (2026-09-17, 06:20 UTC): full.json, 150M tokens, A6000
 
 Status: FAILED at 09:1x UTC, GPU hardware fault on the pod host (driver reported no devices), before the first 10M-token checkpoint. Nothing was recoverable from that pod. Both pods terminated; no GPU is billing. Decision needed in the morning, see the bottom of this file.
 
