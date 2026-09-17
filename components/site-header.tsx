@@ -18,6 +18,7 @@ const researchDestinations: Destination[] = [
   { href: '/experiments/erdos-885', label: 'Erdős 885', description: 'The combinatorics benchmark and live lab', keywords: 'erdos 885 math benchmark lab' },
   { href: '/experiments/reward-compatibility', label: 'Reward Compatibility', description: 'Compatibility reward experiments and results', keywords: 'reward compatibility categories results' },
   { href: '/experiments/persona-discovery', label: 'Persona Discovery', description: 'Persona direction studies and evidence', keywords: 'persona discovery steering evidence' },
+  { href: '/experiments/persona-discovery-3c', label: 'Experiment 3C', description: 'SAE pipeline walkthrough, visual run replay and the planned full run', keywords: 'experiment 3c sae sparse autoencoder walkthrough replay runpod' },
 ];
 
 const destinations: Destination[] = [
