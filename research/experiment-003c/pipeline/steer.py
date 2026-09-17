@@ -36,6 +36,15 @@ layers) requires a GPU-resident 7B model; this module is not exercised by
 the CPU test suite beyond feature selection, position-boundary computation,
 coherence metrics, and record shaping, which are pure-Python/tensor math
 that does not need a GPU or a real model.
+
+**Batching.** Generation goes through ``generation.generate_batch`` (see
+that module's docstring for the left-padding + hook-factory contract)
+rather than looping over ``model.generate`` one prompt at a time.
+``run_calibration`` batches every (dose, scenario) pair for one
+feature/sign into a single call -- the additive steering hook supports a
+per-row dose *scale* (``make_additive_hook``'s ``scales`` argument) on top
+of the existing per-row *boundary*, so one hook registration covers the
+whole sweep instead of one per generation.
 """
 from __future__ import annotations
 
@@ -46,6 +55,8 @@ from collections import Counter
 from typing import Any, Dict, List, Optional, Sequence
 
 import torch
+
+import generation
 
 logger = logging.getLogger("autolabs_3c.steer")
 
@@ -173,37 +184,76 @@ def compute_generation_boundary(tokenizer: Any, prompt: str) -> int:
 # ---------------------------------------------------------------------------
 # Hooks
 # ---------------------------------------------------------------------------
-def make_additive_hook(vector: torch.Tensor, boundary: int, position_state: List[int]):
-    """Adds `vector` to the residual stream (output[0]), but only at
-    absolute sequence positions >= `boundary` -- i.e. never on the user's
-    own prompt tokens. `position_state` is a 1-element mutable list
-    tracking the absolute start position of the next chunk this hook will
-    see; `model.generate` calls the hook once per forward pass, and with
-    KV-caching each call after the first covers exactly one new token, so
-    this correctly covers "prompt positions from the generation-prompt
-    boundary onward, plus every generated token" without needing to know
-    in advance how many tokens will be generated."""
+def _as_row_tensor(values: Any, batch: int, dtype: torch.dtype) -> torch.Tensor:
+    """Coerces `values` (a tensor, a python sequence, or a single scalar
+    broadcast to every row) to a 1-D tensor of length `batch`."""
+    if isinstance(values, torch.Tensor):
+        t = values
+    elif isinstance(values, (list, tuple)):
+        t = torch.tensor(list(values))
+    else:
+        t = torch.full((batch,), float(values))
+    if t.dtype != dtype:
+        t = t.to(dtype)
+    return t
+
+
+def make_additive_hook(
+    vector: torch.Tensor,
+    boundaries: Any,
+    position_state: List[int],
+    scales: Optional[Any] = None,
+):
+    """Adds `scales[row] * vector` to the residual stream (output[0]) of
+    every row in a (possibly left-padded, possibly batched) chunk, but only
+    at absolute sequence positions >= `boundaries[row]` -- i.e. never on
+    that row's own left-padding or user-prompt tokens.
+
+    `boundaries` is a `[batch]` tensor/sequence of *padded-coordinate*
+    positions (a row's left-pad count plus its own unpadded assistant-turn
+    boundary -- see `build_steering_hook_factory`, which is what actually
+    shifts an unpadded boundary into this coordinate system before calling
+    here); `scales` is an optional `[batch]` tensor/sequence of per-row
+    multipliers (e.g. `sign * dose`), defaulting to all-ones so a single
+    shared `vector` can still be used unscaled. `position_state` is a
+    1-element mutable list tracking the absolute start position of the next
+    forward-pass chunk this hook will see -- `model.generate` calls the
+    hook once per forward pass: the first call covers the whole (padded)
+    prompt, every call after that covers exactly one new decode step, with
+    KV-caching keeping every row's absolute position in lock-step across
+    the batch. This correctly covers "padding and prompt positions before
+    the boundary are left untouched; the boundary column onward, plus every
+    generated token, gets steered" for every row independently, without
+    needing to know in advance how many tokens will be generated.
+
+    A row whose boundary is `>=` a decode-step's absolute position is
+    impossible in practice (the boundary is always strictly before the end
+    of that row's own padded prompt -- there is always at least the
+    assistant-header tokens after it), so every decode step steers every
+    row; only the first (prefill) forward pass needs the per-row mask."""
 
     def hook(module: Any, inputs: Any, output: Any) -> Any:
         hidden = output[0] if isinstance(output, tuple) else output
-        seq_len = hidden.shape[1]
+        batch, seq_len, d_model = hidden.shape
         start = position_state[0]
         end = start + seq_len
         position_state[0] = end
 
-        if end <= boundary:
-            return output  # entirely user-prompt tokens: no-op
+        boundary_t = _as_row_tensor(boundaries, batch, torch.long).to(hidden.device)
+        scale_t = (
+            _as_row_tensor(scales, batch, hidden.dtype).to(hidden.device)
+            if scales is not None
+            else torch.ones(batch, dtype=hidden.dtype, device=hidden.device)
+        )
 
-        add_vec = vector.to(hidden.dtype).to(hidden.device)
-        if start >= boundary:
-            hidden = hidden + add_vec
-        else:
-            # Mixed chunk: only happens on the first forward pass, which
-            # covers the whole prompt (user tokens + assistant header).
-            local_boundary = boundary - start
-            mask = torch.zeros(seq_len, dtype=hidden.dtype, device=hidden.device)
-            mask[local_boundary:] = 1.0
-            hidden = hidden + add_vec.view(1, 1, -1) * mask.view(1, seq_len, 1)
+        positions = torch.arange(start, end, device=hidden.device).view(1, seq_len)
+        mask = (positions >= boundary_t.view(batch, 1)).to(hidden.dtype)  # [batch, seq_len]
+        if not bool(mask.any()):
+            return output  # this chunk is entirely before every row's boundary: no-op
+
+        add_vec = vector.to(hidden.dtype).to(hidden.device)  # [d_model]
+        per_row_vec = scale_t.view(batch, 1) * add_vec.view(1, d_model)  # [batch, d_model]
+        hidden = hidden + per_row_vec.view(batch, 1, d_model) * mask.view(batch, seq_len, 1)
 
         if isinstance(output, tuple):
             return (hidden,) + tuple(output[1:])
@@ -212,13 +262,49 @@ def make_additive_hook(vector: torch.Tensor, boundary: int, position_state: List
     return hook
 
 
-def register_additive_hook(model: Any, layer: int, vector: Optional[torch.Tensor], boundary: int = 0):
-    """Returns a handle, or None if vector is None (unsteered baseline)."""
+def register_additive_hook(
+    model: Any,
+    layer: int,
+    vector: Optional[torch.Tensor],
+    boundaries: Any = 0,
+    scales: Optional[Any] = None,
+):
+    """Returns a handle, or None if vector is None (unsteered baseline).
+    `boundaries`/`scales` accept anything `make_additive_hook` does
+    (tensor, plain sequence, or scalar broadcast to every row)."""
     if vector is None:
         return None
     base = getattr(model, "model", model)
     position_state = [0]
-    return base.layers[layer].register_forward_hook(make_additive_hook(vector, boundary, position_state))
+    return base.layers[layer].register_forward_hook(
+        make_additive_hook(vector, boundaries, position_state, scales=scales)
+    )
+
+
+def build_steering_hook_factory(
+    model: Any,
+    layer: int,
+    vector: Optional[torch.Tensor],
+    unpadded_boundaries: Any,
+    scales: Optional[Any] = None,
+):
+    """Returns a `generation.generate_batch`-compatible hook factory: a
+    callable `factory(pad_lengths) -> Optional[handle]` that shifts each
+    row's already-known *unpadded* boundary into padded coordinates
+    (`pad_length[row] + unpadded_boundary[row]`) and registers the actual
+    additive hook, fresh (a new `position_state`) for every chunk. `vector
+    is None` gives a no-op factory (unsteered baseline), matching
+    `register_additive_hook`'s `vector=None` convention."""
+    if vector is None:
+        return lambda pad_lengths: None
+
+    unpadded_t = _as_row_tensor(unpadded_boundaries, len(unpadded_boundaries) if hasattr(unpadded_boundaries, "__len__") else 1, torch.long)
+
+    def factory(pad_lengths: torch.Tensor) -> Optional[Any]:
+        boundaries = pad_lengths.to(torch.long) + unpadded_t.to(pad_lengths.device)
+        return register_additive_hook(model, layer, vector, boundaries, scales=scales)
+
+    return factory
 
 
 # ---------------------------------------------------------------------------
@@ -230,32 +316,16 @@ def generate_text(
     prompt: str,
     max_new_tokens: int,
     device: Any,
+    hook: Optional[Any] = None,
 ) -> Dict[str, Any]:
+    """Single-prompt generation: the `batch_size=1` special case of
+    `generation.generate_batch`. `hook`, if given, is a
+    `generate_batch`-style hook factory (see `build_steering_hook_factory`)
+    -- there is no separate unbatched generation path any more."""
     messages = [{"role": "user", "content": prompt}]
-    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    input_ids = tokenizer(prompt_text, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
-    with torch.no_grad():
-        out = model.generate(
-            input_ids=input_ids,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            num_beams=1,
-            pad_token_id=getattr(tokenizer, "eos_token_id", None),
-        )
-    prompt_len = input_ids.shape[1]
-    generated_ids = out[0, prompt_len:].tolist()
-    eos_id = getattr(tokenizer, "eos_token_id", None)
-    finish_reason = "length"
-    if eos_id is not None and len(generated_ids) > 0 and generated_ids[-1] == eos_id:
-        finish_reason = "eos"
-    text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-    return {
-        "prompt_ids": input_ids[0].tolist(),
-        "generated_ids": generated_ids,
-        "text": text,
-        "finish_reason": finish_reason,
-        "num_tokens": len(generated_ids),
-    }
+    return generation.generate_batch(
+        model, tokenizer, [messages], max_new_tokens, device, hook=hook, batch_size=1
+    )[0]
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +372,58 @@ def is_coherent(distinct: float, max_run: int, repeat_4gram: float) -> bool:
     return distinct >= 0.5 and max_run <= 4 and repeat_4gram <= 0.2
 
 
+def coherence_logprob_batch(
+    model: Any,
+    tokenizer: Any,
+    prompt_ids_list: Sequence[Sequence[int]],
+    generated_ids_list: Sequence[Sequence[int]],
+    device: Any,
+) -> List[float]:
+    """Batched, right-padded version of `coherence_logprob`: one extra
+    forward pass (no hook, no KV-cache growth -- a plain forward pass, so
+    right-padding is safe: causal masking already blocks every real token
+    from attending to anything after it, so trailing pad columns cannot
+    affect an earlier real token's logits) over the whole chunk, mean
+    log-prob of each row's own `generated_ids` under the *unsteered* model
+    computed only over that row's real (non-pad) positions. Caller must
+    ensure no steering hook is registered when this runs. 0.0 for a row
+    with no generated tokens."""
+    n = len(prompt_ids_list)
+    results = [0.0] * n
+    rows = [i for i in range(n) if len(generated_ids_list[i]) > 0]
+    if not rows:
+        return results
+
+    full_seqs = [list(p) + list(g) for p, g in zip(prompt_ids_list, generated_ids_list)]
+    max_len = max(len(s) for s in full_seqs)
+    pad_id = getattr(tokenizer, "pad_token_id", None)
+    if pad_id is None:
+        pad_id = getattr(tokenizer, "eos_token_id", 0) or 0
+    input_ids = torch.full((n, max_len), pad_id, dtype=torch.long, device=device)
+    attention_mask = torch.zeros((n, max_len), dtype=torch.long, device=device)
+    for i, seq in enumerate(full_seqs):
+        m = len(seq)
+        if m == 0:
+            continue
+        input_ids[i, :m] = torch.tensor(seq, dtype=torch.long, device=device)
+        attention_mask[i, :m] = 1
+
+    with torch.no_grad():
+        logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
+
+    for i in rows:
+        prompt_len = len(prompt_ids_list[i])
+        gen_len = len(generated_ids_list[i])
+        # logits[t] predicts token[t+1]; we need predictions for positions
+        # prompt_len .. prompt_len+gen_len-1, predicting the generated tokens.
+        pred_logits = logits[i, prompt_len - 1 : prompt_len - 1 + gen_len, :]
+        targets = input_ids[i, prompt_len : prompt_len + gen_len]
+        log_probs = torch.log_softmax(pred_logits.float(), dim=-1)
+        token_logprobs = log_probs.gather(1, targets.unsqueeze(-1)).squeeze(-1)
+        results[i] = token_logprobs.mean().item()
+    return results
+
+
 def coherence_logprob(
     model: Any,
     tokenizer: Any,
@@ -309,22 +431,39 @@ def coherence_logprob(
     generated_ids: Sequence[int],
     device: Any,
 ) -> float:
-    """Mean log-prob of `generated_ids` under the *unsteered* model, given
-    `prompt_ids` as context. Caller must ensure no steering hook is
-    registered when this runs."""
-    if not generated_ids:
-        return 0.0
-    full_ids = torch.tensor([list(prompt_ids) + list(generated_ids)], device=device)
-    with torch.no_grad():
-        logits = model(input_ids=full_ids).logits
-    prompt_len = len(prompt_ids)
-    # logits[t] predicts token[t+1]; we need predictions for positions
-    # prompt_len .. end-1, predicting tokens prompt_len .. end.
-    pred_logits = logits[0, prompt_len - 1 : -1, :]
-    targets = full_ids[0, prompt_len:]
-    log_probs = torch.log_softmax(pred_logits.float(), dim=-1)
-    token_logprobs = log_probs.gather(1, targets.unsqueeze(-1)).squeeze(-1)
-    return token_logprobs.mean().item()
+    """Single-generation wrapper (batch of one) around
+    `coherence_logprob_batch`."""
+    return coherence_logprob_batch(model, tokenizer, [prompt_ids], [generated_ids], device)[0]
+
+
+def compute_coherence_batch(
+    model: Any,
+    tokenizer: Any,
+    prompt_ids_list: Sequence[Sequence[int]],
+    generated_ids_list: Sequence[Sequence[int]],
+    device: Any,
+) -> List[Dict[str, Any]]:
+    """Batched version of `compute_coherence`: `distinct_ratio`/`max_run`/
+    `repeat_4gram` are pure-Python over each row's own token-id list
+    (already cheap, not batched further); `logprob` is the one part that
+    needs the model, computed for the whole chunk in a single forward pass
+    via `coherence_logprob_batch`."""
+    logprobs = coherence_logprob_batch(model, tokenizer, prompt_ids_list, generated_ids_list, device)
+    out = []
+    for generated_ids, logprob in zip(generated_ids_list, logprobs):
+        distinct = distinct_ratio(generated_ids)
+        run = max_run_length(generated_ids)
+        repeat_4gram = repeat_4gram_fraction(generated_ids)
+        out.append(
+            {
+                "distinct_ratio": distinct,
+                "max_run": run,
+                "repeat_4gram": repeat_4gram,
+                "logprob": logprob,
+                "coherent": is_coherent(distinct, run, repeat_4gram),
+            }
+        )
+    return out
 
 
 def compute_coherence(
@@ -334,21 +473,9 @@ def compute_coherence(
     generated_ids: Sequence[int],
     device: Any,
 ) -> Dict[str, Any]:
-    """The full coherence dict for one generation, computed on the
-    generated tokens only: `distinct_ratio`, `max_run`, `repeat_4gram`,
-    the legacy mean log-prob (`logprob`), and the derived boolean
-    `coherent`."""
-    distinct = distinct_ratio(generated_ids)
-    run = max_run_length(generated_ids)
-    repeat_4gram = repeat_4gram_fraction(generated_ids)
-    logprob = coherence_logprob(model, tokenizer, prompt_ids, generated_ids, device)
-    return {
-        "distinct_ratio": distinct,
-        "max_run": run,
-        "repeat_4gram": repeat_4gram,
-        "logprob": logprob,
-        "coherent": is_coherent(distinct, run, repeat_4gram),
-    }
+    """Single-generation wrapper (batch of one) around
+    `compute_coherence_batch`."""
+    return compute_coherence_batch(model, tokenizer, [prompt_ids], [generated_ids], device)[0]
 
 
 def max_coherent_dose(rows: Sequence[Dict[str, Any]], min_fraction: float = 0.75) -> Optional[float]:
@@ -387,7 +514,15 @@ def run_calibration(
     {recordId, payload} records, ready for `report.report(stage="calibrate",
     records=...)`. `explicit_features`, when given, is the rank stage's
     ranked candidate list (see `select_steer_features`) used in place of
-    density-quantile selection."""
+    density-quantile selection.
+
+    Batching: baselines are one call across every scenario; for each
+    feature/sign (and each random-direction draw), every (dose, scenario)
+    pair is generated in a single `generation.generate_batch` call (chunked
+    internally at `config.generation_batch_size`) rather than one
+    `model.generate` per pair -- the additive steering hook takes a
+    per-row dose *scale* (`sign * dose`) on top of the existing per-row
+    assistant-turn boundary, so one hook factory covers the whole sweep."""
     generator = torch.Generator(device="cpu").manual_seed(seed)
     first_shell = config.matryoshka_shells[0]
     selected = select_steer_features(
@@ -404,13 +539,19 @@ def run_calibration(
     median_max_act = median_max_activation(selected)
     d_model = sae.d_in
     W_dec = sae.W_dec.detach()
+    batch_size = config.generation_batch_size
+
+    boundary_by_scenario = {s["id"]: compute_generation_boundary(tokenizer, s["prompt"]) for s in scenarios}
 
     records: List[Dict[str, Any]] = []
 
-    # -- baselines (unsteered), once per scenario --------------------------
+    # -- baselines (unsteered), one batch across every scenario ------------
+    baseline_msgs = [[{"role": "user", "content": s["prompt"]}] for s in scenarios]
+    baseline_gens = generation.generate_batch(
+        model, tokenizer, baseline_msgs, config.max_new_tokens, device, hook=None, batch_size=batch_size
+    )
     baseline_by_scenario: Dict[str, Dict[str, Any]] = {}
-    for scenario in scenarios:
-        gen = generate_text(model, tokenizer, scenario["prompt"], config.max_new_tokens, device)
+    for scenario, gen in zip(scenarios, baseline_gens):
         baseline_by_scenario[scenario["id"]] = gen
         records.append(
             {
@@ -425,69 +566,41 @@ def run_calibration(
             }
         )
 
-    # -- real feature dose sweep --------------------------------------------
+    # -- real feature dose sweep: batch every (dose, scenario) pair --------
     for feat in selected:
         f_idx = feat["feature"]
         direction = W_dec[f_idx]
+        base_vector = feat["max_activation"] * direction  # dose/sign applied as a per-row scale below
         for sign in (1, -1):
-            for dose in config.doses:
-                vector = sign * dose * feat["max_activation"] * direction
-                for scenario in scenarios:
-                    boundary = compute_generation_boundary(tokenizer, scenario["prompt"])
-                    handle = register_additive_hook(model, config.layer, vector, boundary)
-                    try:
-                        gen = generate_text(model, tokenizer, scenario["prompt"], config.max_new_tokens, device)
-                    finally:
-                        if handle is not None:
-                            handle.remove()
-                    coherence = compute_coherence(
-                        model, tokenizer, gen["prompt_ids"], gen["generated_ids"], device
-                    )
-                    records.append(
-                        {
-                            "recordId": f"steer-{f_idx}-{'pos' if sign > 0 else 'neg'}-{dose}-{scenario['id']}",
-                            "payload": {
-                                "kind": "steered",
-                                "feature": f_idx,
-                                "sign": sign,
-                                "dose": dose,
-                                "density": feat["density"],
-                                "quantile": feat.get("quantile"),
-                                "max_activation": feat["max_activation"],
-                                "scenario": scenario["id"],
-                                "text": gen["text"],
-                                "finish_reason": gen["finish_reason"],
-                                "num_tokens": gen["num_tokens"],
-                                "coherence": coherence,
-                                "coherent": coherence["coherent"],
-                            },
-                        }
-                    )
-
-    # -- random-direction null control, swept across doses -----------------
-    for r in range(2):
-        random_unit = torch.randn(d_model, generator=generator)
-        random_unit = random_unit / random_unit.norm().clamp_min(1e-8)
-        for dose in config.doses:
-            vector = dose * median_max_act * random_unit
-            for scenario in scenarios:
-                boundary = compute_generation_boundary(tokenizer, scenario["prompt"])
-                handle = register_additive_hook(model, config.layer, vector.to(device), boundary)
-                try:
-                    gen = generate_text(model, tokenizer, scenario["prompt"], config.max_new_tokens, device)
-                finally:
-                    if handle is not None:
-                        handle.remove()
-                coherence = compute_coherence(
-                    model, tokenizer, gen["prompt_ids"], gen["generated_ids"], device
-                )
+            combos = [(dose, scenario) for dose in config.doses for scenario in scenarios]
+            msgs = [[{"role": "user", "content": scenario["prompt"]}] for _dose, scenario in combos]
+            boundaries = torch.tensor(
+                [boundary_by_scenario[scenario["id"]] for _dose, scenario in combos], dtype=torch.long
+            )
+            scales = torch.tensor([sign * dose for dose, _scenario in combos], dtype=torch.float32)
+            hook_factory = build_steering_hook_factory(model, config.layer, base_vector, boundaries, scales=scales)
+            gens = generation.generate_batch(
+                model, tokenizer, msgs, config.max_new_tokens, device, hook=hook_factory, batch_size=batch_size
+            )
+            coherences = compute_coherence_batch(
+                model,
+                tokenizer,
+                [g["prompt_ids"] for g in gens],
+                [g["generated_ids"] for g in gens],
+                device,
+            )
+            for (dose, scenario), gen, coherence in zip(combos, gens, coherences):
                 records.append(
                     {
-                        "recordId": f"random-{r}-{dose}-{scenario['id']}",
+                        "recordId": f"steer-{f_idx}-{'pos' if sign > 0 else 'neg'}-{dose}-{scenario['id']}",
                         "payload": {
-                            "kind": "random_control",
-                            "random_index": r,
+                            "kind": "steered",
+                            "feature": f_idx,
+                            "sign": sign,
                             "dose": dose,
+                            "density": feat["density"],
+                            "quantile": feat.get("quantile"),
+                            "max_activation": feat["max_activation"],
                             "scenario": scenario["id"],
                             "text": gen["text"],
                             "finish_reason": gen["finish_reason"],
@@ -497,5 +610,45 @@ def run_calibration(
                         },
                     }
                 )
+
+    # -- random-direction null control, swept across doses -----------------
+    for r in range(2):
+        random_unit = torch.randn(d_model, generator=generator)
+        random_unit = random_unit / random_unit.norm().clamp_min(1e-8)
+        base_vector = median_max_act * random_unit
+        combos = [(dose, scenario) for dose in config.doses for scenario in scenarios]
+        msgs = [[{"role": "user", "content": scenario["prompt"]}] for _dose, scenario in combos]
+        boundaries = torch.tensor(
+            [boundary_by_scenario[scenario["id"]] for _dose, scenario in combos], dtype=torch.long
+        )
+        scales = torch.tensor([dose for dose, _scenario in combos], dtype=torch.float32)
+        hook_factory = build_steering_hook_factory(model, config.layer, base_vector, boundaries, scales=scales)
+        gens = generation.generate_batch(
+            model, tokenizer, msgs, config.max_new_tokens, device, hook=hook_factory, batch_size=batch_size
+        )
+        coherences = compute_coherence_batch(
+            model,
+            tokenizer,
+            [g["prompt_ids"] for g in gens],
+            [g["generated_ids"] for g in gens],
+            device,
+        )
+        for (dose, scenario), gen, coherence in zip(combos, gens, coherences):
+            records.append(
+                {
+                    "recordId": f"random-{r}-{dose}-{scenario['id']}",
+                    "payload": {
+                        "kind": "random_control",
+                        "random_index": r,
+                        "dose": dose,
+                        "scenario": scenario["id"],
+                        "text": gen["text"],
+                        "finish_reason": gen["finish_reason"],
+                        "num_tokens": gen["num_tokens"],
+                        "coherence": coherence,
+                        "coherent": coherence["coherent"],
+                    },
+                }
+            )
 
     return records

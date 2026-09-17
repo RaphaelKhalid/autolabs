@@ -25,6 +25,7 @@
   "steer_scenarios": 4,
   "doses": [0.25, 0.5, 1.0, 2.0],
   "max_new_tokens": 256,
+  "generation_batch_size": 8,
   "firing_density_min": 1e-4,
   "firing_density_max": 0.1,
   "screen_scenarios": 8,

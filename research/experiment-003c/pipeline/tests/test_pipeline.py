@@ -71,13 +71,33 @@ def test_config_from_json_smoke_and_full(tmp_path):
     assert smoke.sae_width == 8192
     assert full.sae_width == 32768
     assert full.matryoshka_shells == [1024, 4096, 16384, 32768]
-    assert full.tokens_target == 100_000_000
+    assert full.tokens_target == 150_000_000
     assert full.steer_features == 256
     assert full.steer_scenarios == 24
     assert smoke.train_steps_per_batch == 4
     assert smoke.lr_warmup_steps == 500
     assert full.train_steps_per_batch == 8
     assert full.lr_warmup_steps == 500
+    # Batched generation (see generation.py): smoke chunks 8 prompts per
+    # model.generate call, full chunks 24.
+    assert smoke.generation_batch_size == 8
+    assert full.generation_batch_size == 24
+    assert full.max_new_tokens == 512
+    assert full.checkpoint_every_tokens == 10_000_000
+    assert full.judge_budget_usd == 10
+    assert full.judge_call_ceiling == 2000
+    assert full.describe_top_n == 40
+    assert full.screen_scenarios == 24
+    assert full.random_directions == 20
+
+
+def test_config_defaults_generation_batch_size_is_8():
+    assert Config().generation_batch_size == 8
+
+
+def test_config_rejects_zero_generation_batch_size():
+    with pytest.raises(ValueError):
+        Config(generation_batch_size=0)
 
 
 def test_config_rejects_unknown_key():

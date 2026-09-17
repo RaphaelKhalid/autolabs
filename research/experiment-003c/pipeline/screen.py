@@ -31,6 +31,15 @@ on a GPU and is not exercised by the CPU test suite, mirroring steer.py.
 Everything else here (the hashed lexical vector, the leave-one-scenario-out
 logistic regression + AUC, direction consistency vs. a null, and the dose-
 bookkeeping helpers) is pure numpy/Python and is unit-tested.
+
+**Batching.** Every generation loop here goes through
+``generation.generate_batch`` instead of one ``model.generate`` per
+scenario: baselines are one batch across ``screen_scenarios``, a control's
+mini dose sweep batches every (sign, dose, scenario) triple, and a
+direction's steered set batches across its scenarios. Residual-stream
+capture (``capture_mean_residual``) is likewise batched
+(``capture_mean_residual_batch``/``capture_generated_hidden_batch``),
+mean-pooling each row over only its own real generated-token positions.
 """
 from __future__ import annotations
 
@@ -43,6 +52,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import torch
 
+import generation
 import steer
 
 logger = logging.getLogger("autolabs_3c.screen")
@@ -331,24 +341,48 @@ def median_dose_with_fallback(values: Sequence[Optional[float]], fallback: float
 # ---------------------------------------------------------------------------
 # Model-touching helpers (need a real transformers model + GPU)
 # ---------------------------------------------------------------------------
-def capture_mean_residual(
-    model: Any, layer: int, prompt_ids: Sequence[int], generated_ids: Sequence[int], device: Any
-) -> np.ndarray:
-    """Mean-pool the layer's residual stream over generated-token positions
-    only, via one extra forward pass over the full (prompt + generated)
-    sequence with a forward hook -- the same "extra pass with a capture
-    hook" pattern ``steer.coherence_logprob`` already uses. This module
-    runs after the full (untruncated) model is restored for steering, so
-    it registers its own light hook on the live decoder layer rather than
-    reusing ``harvest.ActivationHarvester`` (which truncates every layer
-    past ``layer``, and is only meant for the harvest stage's forward-only,
-    no-generation pass)."""
-    base = getattr(model, "model", model)
-    d_model = model.config.hidden_size
-    if not generated_ids:
-        return np.zeros(d_model, dtype=np.float64)
+def capture_generated_hidden_batch(
+    model: Any,
+    layer: int,
+    prompt_ids_list: Sequence[Sequence[int]],
+    generated_ids_list: Sequence[Sequence[int]],
+    device: Any,
+) -> List[torch.Tensor]:
+    """Batched capture of the layer's residual stream at each row's own
+    generated-token positions only, via one extra forward pass (no
+    generation, no KV-cache growth -- a plain forward pass, so right
+    padding is safe: causal masking already blocks every real token from
+    attending to anything after it, so trailing pad columns cannot affect
+    an earlier real token's hidden state) over the whole (prompt +
+    generated) batch with a forward hook -- the same "extra pass with a
+    capture hook" pattern ``steer.coherence_logprob_batch`` uses. This
+    module runs after the full (untruncated) model is restored for
+    steering, so it registers its own light hook on the live decoder layer
+    rather than reusing ``harvest.ActivationHarvester`` (which truncates
+    every layer past ``layer``, and is only meant for the harvest stage's
+    forward-only, no-generation pass).
 
-    full_ids = torch.tensor([list(prompt_ids) + list(generated_ids)], device=device)
+    Returns one `[gen_len_i, d_model]` tensor per row (zero rows for a row
+    with no generated tokens), padding entirely ignored by indexing each
+    row's own real (prompt_len, prompt_len + gen_len) slice directly rather
+    than via an explicit mask."""
+    base = getattr(model, "model", model)
+    n = len(prompt_ids_list)
+    d_model = model.config.hidden_size
+    full_seqs = [list(p) + list(g) for p, g in zip(prompt_ids_list, generated_ids_list)]
+    max_len = max((len(s) for s in full_seqs), default=0)
+    if max_len == 0:
+        return [torch.zeros(0, d_model) for _ in range(n)]
+
+    input_ids = torch.zeros(n, max_len, dtype=torch.long, device=device)
+    attention_mask = torch.zeros(n, max_len, dtype=torch.long, device=device)
+    for i, seq in enumerate(full_seqs):
+        m = len(seq)
+        if m == 0:
+            continue
+        input_ids[i, :m] = torch.tensor(seq, dtype=torch.long, device=device)
+        attention_mask[i, :m] = 1
+
     captured: Dict[str, torch.Tensor] = {}
 
     def hook(module: Any, inputs: Any, output: Any) -> None:
@@ -357,34 +391,59 @@ def capture_mean_residual(
     handle = base.layers[layer].register_forward_hook(hook)
     try:
         with torch.no_grad():
-            model(input_ids=full_ids)
+            model(input_ids=input_ids, attention_mask=attention_mask)
     finally:
         handle.remove()
 
-    hidden = captured["hidden"][0]
-    prompt_len = len(prompt_ids)
-    gen_hidden = hidden[prompt_len:]
-    return gen_hidden.float().mean(dim=0).cpu().numpy().astype(np.float64)
+    hidden = captured["hidden"]
+    out: List[torch.Tensor] = []
+    for i in range(n):
+        prompt_len = len(prompt_ids_list[i])
+        gen_len = len(generated_ids_list[i])
+        if gen_len == 0:
+            out.append(torch.zeros(0, hidden.shape[-1]))
+        else:
+            out.append(hidden[i, prompt_len : prompt_len + gen_len])
+    return out
+
+
+def capture_mean_residual_batch(
+    model: Any,
+    layer: int,
+    prompt_ids_list: Sequence[Sequence[int]],
+    generated_ids_list: Sequence[Sequence[int]],
+    device: Any,
+) -> List[np.ndarray]:
+    """Mean-pools each row's `capture_generated_hidden_batch` slice over its
+    own generated-token positions only. `np.zeros(d_model)` for a row with
+    no generated tokens (matching the previous single-generation
+    behavior)."""
+    d_model = model.config.hidden_size
+    hiddens = capture_generated_hidden_batch(model, layer, prompt_ids_list, generated_ids_list, device)
+    out = []
+    for h in hiddens:
+        if h.shape[0] == 0:
+            out.append(np.zeros(d_model, dtype=np.float64))
+        else:
+            out.append(h.float().mean(dim=0).cpu().numpy().astype(np.float64))
+    return out
+
+
+def capture_mean_residual(
+    model: Any, layer: int, prompt_ids: Sequence[int], generated_ids: Sequence[int], device: Any
+) -> np.ndarray:
+    """Single-generation wrapper (batch of one) around
+    `capture_mean_residual_batch`."""
+    return capture_mean_residual_batch(model, layer, [prompt_ids], [generated_ids], device)[0]
 
 
 def generate_with_system_prompt(
     model: Any, tokenizer: Any, system_prompt: str, user_prompt: str, max_new_tokens: int, device: Any
 ) -> Dict[str, Any]:
+    """Single-generation wrapper (batch of one) around
+    `generation.generate_batch`."""
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    input_ids = tokenizer(prompt_text, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
-    with torch.no_grad():
-        out = model.generate(
-            input_ids=input_ids,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            num_beams=1,
-            pad_token_id=getattr(tokenizer, "eos_token_id", None),
-        )
-    prompt_len = input_ids.shape[1]
-    generated_ids = out[0, prompt_len:].tolist()
-    text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-    return {"prompt_ids": input_ids[0].tolist(), "generated_ids": generated_ids, "text": text}
+    return generation.generate_batch(model, tokenizer, [messages], max_new_tokens, device, hook=None, batch_size=1)[0]
 
 
 def build_persona_vector(
@@ -395,24 +454,40 @@ def build_persona_vector(
     scenarios: Sequence[Dict[str, str]],
     max_new_tokens: int,
     device: Any,
+    batch_size: int = 8,
 ) -> np.ndarray:
     """The Chen/Arditi/Sleight persona-vector construction: mean layer
     residual over assistant (generated) tokens of generations under
     ``positive_system_prompt``, minus the same under
     ``negative_system_prompt``, on the same user scenarios -- averaged over
     scenarios. No steering hook involved here; this only measures the
-    model's own natural response under each system prompt."""
-    diffs = []
-    for scenario in scenarios:
-        pos_gen = generate_with_system_prompt(
-            model, tokenizer, control["positive_system_prompt"], scenario["prompt"], max_new_tokens, device
-        )
-        neg_gen = generate_with_system_prompt(
-            model, tokenizer, control["negative_system_prompt"], scenario["prompt"], max_new_tokens, device
-        )
-        pos_emb = capture_mean_residual(model, layer, pos_gen["prompt_ids"], pos_gen["generated_ids"], device)
-        neg_emb = capture_mean_residual(model, layer, neg_gen["prompt_ids"], neg_gen["generated_ids"], device)
-        diffs.append(pos_emb - neg_emb)
+    model's own natural response under each system prompt.
+
+    Batched: both the positive and negative generation, for every scenario,
+    go through one `generation.generate_batch` call (`2 * len(scenarios)`
+    rows, chunked at `batch_size`) instead of `2 * len(scenarios)`
+    sequential `model.generate` calls."""
+    combos = [(label, scenario) for scenario in scenarios for label in ("pos", "neg")]
+    msgs = [
+        [
+            {
+                "role": "system",
+                "content": control["positive_system_prompt"] if label == "pos" else control["negative_system_prompt"],
+            },
+            {"role": "user", "content": scenario["prompt"]},
+        ]
+        for label, scenario in combos
+    ]
+    gens = generation.generate_batch(model, tokenizer, msgs, max_new_tokens, device, hook=None, batch_size=batch_size)
+    embeddings = capture_mean_residual_batch(
+        model, layer, [g["prompt_ids"] for g in gens], [g["generated_ids"] for g in gens], device
+    )
+
+    by_scenario: Dict[str, Dict[str, np.ndarray]] = {}
+    for (label, scenario), emb in zip(combos, embeddings):
+        by_scenario.setdefault(scenario["id"], {})[label] = emb
+
+    diffs = [by_scenario[s["id"]]["pos"] - by_scenario[s["id"]]["neg"] for s in scenarios]
     return np.mean(diffs, axis=0)
 
 
@@ -431,23 +506,30 @@ def sweep_control_doses(
     the screen stage. The persona vector already has a natural residual-
     stream-scale magnitude (it's a difference of real activations, unlike
     a feature's unit-norm decoder direction), so `dose` multiplies it
-    directly rather than `dose * max_activation * unit_direction`. Returns
-    rows shaped for ``steer.max_coherent_dose``."""
+    directly rather than `dose * max_activation * unit_direction`. Every
+    (sign, dose, scenario) triple is generated in a single batched call
+    (the hook's per-row scale carries `sign * dose`). Returns rows shaped
+    for ``steer.max_coherent_dose``."""
     vector_t = torch.tensor(persona_vector, dtype=torch.float32)
+    boundary_by_scenario = {s["id"]: steer.compute_generation_boundary(tokenizer, s["prompt"]) for s in scenarios}
+
+    combos = [(sign, dose, scenario) for sign in (1, -1) for dose in config.doses for scenario in scenarios]
+    msgs = [[{"role": "user", "content": scenario["prompt"]}] for _sign, _dose, scenario in combos]
+    boundaries = torch.tensor(
+        [boundary_by_scenario[scenario["id"]] for _sign, _dose, scenario in combos], dtype=torch.long
+    )
+    scales = torch.tensor([sign * dose for sign, dose, _scenario in combos], dtype=torch.float32)
+    hook_factory = steer.build_steering_hook_factory(model, config.layer, vector_t, boundaries, scales=scales)
+    gens = generation.generate_batch(
+        model, tokenizer, msgs, config.max_new_tokens, device, hook=hook_factory, batch_size=config.generation_batch_size
+    )
+    coherences = steer.compute_coherence_batch(
+        model, tokenizer, [g["prompt_ids"] for g in gens], [g["generated_ids"] for g in gens], device
+    )
+
     rows: List[Dict[str, Any]] = []
-    for sign in (1, -1):
-        for dose in config.doses:
-            vec = (sign * dose) * vector_t
-            for scenario in scenarios:
-                boundary = steer.compute_generation_boundary(tokenizer, scenario["prompt"])
-                handle = steer.register_additive_hook(model, config.layer, vec.to(device), boundary)
-                try:
-                    gen = steer.generate_text(model, tokenizer, scenario["prompt"], config.max_new_tokens, device)
-                finally:
-                    if handle is not None:
-                        handle.remove()
-                coherence = steer.compute_coherence(model, tokenizer, gen["prompt_ids"], gen["generated_ids"], device)
-                rows.append({"sign": sign, "dose": dose, "scenario": scenario["id"], "coherent": coherence["coherent"]})
+    for (sign, dose, scenario), coherence in zip(combos, coherences):
+        rows.append({"sign": sign, "dose": dose, "scenario": scenario["id"], "coherent": coherence["coherent"]})
     return rows
 
 
@@ -459,19 +541,22 @@ def generate_steered_set(
     scenarios: Sequence[Dict[str, str]],
     device: Any,
 ) -> Dict[str, Dict[str, Any]]:
-    """One steered generation per scenario with a fixed additive vector
-    (assistant-position-only, same masking as ``steer.run_calibration``).
-    Returns {scenario_id: {prompt_ids, generated_ids, text, ..., coherence}}."""
+    """One batched steered generation across every scenario with a fixed
+    additive vector (assistant-position-only, same masking as
+    ``steer.run_calibration``). Returns {scenario_id: {prompt_ids,
+    generated_ids, text, ..., coherence}}."""
+    boundary_by_scenario = {s["id"]: steer.compute_generation_boundary(tokenizer, s["prompt"]) for s in scenarios}
+    msgs = [[{"role": "user", "content": s["prompt"]}] for s in scenarios]
+    boundaries = torch.tensor([boundary_by_scenario[s["id"]] for s in scenarios], dtype=torch.long)
+    hook_factory = steer.build_steering_hook_factory(model, config.layer, vector, boundaries)
+    gens = generation.generate_batch(
+        model, tokenizer, msgs, config.max_new_tokens, device, hook=hook_factory, batch_size=config.generation_batch_size
+    )
+    coherences = steer.compute_coherence_batch(
+        model, tokenizer, [g["prompt_ids"] for g in gens], [g["generated_ids"] for g in gens], device
+    )
     out: Dict[str, Dict[str, Any]] = {}
-    for scenario in scenarios:
-        boundary = steer.compute_generation_boundary(tokenizer, scenario["prompt"])
-        handle = steer.register_additive_hook(model, config.layer, vector.to(device), boundary)
-        try:
-            gen = steer.generate_text(model, tokenizer, scenario["prompt"], config.max_new_tokens, device)
-        finally:
-            if handle is not None:
-                handle.remove()
-        coherence = steer.compute_coherence(model, tokenizer, gen["prompt_ids"], gen["generated_ids"], device)
+    for scenario, gen, coherence in zip(scenarios, gens, coherences):
         out[scenario["id"]] = {**gen, "coherence": coherence}
     return out
 
@@ -479,10 +564,12 @@ def generate_steered_set(
 def generate_baseline_set(
     config: Any, model: Any, tokenizer: Any, scenarios: Sequence[Dict[str, str]], device: Any
 ) -> Dict[str, Dict[str, Any]]:
-    out: Dict[str, Dict[str, Any]] = {}
-    for scenario in scenarios:
-        out[scenario["id"]] = steer.generate_text(model, tokenizer, scenario["prompt"], config.max_new_tokens, device)
-    return out
+    """One batched, unsteered generation across every scenario."""
+    msgs = [[{"role": "user", "content": s["prompt"]}] for s in scenarios]
+    gens = generation.generate_batch(
+        model, tokenizer, msgs, config.max_new_tokens, device, hook=None, batch_size=config.generation_batch_size
+    )
+    return {s["id"]: gen for s, gen in zip(scenarios, gens)}
 
 
 # ---------------------------------------------------------------------------
@@ -577,14 +664,16 @@ def run_screen(
 
     # -- baselines across the full screen scenario set --------------------
     baselines = generate_baseline_set(config, model, tokenizer, screen_scenarios, device)
-    baseline_embeddings: Dict[str, Dict[str, np.ndarray]] = {}
-    for sid, gen in baselines.items():
-        baseline_embeddings[sid] = {
-            "resid": capture_mean_residual(model, config.layer, gen["prompt_ids"], gen["generated_ids"], device),
-            "lexical": hashed_lexical_vector(gen["text"]),
-        }
-    baseline_resid_by_scenario = {sid: v["resid"] for sid, v in baseline_embeddings.items()}
-    baseline_lexical_by_scenario = {sid: v["lexical"] for sid, v in baseline_embeddings.items()}
+    baseline_sids = list(baselines.keys())
+    baseline_resids = capture_mean_residual_batch(
+        model,
+        config.layer,
+        [baselines[sid]["prompt_ids"] for sid in baseline_sids],
+        [baselines[sid]["generated_ids"] for sid in baseline_sids],
+        device,
+    )
+    baseline_resid_by_scenario = dict(zip(baseline_sids, baseline_resids))
+    baseline_lexical_by_scenario = {sid: hashed_lexical_vector(baselines[sid]["text"]) for sid in baseline_sids}
 
     pending: List[Dict[str, Any]] = []
 
@@ -613,7 +702,14 @@ def run_screen(
     # -- controls: persona vectors, own mini dose-coherence sweep ----------
     for control in config.control_prompts:
         persona_vector = build_persona_vector(
-            model, tokenizer, config.layer, control, calibrate_scenarios, config.max_new_tokens, device
+            model,
+            tokenizer,
+            config.layer,
+            control,
+            calibrate_scenarios,
+            config.max_new_tokens,
+            device,
+            batch_size=config.generation_batch_size,
         )
         sweep_rows = sweep_control_doses(config, model, tokenizer, persona_vector, calibrate_scenarios, device)
         for sign in (1, -1):
@@ -644,19 +740,22 @@ def run_screen(
         )
 
     # -- embeddings + per-scenario diff vectors for every direction --------
+    # One capture_mean_residual_batch call per direction (across its own
+    # scenarios) rather than one per (direction, scenario) pair.
     for entry in pending:
-        resid_by_scenario: Dict[str, np.ndarray] = {}
-        lexical_by_scenario: Dict[str, np.ndarray] = {}
-        diffs_resid: List[np.ndarray] = []
-        coherent_flags: List[bool] = []
-        for sid, gen in entry["steered"].items():
-            resid = capture_mean_residual(model, config.layer, gen["prompt_ids"], gen["generated_ids"], device)
-            lexical = hashed_lexical_vector(gen["text"])
-            resid_by_scenario[sid] = resid
-            lexical_by_scenario[sid] = lexical
-            if sid in baseline_resid_by_scenario:
-                diffs_resid.append(resid - baseline_resid_by_scenario[sid])
-            coherent_flags.append(bool(gen["coherence"]["coherent"]))
+        sids = list(entry["steered"].keys())
+        gens = [entry["steered"][sid] for sid in sids]
+        resids = capture_mean_residual_batch(
+            model, config.layer, [g["prompt_ids"] for g in gens], [g["generated_ids"] for g in gens], device
+        )
+        resid_by_scenario = dict(zip(sids, resids))
+        lexical_by_scenario = {sid: hashed_lexical_vector(g["text"]) for sid, g in zip(sids, gens)}
+        diffs_resid = [
+            resid_by_scenario[sid] - baseline_resid_by_scenario[sid]
+            for sid in sids
+            if sid in baseline_resid_by_scenario
+        ]
+        coherent_flags = [bool(g["coherence"]["coherent"]) for g in gens]
         entry["resid_by_scenario"] = resid_by_scenario
         entry["lexical_by_scenario"] = lexical_by_scenario
         entry["diffs_resid"] = diffs_resid

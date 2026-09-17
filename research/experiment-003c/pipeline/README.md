@@ -445,6 +445,71 @@ and `describe-report.html` under `<workdir>`, and reports a compact
 per-direction summary record (`describe-<directionKey>`) to the harness
 under stage `"judge"`.
 
+## Batching and generation numerics
+
+Every `model.generate` call in the pipeline -- calibrate's dose sweep,
+screen's baseline/steered/control generations, rank's per-context
+generations -- goes through `generation.generate_batch` (`generation.py`)
+rather than looping one prompt at a time. Prompts are left-padded
+(`tokenizer.padding_side = "left"`, pad token = eos if the tokenizer has
+none of its own) so every row's real tokens end at the same column and the
+newly generated tokens line up column-for-column across the batch;
+`config.generation_batch_size` (smoke 8, full 24) is the chunk size, and a
+single prompt is just the `batch_size=1` special case of the same code
+path -- there is no separate unbatched generation function anywhere in the
+pipeline any more.
+
+**The steering hook under batching.** The additive steering vector must
+still land only at assistant-turn positions (never a row's own left
+padding or its user-prompt tokens), and under left padding that boundary
+is a *per-row* padded-coordinate position (`pad_length[row] +
+unpadded_boundary[row]`), not the same column for every row.
+`steer.make_additive_hook` takes a `[batch]` tensor of boundaries (and an
+optional `[batch]` tensor of per-row *scales*, e.g. `sign * dose`, so one
+hook registration can cover an entire dose sweep instead of one per
+generation) and masks each row independently on the first (prefill)
+forward pass; every decode step after that steers every row unconditionally,
+since a boundary is always strictly before the end of its own padded
+prompt. `steer.build_steering_hook_factory` is the adapter
+`generation.generate_batch`'s optional `hook` argument expects: a factory
+called with that chunk's per-row left-pad counts, which shifts the
+caller's already-known *unpadded* boundaries into padded coordinates and
+registers the actual hook.
+
+**Where sweeps got batched.** `steer.run_calibration` batches every (dose,
+scenario) pair for one feature/sign (or one random-direction draw) into a
+single call, using the hook's per-row scale for `sign * dose`; baselines
+are one batch across every scenario. `screen.generate_steered_set` /
+`generate_baseline_set` batch across a direction's `screen_scenarios`;
+`screen.build_persona_vector` batches the positive- and negative-
+system-prompt generations for every scenario together (`2 * len(scenarios)`
+rows); `screen.sweep_control_doses` batches every (sign, dose, scenario)
+triple for one control. `rank.capture_context_activations` batches every
+(context, scenario) pair. Residual-stream capture for coherence
+(`steer.coherence_logprob_batch`) and for embeddings
+(`screen.capture_mean_residual_batch` /
+`screen.capture_generated_hidden_batch`) is likewise batched, via a plain
+(non-generating) forward pass over right-padded prompt+generated sequences
+-- right padding is safe there specifically because causal attention masks
+already block every real token from attending to anything after it, so
+trailing pad columns cannot change an earlier real token's hidden state;
+each row's own real generated-token positions are read directly rather
+than through an explicit mask.
+
+**Numerics caveat.** Decoding is always greedy (`do_sample=False,
+num_beams=1`), and `config.seed` still seeds every random draw (the
+random-direction controls/nulls) the same way regardless of batch size --
+but batched, left-padded generation is not guaranteed to produce
+byte-identical token ids to the exact same prompt generated alone. Padded
+attention, batched matmul reduction order, and (depending on the
+attention implementation) padding-aware kernel selection are not bit-
+identical to an unpadded, unbatched forward pass on most hardware/BLAS
+backends. This is expected numerical noise from batching, not a
+regression to chase -- coherence and separability are computed per
+generation regardless of how it was batched, so this can shift individual
+metric values slightly between two runs of the same config but should not
+change the pipeline's qualitative conclusions.
+
 ## Resumability
 
 Each stage checks for its own output file under `<workdir>` before doing any
@@ -545,8 +610,9 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-104 tests, all CPU-only (83 in `tests/test_pipeline.py` plus 21 in
-`tests/test_rank.py` for the rank stage, see below): SAE forward/loss and matryoshka-nested-loss-decreases
+125 tests, all CPU-only (95 in `tests/test_pipeline.py`, 11 in
+`tests/test_rank.py` for the rank stage, and 19 in `tests/test_generation.py`
+for batched generation and the batched steering hook, see below): SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
 per-token-average-k property, the Worker's canonical-JSON sha256 contract
@@ -595,6 +661,25 @@ including features outside the density window that would otherwise be
 filtered out -- while `explicit_features=None` still falls back to the
 original density-quantile selection).
 
+`tests/test_generation.py` (see "Batching and generation numerics" above):
+`generation.pad_left`/`pad_lengths_from_attention_mask` (left-padding a
+ragged batch and recovering each row's pad count), `ensure_left_padding`,
+`trim_at_eos` (finish_reason `"stop"` vs `"length"`, including an eos as
+the very first generated token), `steer.make_additive_hook`'s per-row
+boundary mask under simulated padding (two rows with different padded-
+coordinate boundaries in one prefill chunk, each steered only from its own
+boundary onward), its unconditional-steering decode-step behavior, its
+per-row dose-scale multiplier, and its tuple-output passthrough;
+`steer.build_steering_hook_factory` shifting an already-known unpadded
+boundary by a chunk's real per-row left-pad count (registered on a real
+`nn.Module` stand-in for a decoder layer) and its `vector=None` no-op case;
+and one end-to-end test running `generation.generate_batch` (real,
+left-padded, batched `model.generate`) against a tiny, randomly
+initialized (no download) GPT-2 model, checking per-row `prompt_ids`,
+`num_tokens`, and a valid `finish_reason` survive batching alongside a
+differently-lengthed sibling prompt (skipped, not failed, if
+`transformers` is unavailable).
+
 ## Estimated smoke-test runtime on 1x A40 48GB
 
 Smoke-1 (see `../SMOKE-1.md`) actually ran on an A40: harvest+train reached
@@ -616,16 +701,23 @@ order-of-magnitude, not a guarantee.
 | Analysis + report | pure Python/string work | <1 min |
 | **Total** | | **roughly 100-140 minutes** |
 
-The steering phase dominates because generations run unbatched and
+The steering phase dominated because generations ran unbatched and
 sequentially (one hook configuration at a time, since the additive
-steering vector changes every generation); batching same-dose/same-feature
-generations across scenarios would be the first optimization if this
-matters in practice. The full-run config (100M tokens, 256 features, 24
-scenarios) scales harvest+train roughly linearly with `tokens_target`
-(~12.5x smoke-2 -> many hours) and the calibration screen to 256 x 2 x 4 x
-24 = 49,152 generations, which is the dominant full-run cost by a wide
-margin and should probably be batched or sampled down before attempting it
-as-is.
+steering vector changes every generation) -- see "Batching and generation
+numerics" above for how `generation.generate_batch` now batches every
+dose/scenario/context sweep instead. The full-run config (150M tokens, 256
+features, 24 scenarios) scales harvest+train roughly linearly with
+`tokens_target`, and the calibration screen is 256 features x 2 signs x 4
+doses x 24 scenarios = 49,152 generations (plus the screen stage's own
+~roughly-comparable volume across 24 `screen_scenarios` and 20
+`random_directions`) -- at `config.generation_batch_size` 24 that is
+~2,048 `model.generate` calls of 24 prompts each instead of 49,152 calls
+of 1, an ~24x reduction in the number of forward-pass launches for that
+phase (wall-clock speedup is sublinear in batch size on a real GPU --
+larger batches use more of an A6000's compute per call but each call also
+does more work -- but launch/Python-overhead-bound sequential generation,
+which is what one-prompt-at-a-time `model.generate` calls mostly were,
+should not scale anywhere near linearly with prompt count once batched).
 
 ## Assumptions / things not verified without a GPU
 

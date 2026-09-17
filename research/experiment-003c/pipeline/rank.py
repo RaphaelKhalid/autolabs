@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 
+import generation
 import screen
 import steer
 
@@ -299,53 +300,54 @@ def capture_context_activations(
     device: Any,
 ) -> Dict[str, Dict[str, List[float]]]:
     """For every (context, scenario) pair: generates a reply under that
-    context's system prompt (`screen.generate_with_system_prompt`, the
+    context's system prompt (batched via `generation.generate_batch`, the
     same construction the persona-vector controls use), captures the
     layer's residual stream at the generated assistant-token positions via
-    a forward hook (the "extra pass with a hook" pattern `steer.
-    coherence_logprob`/`screen.capture_mean_residual` already use, kept
-    per-token here rather than pooled to residual so `sae.encode` can be
-    applied per token before pooling to a per-feature mean), and encodes
+    a batched forward-hook pass (`screen.capture_generated_hidden_batch`,
+    kept per-token here rather than pooled to residual so `sae.encode` can
+    be applied per token before pooling to a per-feature mean), and encodes
     with `sae.encode` -- the same post-batch-topk sparse codes `forward_
     loss` trains on -- then mean-pools the codes over generated tokens.
 
     Returns `{context_name: {scenario_id: [mean_activation_per_feature,
     ...]}}`. Needs a real transformers model + GPU; not exercised by the
-    CPU test suite (mirrors screen.py/steer.py)."""
-    base = getattr(model, "model", model)
+    CPU test suite (mirrors screen.py/steer.py).
+
+    Batched: every (context, scenario) pair is generated in one
+    `generation.generate_batch` call (chunked at
+    `config.generation_batch_size`), and the layer's residual stream at
+    each row's own generated-token positions is captured in one further
+    batched forward pass (`screen.capture_generated_hidden_batch`) before
+    `sae.encode` + mean-pooling per row."""
+    system_prompt_by_name = dict(contexts)
+    combos = [(context_name, scenario) for context_name, _sp in contexts for scenario in scenarios]
+    msgs = [
+        [
+            {"role": "system", "content": system_prompt_by_name[context_name]},
+            {"role": "user", "content": scenario["prompt"]},
+        ]
+        for context_name, scenario in combos
+    ]
+    gens = generation.generate_batch(
+        model, tokenizer, msgs, config.max_new_tokens, device, hook=None, batch_size=config.generation_batch_size
+    )
+    hiddens = screen.capture_generated_hidden_batch(
+        model,
+        config.layer,
+        [g["prompt_ids"] for g in gens],
+        [g["generated_ids"] for g in gens],
+        device,
+    )
+
     out: Dict[str, Dict[str, List[float]]] = {}
-
-    for context_name, system_prompt in contexts:
-        per_scenario: Dict[str, List[float]] = {}
-        for scenario in scenarios:
-            gen = screen.generate_with_system_prompt(
-                model, tokenizer, system_prompt, scenario["prompt"], config.max_new_tokens, device
-            )
-            if not gen["generated_ids"]:
-                per_scenario[scenario["id"]] = [0.0] * sae.width
-                continue
-
-            full_ids = torch.tensor([list(gen["prompt_ids"]) + list(gen["generated_ids"])], device=device)
-            captured: Dict[str, torch.Tensor] = {}
-
-            def hook(module: Any, inputs: Any, output: Any) -> None:
-                captured["hidden"] = output[0] if isinstance(output, tuple) else output
-
-            handle = base.layers[config.layer].register_forward_hook(hook)
-            try:
-                with torch.no_grad():
-                    model(input_ids=full_ids)
-            finally:
-                handle.remove()
-
-            hidden = captured["hidden"][0]
-            prompt_len = len(gen["prompt_ids"])
-            gen_hidden = hidden[prompt_len:].to(torch.float32)
+    for (context_name, scenario), hidden in zip(combos, hiddens):
+        if hidden.shape[0] == 0:
+            feature_means = [0.0] * sae.width
+        else:
             with torch.no_grad():
-                codes = sae.encode(gen_hidden)
-            per_scenario[scenario["id"]] = codes.mean(dim=0).cpu().tolist()
-
-        out[context_name] = per_scenario
+                codes = sae.encode(hidden.to(torch.float32))
+            feature_means = codes.mean(dim=0).cpu().tolist()
+        out.setdefault(context_name, {})[scenario["id"]] = feature_means
 
     return out
 
