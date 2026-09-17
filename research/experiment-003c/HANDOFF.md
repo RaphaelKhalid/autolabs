@@ -1,4 +1,14 @@
-# Experiment 3C handoff (written 2026-09-17, ~10:00 UTC)
+# Experiment 3C handoff
+
+## Update 2026-09-17, 20:40 UTC: full run in progress, unattended
+
+Run `persona-3c-d77e7c1e-8faa-46fd-b262-912d22b38c90` (config `pipeline/configs/full-paper-100m.json`, commit `1c2b7ae`) is training on pod `m111ksx2quob1g` (A100 SXM, $1.59/h, `ssh -i ~/.ssh/autolabs_runpod root@154.54.102.23 -p 10056`). See FULL-RUN-LAUNCH.md attempt 3. Checkpoints and stage outputs upload to `hf://RaphaelRaphaelRaphael/autolabs-3c-sae/runs/<run id>/`. A guardian script on the pod (`/workspace/3c/guardian.sh`, log `guardian.log`) relaunches the pipeline up to 3 times if it exits early and then runs `runpodctl stop pod` so billing ends. The homepage card follows the run.
+
+If the host dies: create a fresh pod (`scripts/runpod_pod.py create ...`), write `/workspace/3c/.env` with the same run id, `AUTOLABS_3C_GIT_REF=1c2b7ae4648daabbcf037c523b13e678abfdb9f5`, `HF_TOKEN`, `PIP_BREAK_SYSTEM_PACKAGES=1`, and run `bash start.sh configs/full-paper-100m.json`; training resumes from the last Hub checkpoint. If the Worker has marked the run failed (409 on reports), register a new run and set `AUTOLABS_3C_CHECKPOINT_RUN_ID` to the old id. To finish a run whose training cannot continue, add `--finalize-from-checkpoint`.
+
+When it completes: pull `summary.json` and the reports from the Hub `outputs/` folder into `smoke-runs/full-1/`, write `FULL-1.md`, and put the results on the site.
+
+## Original handoff (written 2026-09-17, ~10:00 UTC)
 
 Read this first in the next session. Work in `C:\Users\rapha\Projects\autolabs`. Everything below is committed on `main` (0d7ac1b or later). No RunPod pods exist; nothing is billing. RunPod balance $13.60.
 
