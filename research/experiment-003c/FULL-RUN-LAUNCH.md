@@ -39,3 +39,8 @@ Chen, Arditi, Sleight et al. list three limitations of prompt-derived persona ve
 - 06:18 UTC launch.
 - 06:44 UTC Worker deployed with the order-independent judge schema (89d8b18); visual-2 finished under the old schema, see VISUAL-2.md.
 - 06:52 UTC validation run of commit 905213b (smoke config, all new stages) launched on a separate A40 pod `u8k3qftr747czw`, harness run `persona-3c-2e8cafc4-5df4-4959-b54f-bcb71724aba8`.
+- 07:27 UTC validation 1 (commit 905213b) crashed in calibrate: batched steering hook received whole-request boundaries for a chunk. Fixed in b224c9c.
+- 08:41 to 09:08 UTC validation 2 (commit b224c9c, pod udallb31ra7485) ran the entire funnel end to end: rank (3 unsupervised, 2 quantile, 3 shift), calibrate, screen (20 nulls, max random AUC 0.56; unsupervised 3/3 pass, shift 3/3, quantile 0/2, controls 2/3), describe (144 judge pairs, about $0.65), reach. Generation stages took 27 minutes batched. Artifacts in `smoke-runs/validate-2/`.
+- Describe named nothing: judge properties are paraphrases and TF-IDF clustering split them into singletons (largest cluster fraction about 0.12 everywhere, null ceiling 0.08). Fix in progress: sentence-embedding clustering calibrated on these outputs. The full run will resume onto the fixed commit before its describe stage.
+- 09:11 UTC full run still training, no 10M checkpoint yet after 2h53m; rate check pending.
+
