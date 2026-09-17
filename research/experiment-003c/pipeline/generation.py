@@ -25,12 +25,26 @@ Under left padding, "assistant-turn positions" for row *i* starts at
 ``pad_length[i] + unpadded_boundary[i]`` in the padded coordinate system,
 not at the same column for every row. ``generate_batch`` does not know
 about steering at all; instead its optional ``hook`` argument is a
-*factory*: ``hook(pad_lengths) -> Optional[RemovableHandle]``, called with
-the current chunk's per-row left-pad counts (a ``[chunk_batch]`` tensor)
-right before ``model.generate``, so the caller (``steer.
-build_steering_hook_factory``) can shift its own already-known per-row
-*unpadded* boundaries into padded coordinates and register the actual
-forward hook. The handle is removed right after that chunk's
+*factory*: ``hook(pad_lengths, row_start, row_end) ->
+Optional[RemovableHandle]``, called once per chunk, right before
+``model.generate``, with that chunk's per-row left-pad counts (a
+``[chunk_batch]`` tensor) plus the chunk's row range within the *full*
+request (``prompts_messages[row_start:row_end]`` is this chunk). A caller
+whose boundaries/scales are per-request tensors (e.g. ``steer.
+build_steering_hook_factory``, which holds one boundary/scale per row of
+the *whole* request, not just one chunk) needs ``row_start``/``row_end`` to
+slice its own tensors down to this chunk before shifting them into padded
+coordinates -- calling it with only ``pad_lengths`` silently mismatches a
+chunk-sized pad-length tensor against a request-sized boundary/scale
+tensor (this was a real bug: a 16-row request chunked at ``batch_size=8``
+crashed inside the hook with a tensor-size mismatch, 8 vs. 16, because the
+factory had no way to know which 8 of the 16 rows it was being asked
+about). For backward compatibility with a hook that only accepts
+``pad_lengths`` (e.g. a no-op factory, or a hook that already covers the
+whole request in one chunk), ``generate_batch`` inspects the hook's
+signature (``inspect.signature``, see ``_call_hook``) and only passes
+``row_start``/``row_end`` when the hook can accept them. The handle
+returned by whichever call was made is removed right after that chunk's
 ``model.generate`` call returns, win or lose (``try/finally``).
 
 **Determinism.** Decoding is always greedy (``do_sample=False,
@@ -45,6 +59,7 @@ numerics".
 """
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -124,6 +139,45 @@ def trim_at_eos(generated_ids: Sequence[int], eos_id: Optional[int]) -> Tuple[Li
 
 
 # ---------------------------------------------------------------------------
+# Hook dispatch (chunk-aware, with a pad-lengths-only backward-compat path)
+# ---------------------------------------------------------------------------
+def _accepts_chunk_bounds(hook: Callable[..., Any]) -> bool:
+    """True if `hook` can be called as `hook(pad_lengths, row_start,
+    row_end)` -- i.e. it declares (or accepts via `*args`) at least 3
+    positional parameters -- rather than only `hook(pad_lengths)`. Used by
+    `_call_hook` to keep both hook-factory signatures working: the new
+    chunk-aware one (`steer.build_steering_hook_factory`, which needs
+    `row_start`/`row_end` to slice its own request-sized boundary/scale
+    tensors down to this chunk) and any hook that only ever wants the
+    chunk's pad lengths (e.g. a no-op factory). Any signature
+    `inspect.signature` can't introspect (rare, e.g. some builtins) is
+    treated as pad-lengths-only, the safer default."""
+    try:
+        params = inspect.signature(hook).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    if any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params):
+        return True
+    positional = sum(
+        1
+        for p in params
+        if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    )
+    return positional >= 3
+
+
+def _call_hook(
+    hook: Callable[..., Optional[Handle]], pad_lengths: torch.Tensor, row_start: int, row_end: int
+) -> Optional[Handle]:
+    """Calls `hook` with this chunk's pad lengths, plus `row_start`/
+    `row_end` (this chunk's row range within the full request) when the
+    hook's signature can accept them -- see `_accepts_chunk_bounds`."""
+    if _accepts_chunk_bounds(hook):
+        return hook(pad_lengths, row_start, row_end)
+    return hook(pad_lengths)
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 def generate_batch(
@@ -132,7 +186,7 @@ def generate_batch(
     prompts_messages: List[List[Dict[str, str]]],
     max_new_tokens: int,
     device: Any,
-    hook: Optional[Callable[[torch.Tensor], Optional[Handle]]] = None,
+    hook: Optional[Callable[..., Optional[Handle]]] = None,
     batch_size: int = 8,
 ) -> List[Dict[str, Any]]:
     """Runs greedy `model.generate` in chunks of `batch_size`, left-padded,
@@ -140,14 +194,22 @@ def generate_batch(
     `prompts_messages`): `{prompt_ids, generated_ids, text, finish_reason,
     num_tokens, prompt_len}`.
 
-    `hook`, if given, is called once per chunk as `hook(pad_lengths)` (a
-    `[chunk_batch]` tensor of that chunk's per-row left-pad counts) right
-    before `model.generate`, and any handle it returns is removed right
-    after that chunk's `model.generate` call (`try/finally`, so a handle is
-    always cleaned up even if generation raises). Passing `None` runs an
-    unsteered (baseline) generation. A single prompt is the `batch_size=1`
-    special case of this same path -- there is no separate unbatched
-    generation code."""
+    `hook`, if given, is called once per chunk, right before
+    `model.generate`, via `_call_hook` as either `hook(pad_lengths,
+    row_start, row_end)` or `hook(pad_lengths)` depending on what its
+    signature accepts (see `_call_hook`/`_accepts_chunk_bounds`):
+    `pad_lengths` is a `[chunk_batch]` tensor of that chunk's per-row
+    left-pad counts, and `row_start`/`row_end` is this chunk's row range
+    within the *full* `prompts_messages` request (so a hook holding
+    request-sized per-row tensors, e.g. `steer.
+    build_steering_hook_factory`'s boundaries/scales, can slice down to
+    this chunk instead of mismatching a chunk-sized pad-lengths tensor
+    against its own request-sized tensors). Any handle the call returns is
+    removed right after that chunk's `model.generate` call (`try/finally`,
+    so a handle is always cleaned up even if generation raises). Passing
+    `None` runs an unsteered (baseline) generation. A single prompt is the
+    `batch_size=1` special case of this same path -- there is no separate
+    unbatched generation code."""
     if not prompts_messages:
         return []
 
@@ -168,7 +230,7 @@ def generate_batch(
         input_ids, attention_mask = pad_left(sequences, pad_id, device=device)
         pad_lengths = pad_lengths_from_attention_mask(attention_mask)
 
-        handle = hook(pad_lengths) if hook is not None else None
+        handle = _call_hook(hook, pad_lengths, start, start + len(chunk)) if hook is not None else None
         try:
             with torch.no_grad():
                 out = model.generate(

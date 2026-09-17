@@ -300,20 +300,47 @@ def build_steering_hook_factory(
     scales: Optional[Any] = None,
 ):
     """Returns a `generation.generate_batch`-compatible hook factory: a
-    callable `factory(pad_lengths) -> Optional[handle]` that shifts each
-    row's already-known *unpadded* boundary into padded coordinates
-    (`pad_length[row] + unpadded_boundary[row]`) and registers the actual
-    additive hook, fresh (a new `position_state`) for every chunk. `vector
-    is None` gives a no-op factory (unsteered baseline), matching
-    `register_additive_hook`'s `vector=None` convention."""
+    callable `factory(pad_lengths, row_start=0, row_end=None) ->
+    Optional[handle]` that shifts each row's already-known *unpadded*
+    boundary into padded coordinates (`pad_length[row] +
+    unpadded_boundary[row]`) and registers the actual additive hook, fresh
+    (a new `position_state`) for every chunk. `vector is None` gives a
+    no-op factory (unsteered baseline), matching `register_additive_hook`'s
+    `vector=None` convention.
+
+    `unpadded_boundaries`/`scales` are per-row tensors for the *whole*
+    request `generate_batch` was called with, not just one chunk --
+    `generate_batch` may run the request in several `batch_size`-sized
+    chunks (see its docstring), calling this factory once per chunk with
+    only that chunk's `pad_lengths` (length `chunk_batch`, not the full
+    request length). `row_start`/`row_end` (this chunk's row range within
+    the full request -- `generate_batch` passes these automatically when
+    it detects this factory's 3-argument signature, see `generation.
+    _call_hook`) tell `factory` which slice of its own request-sized
+    tensors matches this chunk's `pad_lengths`, so the two are never
+    mismatched in size (the bug this signature fixes: a 16-row request
+    chunked at `batch_size=8` used to call `factory(pad_lengths)` with an
+    8-row `pad_lengths` against this closure's 16-row boundaries/scales,
+    raising a tensor-size-mismatch `RuntimeError` inside the hook).
+    `row_start`/`row_end` default to `(0, len(pad_lengths))` -- the whole
+    closure -- so a caller that still invokes `factory(pad_lengths)`
+    directly for an unchunked (single-chunk) request keeps working
+    unchanged."""
     if vector is None:
-        return lambda pad_lengths: None
+        return lambda pad_lengths, row_start=0, row_end=None: None
 
-    unpadded_t = _as_row_tensor(unpadded_boundaries, len(unpadded_boundaries) if hasattr(unpadded_boundaries, "__len__") else 1, torch.long)
+    n_total = len(unpadded_boundaries) if hasattr(unpadded_boundaries, "__len__") else 1
+    unpadded_t = _as_row_tensor(unpadded_boundaries, n_total, torch.long)
+    scales_t = _as_row_tensor(scales, n_total, torch.float32) if scales is not None else None
 
-    def factory(pad_lengths: torch.Tensor) -> Optional[Any]:
-        boundaries = pad_lengths.to(torch.long) + unpadded_t.to(pad_lengths.device)
-        return register_additive_hook(model, layer, vector, boundaries, scales=scales)
+    def factory(pad_lengths: torch.Tensor, row_start: int = 0, row_end: Optional[int] = None) -> Optional[Any]:
+        n_chunk = pad_lengths.shape[0] if isinstance(pad_lengths, torch.Tensor) else len(pad_lengths)
+        if row_end is None:
+            row_end = row_start + n_chunk
+        boundaries_chunk = unpadded_t[row_start:row_end]
+        scales_chunk = scales_t[row_start:row_end] if scales_t is not None else None
+        boundaries = pad_lengths.to(torch.long) + boundaries_chunk.to(pad_lengths.device)
+        return register_additive_hook(model, layer, vector, boundaries, scales=scales_chunk)
 
     return factory
 
