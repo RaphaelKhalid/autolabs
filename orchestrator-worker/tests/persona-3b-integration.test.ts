@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { claimPersona3B, finalizePersona3B, scorePersona3B } from '../src/persona-3b';
 
 const TOKEN = 'integration-test-token';
@@ -8,10 +9,10 @@ const RUN_ID = 'persona-3b-00000000-0000-4000-8000-000000000000';
 const SHARD_ID = RUN_ID + '-primary-0';
 // The frozen blind pair lives in a gitignored private-run file; on a machine
 // without it (CI) this suite is skipped rather than failed.
-const FROZEN_PAIRS_URL = new URL('../../research/experiment-003b/.local-test/blind-final/blind-pairs.jsonl', import.meta.url);
-const HAS_FROZEN_PAIRS = existsSync(FROZEN_PAIRS_URL);
+const FROZEN_PAIRS_PATH = fileURLToPath(new URL('../../research/experiment-003b/.local-test/blind-final/blind-pairs.jsonl', import.meta.url));
+const HAS_FROZEN_PAIRS = existsSync(FROZEN_PAIRS_PATH);
 const FROZEN_PAIR = (HAS_FROZEN_PAIRS
-  ? JSON.parse(readFileSync(FROZEN_PAIRS_URL, 'utf8').split('
+  ? JSON.parse(readFileSync(FROZEN_PAIRS_PATH, 'utf8').split('
 ')[0])
   : {}) as Record<string, unknown>;
 
