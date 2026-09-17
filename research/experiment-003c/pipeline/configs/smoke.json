@@ -47,6 +47,8 @@
   ],
   "screen_dose_fallback": 1.0,
   "random_directions": 20,
+  "rank_shift_fraction": 0.75,
+  "screen_features": 8,
   "describe_top_n": 6,
   "judge_budget_usd": 3,
   "judge_call_ceiling": 200,

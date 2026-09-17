@@ -82,6 +82,7 @@ def select_steer_features(
     steer_features: int,
     density_min: float,
     density_max: float,
+    explicit_features: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Pick `steer_features` features among the first `first_shell_size`
     (the innermost matryoshka shell) whose firing density falls in
@@ -99,7 +100,29 @@ def select_steer_features(
     Each returned dict also carries `quantile` (the target percentile, 0
     to 100, this feature was picked to represent) alongside `feature`,
     `density`, and `max_activation`.
+
+    If `explicit_features` is given (the rank stage's ranked candidate list,
+    e.g. `candidates.json["screen_features"]` -- see rank.py), it is used
+    as-is instead of density-quantile selection: `steer_features`,
+    `first_shell_size`, `density_min`, and `density_max` are ignored
+    entirely, since the rank stage already applied its own density/dead/
+    shell filtering. Each entry becomes `{feature, density, max_activation,
+    quantile: None}` (`quantile` is meaningless for an explicit list but
+    kept so every caller sees the same schema).
     """
+    if explicit_features:
+        selected = []
+        for entry in explicit_features:
+            f_idx = entry["feature"]
+            density = entry.get("density")
+            if density is None:
+                density = feature_stats["firing_density"][f_idx]
+            max_act = entry.get("max_activation")
+            if max_act is None:
+                max_act = feature_stats["max_activation"][f_idx]
+            selected.append({"feature": f_idx, "density": density, "max_activation": max_act, "quantile": None})
+        return selected
+
     densities = feature_stats["firing_density"]
     max_acts = feature_stats["max_activation"]
     candidates = []
@@ -358,10 +381,13 @@ def run_calibration(
     scenarios: List[Dict[str, str]],
     device: Any,
     seed: int = 0,
+    explicit_features: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Runs the full dose-sweep calibration screen and returns a flat list of
     {recordId, payload} records, ready for `report.report(stage="calibrate",
-    records=...)`."""
+    records=...)`. `explicit_features`, when given, is the rank stage's
+    ranked candidate list (see `select_steer_features`) used in place of
+    density-quantile selection."""
     generator = torch.Generator(device="cpu").manual_seed(seed)
     first_shell = config.matryoshka_shells[0]
     selected = select_steer_features(
@@ -370,6 +396,7 @@ def run_calibration(
         steer_features=config.steer_features,
         density_min=config.firing_density_min,
         density_max=config.firing_density_max,
+        explicit_features=explicit_features,
     )
     if not selected:
         logger.warning("no features met the density window; calibration will only cover baselines/controls")

@@ -27,6 +27,31 @@ def _default_doses() -> List[float]:
     return [0.25, 0.5, 1.0, 2.0]
 
 
+def _default_context_prompts() -> List[str]:
+    # Neutral, diverse persona-style system prompts for the rank stage's
+    # label-free persona-context shift (see rank.py). None of these names a
+    # trait this experiment is screening for -- they exist only to give the
+    # model a spread of behaviorally distinct "voices" to respond in, so a
+    # feature whose activation tracks *some* persona-like context (any of
+    # them) ranks above one that doesn't, without designating which trait
+    # matters. Chosen by hand, not sampled, so the spread is itself a
+    # (documented) source of bias -- see pipeline/README.md "Rank stage".
+    return [
+        "You are warm and encouraging.",
+        "You are terse and clinical.",
+        "You are playful and lighthearted.",
+        "You are a cautious expert who hedges every claim.",
+        "You speak as a close friend would.",
+        "You are formal and distant.",
+        "You are enthusiastic and energetic.",
+        "You are calm and measured.",
+        "You are curious and ask lots of questions.",
+        "You are blunt and direct.",
+        "You are poetic and reflective.",
+        "You are practical and businesslike.",
+    ]
+
+
 def _default_control_prompts() -> List[Dict[str, str]]:
     # Positive-control persona vectors (Chen et al. / Arditi et al. /
     # Sleight et al. construction, see screen.py): the mean layer residual
@@ -121,6 +146,21 @@ class Config:
     # enough draws to be a meaningful ceiling for the verdict.
     random_directions: int = 20
 
+    # --- rank (label-free candidate ranking: persona-context activation
+    # shift, runs after train and before calibrate; see rank.py). Selects
+    # `screen_features` candidates for calibrate/screen as the union of a
+    # top-shift-score slice (`rank_shift_fraction` of the budget) and a
+    # density-quantile spread slice (the remainder, via
+    # steer.quantile_indices) -- see README "Rank stage" for the bias this
+    # introduces and why the quantile slice is kept as an unbiased
+    # comparison. `context_prompts` are the additional neutral persona-style
+    # system prompts (beyond `control_prompts`' positive/negative pairs)
+    # used to build the diverse context set the shift score is measured
+    # across. ---
+    context_prompts: List[str] = field(default_factory=_default_context_prompts)
+    rank_shift_fraction: float = 0.75
+    screen_features: int = 8  # smoke; full run uses 256 (of 32,768 total SAE features)
+
     # --- describe (judge pass one: blinded pairs to the Worker judge) ---
     # See describe.py and orchestrator-worker/src/persona-3c.ts. 0 disables
     # the stage entirely (run_smoke.stage_describe). The judge budget/
@@ -197,6 +237,10 @@ class Config:
             raise ValueError("screen_scenarios must be >= 2 (leave-one-scenario-out needs a held-out fold)")
         if self.random_directions < 1:
             raise ValueError("random_directions must be >= 1")
+        if not (0.0 <= self.rank_shift_fraction <= 1.0):
+            raise ValueError("rank_shift_fraction must be between 0 and 1")
+        if self.screen_features < 1:
+            raise ValueError("screen_features must be >= 1")
         if self.describe_top_n < 0:
             raise ValueError("describe_top_n must be >= 0 (0 disables the describe stage)")
         if self.judge_budget_usd < 0:
