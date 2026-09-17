@@ -30,6 +30,7 @@ import numpy as np
 import torch
 
 import checks
+import describe
 import harvest
 import sae as sae_mod
 import screen
@@ -446,6 +447,26 @@ def stage_screen(
         records=records + generation_records,
     )
     return records, generation_records
+
+
+def stage_describe(
+    config: Config,
+    workdir: Path,
+    client: WorkerClient,
+    screen_records: List[Dict[str, Any]],
+    screen_generation_records: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Describe stage (judge pass one, see describe.py): blinded pairs to
+    the Worker judge for the top `config.describe_top_n` directions by
+    residual separability AUC, clustered per direction. Disabled when
+    `describe_top_n <= 0`. Resumable: `describe.run_describe` skips if
+    `describe_results.json` already exists."""
+    if config.describe_top_n <= 0:
+        logger.info("[describe] describe_top_n<=0, skipping describe stage")
+        return None
+    directions = [rec["payload"] for rec in screen_records]
+    generations = [rec["payload"] for rec in screen_generation_records]
+    return describe.run_describe(config, workdir, client, client.run_id, directions, generations)
 
 
 # ---------------------------------------------------------------------------
@@ -993,6 +1014,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             config, workdir, client, model, tokenizer, trained_sae, feature_stats,
             calibration_records, scenarios, device,
         )
+
+        stage_describe(config, workdir, client, screen_records, screen_generation_records)
 
         summary = stage_analysis(
             config, workdir, client, boot, post_train, calibration_records,

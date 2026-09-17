@@ -144,6 +144,39 @@ class WorkerClient:
         logger.error("giving up on report POST %s after %d attempts: %s", path, self.max_retries, last_error)
         return None
 
+    def _get(self, path: str) -> Optional[Dict[str, Any]]:
+        if not self.base_url:
+            logger.warning("AUTOLABS_3C_WORKER_URL is not set; skipping GET %s", path)
+            return None
+        session = self._get_session()
+        if session is None:
+            logger.warning("requests is unavailable; skipping GET %s", path)
+            return None
+
+        url = f"{self.base_url}{path}"
+        backoff = 1.0
+        last_error: Optional[Exception] = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                resp = session.get(url, headers=self._headers(), timeout=self.timeout)
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    raise RuntimeError(f"retryable status {resp.status_code}: {resp.text[:300]}")
+                if resp.status_code >= 400:
+                    logger.error("worker rejected GET %s (status %s): %s", path, resp.status_code, resp.text[:500])
+                    return None
+                try:
+                    return resp.json()
+                except ValueError:
+                    return {}
+            except Exception as exc:  # noqa: BLE001 - network code must never raise
+                last_error = exc
+                logger.warning("GET %s failed (attempt %d/%d): %s", path, attempt, self.max_retries, exc)
+                if attempt < self.max_retries:
+                    time.sleep(backoff)
+                    backoff *= 2
+        logger.error("giving up on GET %s after %d attempts: %s", path, self.max_retries, last_error)
+        return None
+
     def _base_body(
         self,
         stage: str,
@@ -222,6 +255,31 @@ class WorkerClient:
             body["records"] = batch
             body["batch"] = {"index": i, "count": len(batches)}
             self._post("/api/persona-3c/report", body)
+
+    # -- describe stage (judge pass one) -----------------------------------
+    def judge_plan(
+        self, run_id: str, pairs: List[Dict[str, Any]], judge_budget_usd: float, judge_call_ceiling: int
+    ) -> Optional[Dict[str, Any]]:
+        """POST /api/persona-3c/judge/plan: append up to 500 blinded pairs
+        (caller chunks larger batches) to the judge queue for `run_id`."""
+        body = {
+            "runId": run_id or self.run_id,
+            "judgeBudgetUsd": judge_budget_usd,
+            "judgeCallCeiling": judge_call_ceiling,
+            "pairs": pairs,
+        }
+        return self._post("/api/persona-3c/judge/plan", body)
+
+    def judge_run(self, run_id: str, max_jobs: int = 25) -> Optional[Dict[str, Any]]:
+        """POST /api/persona-3c/judge/run: claims and scores up to
+        `max_jobs` queued judge jobs for `run_id`."""
+        return self._post("/api/persona-3c/judge/run", {"runId": run_id or self.run_id, "maxJobs": max_jobs})
+
+    def judge_results(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """GET /api/persona-3c/judge/results?runId=...: every complete
+        judge job's parsed response, usage, and cost (never the blinded
+        texts)."""
+        return self._get(f"/api/persona-3c/judge/results?runId={run_id or self.run_id}")
 
 
 _default_client: Optional[WorkerClient] = None

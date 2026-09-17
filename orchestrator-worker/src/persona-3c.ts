@@ -1,4 +1,5 @@
 import { bearer, secretEquals } from './security';
+import { cost as judgeCallCost } from './persona-3b';
 
 // Experiment 3C: a RunPod GPU pod reports coarse stage progress into the ledger so the
 // public homepage can show live status. The worker never runs GPU work itself; it only
@@ -32,6 +33,11 @@ type Run = {
   completed_at: string | null;
   error_message: string | null;
   last_record_id: string | null;
+  judge_budget_usd: number;
+  judge_spent_usd: number;
+  judge_reserved_usd: number;
+  judge_calls: number;
+  judge_call_ceiling: number;
 };
 
 function json(value: unknown, init: ResponseInit = {}, c: Record<string, string> = {}) {
@@ -42,11 +48,11 @@ function json(value: unknown, init: ResponseInit = {}, c: Record<string, string>
   return new Response(JSON.stringify(value), { ...init, headers });
 }
 
-async function body(req: Request): Promise<Record<string, unknown> | null> {
+async function body(req: Request, maxBytes: number = MAX_BODY_BYTES): Promise<Record<string, unknown> | null> {
   const declared = Number(req.headers.get('content-length') ?? 0);
-  if (!Number.isFinite(declared) || declared > MAX_BODY_BYTES) return null;
+  if (!Number.isFinite(declared) || declared > maxBytes) return null;
   const text = await req.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES || !text.trim()) return null;
+  if (new TextEncoder().encode(text).byteLength > maxBytes || !text.trim()) return null;
   try {
     const value = JSON.parse(text);
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -139,6 +145,7 @@ export async function startPersona3C(req: Request, env: Persona3CEnv, c: Record<
     id, study_id: PERSONA_3C_STUDY_ID, status: 'queued', stage: 'created', manifest_hash: manifest,
     budget_usd: budget, spent_usd: 0, gpu_hours: 0, created_at: now, updated_at: now,
     completed_at: null, error_message: null, last_record_id: null,
+    judge_budget_usd: 0, judge_spent_usd: 0, judge_reserved_usd: 0, judge_calls: 0, judge_call_ceiling: 0,
   };
   try {
     await env.DB.prepare(
@@ -300,11 +307,23 @@ export async function persona3CStatus(env: Persona3CEnv, c: Record<string, strin
   const counts = await env.DB.prepare('SELECT stage,COUNT(*) AS n FROM persona_3c_records WHERE run_id=? GROUP BY stage').bind(run.id).all<{ stage: string; n: number }>();
   const progress = await env.DB.prepare('SELECT stage,done,total,updated_at AS updatedAt FROM persona_3c_progress WHERE run_id=? ORDER BY stage').bind(run.id).all<{ stage: string; done: number; total: number; updatedAt: string }>();
   const events = await env.DB.prepare('SELECT id,at,stage,kind,title,summary FROM persona_3c_events WHERE run_id=? ORDER BY id DESC LIMIT 50').bind(run.id).all<{ id: number; at: string; stage: string | null; kind: string; title: string; summary: string }>();
+  const judgeCounts = await env.DB.prepare('SELECT status,COUNT(*) AS n FROM persona_3c_judge WHERE run_id=? GROUP BY status').bind(run.id).all<{ status: string; n: number }>();
+  const judgeByStatus = Object.fromEntries(judgeCounts.results.map((row) => [row.status, row.n]));
   return json({
     run: pubRun(run),
     recordCounts: Object.fromEntries(counts.results.map((row) => [row.stage, row.n])),
     progress: progress.results,
     events: events.results.slice().reverse(),
+    judge: {
+      queued: Number(judgeByStatus.queued ?? 0),
+      inFlight: Number(judgeByStatus.in_flight ?? 0),
+      complete: Number(judgeByStatus.complete ?? 0),
+      failed: Number(judgeByStatus.failed ?? 0),
+      calls: run.judge_calls ?? 0,
+      spentUsd: run.judge_spent_usd ?? 0,
+      budgetUsd: run.judge_budget_usd ?? 0,
+      ceiling: run.judge_call_ceiling ?? 0,
+    },
   }, {}, c);
 }
 
@@ -322,4 +341,353 @@ export async function stopPersona3C(req: Request, env: Persona3CEnv, c: Record<s
   await recordEvent(env.DB, runId, null, 'system', '3C run stopped', 'Run stopped by owner control.', {});
   const run = await env.DB.prepare('SELECT * FROM persona_3c_runs WHERE id=?').bind(runId).first<Run>();
   return json({ accepted: true, runId, run: pubRun(run ?? null) }, {}, c);
+}
+
+// ---------------------------------------------------------------------------
+// DESCRIBE stage (judge pass one): a blinded pair (A/B, randomized order) is
+// shown to the judge, which answers one question with strict JSON. It never
+// sees a persona vocabulary, feature ids, or which side is steered. Reuses
+// 3B's per-token pricing (`judgeCallCost`) and its reserve-worst-case /
+// settle-to-actual / charge-worst-case-on-failure budget pattern, scoped to
+// each run's own judge_* counters rather than a separate runs table.
+// ---------------------------------------------------------------------------
+export const PERSONA_3C_JUDGE_MODEL = 'gpt-5.6-luna';
+const JUDGE_OUTPUT_TOKENS = 400;
+const JUDGE_MAX_ATTEMPTS = 3;
+const JUDGE_STALE_MINUTES = 10;
+const JUDGE_MAX_PLAN_PAIRS = 500;
+export const PERSONA_3C_JUDGE_MAX_BUDGET_USD = 20;
+export const PERSONA_3C_JUDGE_MAX_CALL_CEILING = 4000;
+const JUDGE_MAX_RUN_JOBS = 25;
+const JUDGE_BODY_MAX_BYTES = 4_000_000;
+const JUDGE_TEXT_MAX_CHARS = 8000;
+const JUDGE_SCENARIO_MAX_CHARS = 4000;
+const JUDGE_DIRECTION_KEY_MAX_CHARS = 200;
+
+const JUDGE_SYSTEM_PROMPT =
+  'You are comparing two responses to the same prompt. Say in one sentence how B differs from A in the way ' +
+  'the speaker comes across, or return none if there is no meaningful difference. Do not evaluate quality or ' +
+  'correctness. Classify whether the difference is about the speaker (voice, stance, self-presentation, ' +
+  'relationship to the reader), the content (facts, topics, arguments), or the format (length, structure, ' +
+  'wording artifacts).';
+
+const JUDGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['difference', 'none', 'about'],
+  properties: {
+    difference: { type: 'string', maxLength: 240 },
+    none: { type: 'boolean' },
+    about: { type: 'string', enum: ['speaker', 'content', 'format', 'none'] },
+  },
+};
+
+type JudgeJobStatus = 'queued' | 'in_flight' | 'complete' | 'failed';
+
+type JudgeJob = {
+  run_id: string;
+  job_id: string;
+  direction_key: string;
+  scenario: string;
+  order_swap: number;
+  prompt_sha256: string | null;
+  response_json: string | null;
+  provider_response_id: string | null;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  status: JudgeJobStatus;
+  attempts: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type JudgeResponse = { difference: string; none: boolean; about: 'speaker' | 'content' | 'format' | 'none' };
+
+function judgeWorstCaseCost(promptChars: number): number {
+  const estimatedInputTokens = Math.max(1, Math.ceil(promptChars / 3.5));
+  return judgeCallCost(estimatedInputTokens, 0, JUDGE_OUTPUT_TOKENS);
+}
+
+function judgeText(value: unknown, maxChars: number): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxChars ? value : null;
+}
+
+type JudgePairInput = { directionKey: string; scenario: string; textA: string; textB: string; orderSwap: boolean };
+
+function validJudgePair(value: unknown): JudgePairInput | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const r = value as Record<string, unknown>;
+  const directionKey = str(r.directionKey, 1, JUDGE_DIRECTION_KEY_MAX_CHARS);
+  const scenario = judgeText(r.scenario, JUDGE_SCENARIO_MAX_CHARS);
+  const textA = judgeText(r.textA, JUDGE_TEXT_MAX_CHARS);
+  const textB = judgeText(r.textB, JUDGE_TEXT_MAX_CHARS);
+  if (!directionKey || !scenario || textA === null || textB === null || typeof r.orderSwap !== 'boolean') return null;
+  return { directionKey, scenario, textA, textB, orderSwap: r.orderSwap };
+}
+
+async function judgeJobId(pair: { directionKey: string; scenario: string; orderSwap: boolean }): Promise<string> {
+  return sha256Hex(canonicalJson({ directionKey: pair.directionKey, scenario: pair.scenario, orderSwap: pair.orderSwap }));
+}
+
+function validJudgeResponse(value: unknown): value is JudgeResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const r = value as Record<string, unknown>;
+  const keys = Object.keys(r);
+  if (keys.length !== 3 || !['difference', 'none', 'about'].every((k) => keys.includes(k))) return false;
+  if (typeof r.difference !== 'string' || r.difference.length > 240) return false;
+  if (typeof r.none !== 'boolean') return false;
+  if (!['speaker', 'content', 'format', 'none'].includes(String(r.about))) return false;
+  return true;
+}
+
+function judgeUsage(payload: Record<string, unknown>) {
+  const u = payload.usage && typeof payload.usage === 'object' ? payload.usage as Record<string, unknown> : {};
+  const d = u.input_tokens_details && typeof u.input_tokens_details === 'object' ? u.input_tokens_details as Record<string, unknown> : {};
+  const inputTokens = Number.isInteger(u.input_tokens) ? Number(u.input_tokens) : 0;
+  const cachedInputTokens = Number.isInteger(d.cached_tokens) ? Number(d.cached_tokens) : 0;
+  const outputTokens = Number.isInteger(u.output_tokens) ? Number(u.output_tokens) : 0;
+  const known = Number.isInteger(u.input_tokens) && Number.isInteger(u.output_tokens);
+  return { inputTokens, cachedInputTokens, outputTokens, known };
+}
+
+/** POST /api/persona-3c/judge/plan: append (INSERT OR IGNORE, keyed on a
+ * job_id hashed from {directionKey, scenario, orderSwap}) up to 500 blinded
+ * pairs to the judge queue. The run's judge budget/ceiling can only be
+ * raised, never lowered, and only while the run is running or complete. */
+export async function planPersona3CJudge(req: Request, env: Persona3CEnv, c: Record<string, string>) {
+  if (!env.PERSONA_3C_TOKEN) return json({ error: 'Experiment 3C reporting is not configured.' }, { status: 503 }, c);
+  if (!await authorized(req, env.PERSONA_3C_TOKEN)) return json({ error: 'Unauthorized.' }, { status: 401 }, c);
+  const b = await body(req, JUDGE_BODY_MAX_BYTES);
+  if (!b || !validRun(b.runId)) return json({ error: 'Unknown or invalid run id.' }, { status: 400 }, c);
+  const runId = String(b.runId);
+  const budget = typeof b.judgeBudgetUsd === 'number' && Number.isFinite(b.judgeBudgetUsd) ? b.judgeBudgetUsd : null;
+  const ceiling = integer(b.judgeCallCeiling, 1, PERSONA_3C_JUDGE_MAX_CALL_CEILING);
+  if (budget === null || budget <= 0 || budget > PERSONA_3C_JUDGE_MAX_BUDGET_USD || ceiling === null) {
+    return json({ error: 'Invalid judge budget or call ceiling.' }, { status: 400 }, c);
+  }
+  const rawPairs = b.pairs;
+  if (!Array.isArray(rawPairs) || rawPairs.length === 0 || rawPairs.length > JUDGE_MAX_PLAN_PAIRS) {
+    return json({ error: 'Invalid judge pairs batch (1-500 pairs per call).' }, { status: 400 }, c);
+  }
+  const pairs: JudgePairInput[] = [];
+  for (const raw of rawPairs) {
+    const pair = validJudgePair(raw);
+    if (!pair) return json({ error: 'Invalid judge pair entry.' }, { status: 400 }, c);
+    pairs.push(pair);
+  }
+
+  const run = await env.DB.prepare('SELECT * FROM persona_3c_runs WHERE id=?').bind(runId).first<Run>();
+  if (!run) return json({ error: 'Unknown run.' }, { status: 404 }, c);
+  if (!['running', 'complete'].includes(run.status)) {
+    return json({ error: 'Judge plans can only be appended while the run is running or complete.' }, { status: 409 }, c);
+  }
+
+  const now = new Date().toISOString();
+  const nextBudget = Math.max(run.judge_budget_usd ?? 0, budget);
+  const nextCeiling = Math.max(run.judge_call_ceiling ?? 0, ceiling);
+
+  const statements: D1PreparedStatement[] = [];
+  for (const pair of pairs) {
+    const jobId = await judgeJobId(pair);
+    statements.push(env.DB.prepare(
+      'INSERT OR IGNORE INTO persona_3c_judge(run_id,job_id,direction_key,scenario,order_swap,status,attempts,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',
+    ).bind(runId, jobId, pair.directionKey, pair.scenario, pair.orderSwap ? 1 : 0, 'queued', 0, now, now));
+    statements.push(env.DB.prepare(
+      'INSERT OR IGNORE INTO persona_3c_judge_inputs(run_id,job_id,text_a,text_b) VALUES(?,?,?,?)',
+    ).bind(runId, jobId, pair.textA, pair.textB));
+  }
+  statements.push(env.DB.prepare(
+    'UPDATE persona_3c_runs SET judge_budget_usd=?,judge_call_ceiling=?,updated_at=? WHERE id=?',
+  ).bind(nextBudget, nextCeiling, now, runId));
+
+  const results = await env.DB.batch(statements);
+  let queued = 0;
+  let duplicate = 0;
+  for (let i = 0; i < pairs.length; i += 1) {
+    const jobInsert = results[i * 2];
+    if (Number(jobInsert?.meta.changes ?? 0) === 1) queued += 1;
+    else duplicate += 1;
+  }
+
+  await recordEvent(
+    env.DB, runId, 'judge', 'system', 'Judge plan appended',
+    `${queued} queued, ${duplicate} duplicate judge job(s).`,
+    { queued, duplicate, judgeBudgetUsd: nextBudget, judgeCallCeiling: nextCeiling },
+  );
+
+  return json({ queued, duplicate, judgeBudgetUsd: nextBudget, judgeCallCeiling: nextCeiling }, {}, c);
+}
+
+/** POST /api/persona-3c/judge/run: claims up to `maxJobs` (<=25) queued
+ * jobs and scores them sequentially against the OpenAI Responses API.
+ * Stale in_flight jobs (>10 minutes old) are re-queued first. Each call
+ * reserves a worst-case cost before calling the provider, refuses when the
+ * run's judge budget or call ceiling would be exceeded, settles to the
+ * actual cost on success, and charges the worst-case on failure (retried
+ * up to 3 attempts, then marked failed). */
+export async function runPersona3CJudge(req: Request, env: Persona3CEnv, c: Record<string, string>) {
+  if (!env.PERSONA_3C_TOKEN) return json({ error: 'Experiment 3C reporting is not configured.' }, { status: 503 }, c);
+  if (!await authorized(req, env.PERSONA_3C_TOKEN)) return json({ error: 'Unauthorized.' }, { status: 401 }, c);
+  if (!env.OPENAI_API_KEY) return json({ error: 'The Experiment 3C judge is not configured.' }, { status: 503 }, c);
+  const b = await body(req);
+  if (!b || !validRun(b.runId)) return json({ error: 'Unknown or invalid run id.' }, { status: 400 }, c);
+  const runId = String(b.runId);
+  const maxJobs = integer(b.maxJobs, 1, JUDGE_MAX_RUN_JOBS) ?? JUDGE_MAX_RUN_JOBS;
+
+  const run = await env.DB.prepare('SELECT * FROM persona_3c_runs WHERE id=?').bind(runId).first<Run>();
+  if (!run) return json({ error: 'Unknown run.' }, { status: 404 }, c);
+  if (['failed', 'stopped'].includes(run.status)) return json({ error: 'Run is terminal; judge calls are disabled.' }, { status: 409 }, c);
+
+  const nowMs = Date.now();
+  const staleBefore = new Date(nowMs - JUDGE_STALE_MINUTES * 60_000).toISOString();
+  await env.DB.prepare(
+    "UPDATE persona_3c_judge SET status='queued',updated_at=? WHERE run_id=? AND status='in_flight' AND updated_at<=?",
+  ).bind(new Date(nowMs).toISOString(), runId, staleBefore).run();
+
+  const queuedJobs = await env.DB.prepare(
+    "SELECT * FROM persona_3c_judge WHERE run_id=? AND status='queued' ORDER BY created_at LIMIT ?",
+  ).bind(runId, maxJobs).all<JudgeJob>();
+
+  let ran = 0;
+  let complete = 0;
+  let failed = 0;
+  let budgetExhausted = false;
+
+  for (const job of queuedJobs.results) {
+    if (budgetExhausted) break;
+    const claim = await env.DB.prepare(
+      "UPDATE persona_3c_judge SET status='in_flight',updated_at=? WHERE run_id=? AND job_id=? AND status='queued'",
+    ).bind(new Date().toISOString(), runId, job.job_id).run();
+    if (Number(claim.meta.changes ?? 0) !== 1) continue;
+
+    const inputs = await env.DB.prepare(
+      'SELECT text_a AS textA, text_b AS textB FROM persona_3c_judge_inputs WHERE run_id=? AND job_id=?',
+    ).bind(runId, job.job_id).first<{ textA: string; textB: string }>();
+    if (!inputs) {
+      await env.DB.prepare("UPDATE persona_3c_judge SET status='failed',updated_at=? WHERE run_id=? AND job_id=?")
+        .bind(new Date().toISOString(), runId, job.job_id).run();
+      failed += 1;
+      continue;
+    }
+
+    const userText = `${job.scenario}\n\nA:\n${inputs.textA}\n\nB:\n${inputs.textB}`;
+    const promptSha256 = await sha256Hex(canonicalJson({ system: JUDGE_SYSTEM_PROMPT, user: userText }));
+    const cap = judgeWorstCaseCost(JUDGE_SYSTEM_PROMPT.length + userText.length);
+
+    const reserve = await env.DB.prepare(
+      'UPDATE persona_3c_runs SET judge_calls=judge_calls+1,judge_reserved_usd=judge_reserved_usd+?,updated_at=? WHERE id=? AND judge_calls<judge_call_ceiling AND judge_spent_usd+judge_reserved_usd+?<=judge_budget_usd',
+    ).bind(cap, new Date().toISOString(), runId, cap).run();
+    if (Number(reserve.meta.changes ?? 0) !== 1) {
+      // Budget or ceiling reached: put the job back to queued and stop --
+      // every later job would fail the same, monotonic check.
+      await env.DB.prepare("UPDATE persona_3c_judge SET status='queued',updated_at=? WHERE run_id=? AND job_id=?")
+        .bind(new Date().toISOString(), runId, job.job_id).run();
+      budgetExhausted = true;
+      break;
+    }
+
+    ran += 1;
+    const attempts = job.attempts + 1;
+    try {
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        signal: AbortSignal.timeout(60000),
+        headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: PERSONA_3C_JUDGE_MODEL,
+          reasoning: { effort: 'high' },
+          input: [
+            { role: 'system', content: [{ type: 'input_text', text: JUDGE_SYSTEM_PROMPT }] },
+            { role: 'user', content: [{ type: 'input_text', text: userText }] },
+          ],
+          text: { verbosity: 'low', format: { type: 'json_schema', name: 'experiment_3c_judge_pass1', strict: true, schema: JUDGE_SCHEMA } },
+          max_output_tokens: JUDGE_OUTPUT_TOKENS,
+          truncation: 'auto',
+          store: false,
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) throw new Error(`OpenAI returned ${response.status}`);
+      let text = '';
+      for (const o of (payload.output as Array<Record<string, unknown>> ?? [])) {
+        for (const item of (o.content as Array<Record<string, unknown>> ?? [])) {
+          if (item.type === 'output_text' && typeof item.text === 'string') text = item.text;
+        }
+      }
+      if (!text) throw new Error('Judge response contained no structured output.');
+      const parsed = JSON.parse(text) as unknown;
+      if (!validJudgeResponse(parsed)) throw new Error('Judge returned invalid JSON.');
+
+      const usage = judgeUsage(payload);
+      const actual = usage.known ? judgeCallCost(usage.inputTokens, usage.cachedInputTokens, usage.outputTokens) : cap;
+      const at = new Date().toISOString();
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE persona_3c_judge SET status='complete',prompt_sha256=?,response_json=?,provider_response_id=?,input_tokens=?,cached_input_tokens=?,output_tokens=?,cost_usd=?,attempts=?,updated_at=? WHERE run_id=? AND job_id=?",
+        ).bind(promptSha256, JSON.stringify(parsed), typeof payload.id === 'string' ? payload.id : null, usage.inputTokens, usage.cachedInputTokens, usage.outputTokens, actual, attempts, at, runId, job.job_id),
+        env.DB.prepare(
+          'UPDATE persona_3c_runs SET judge_reserved_usd=judge_reserved_usd-?,judge_spent_usd=judge_spent_usd+?,updated_at=? WHERE id=? AND judge_reserved_usd>=?',
+        ).bind(cap, actual, at, runId, cap),
+      ]);
+      complete += 1;
+    } catch {
+      const at = new Date().toISOString();
+      const nextStatus: JudgeJobStatus = attempts >= JUDGE_MAX_ATTEMPTS ? 'failed' : 'queued';
+      await env.DB.batch([
+        env.DB.prepare(
+          'UPDATE persona_3c_judge SET status=?,attempts=?,updated_at=? WHERE run_id=? AND job_id=?',
+        ).bind(nextStatus, attempts, at, runId, job.job_id),
+        env.DB.prepare(
+          'UPDATE persona_3c_runs SET judge_reserved_usd=judge_reserved_usd-?,judge_spent_usd=judge_spent_usd+?,updated_at=? WHERE id=? AND judge_reserved_usd>=?',
+        ).bind(cap, cap, at, runId, cap),
+      ]);
+      failed += 1;
+    }
+  }
+
+  const remaining = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM persona_3c_judge WHERE run_id=? AND status='queued'",
+  ).bind(runId).first<{ n: number }>();
+  const updatedRun = await env.DB.prepare('SELECT judge_spent_usd FROM persona_3c_runs WHERE id=?').bind(runId).first<{ judge_spent_usd: number }>();
+
+  await recordEvent(
+    env.DB, runId, 'judge', 'progress', 'Judge pass ran',
+    `${ran} call(s): ${complete} complete, ${failed} failed.`,
+    { ran, complete, failed, remainingQueued: Number(remaining?.n ?? 0) },
+  );
+
+  return json({
+    ran, complete, failed,
+    remainingQueued: Number(remaining?.n ?? 0),
+    judgeSpentUsd: Number(updatedRun?.judge_spent_usd ?? run.judge_spent_usd ?? 0),
+  }, {}, c);
+}
+
+/** GET /api/persona-3c/judge/results?runId=: auth required. Returns every
+ * complete job's parsed response, usage, and cost -- never the blinded
+ * texts (those live only in persona_3c_judge_inputs, which this route
+ * never selects from). */
+export async function persona3CJudgeResults(req: Request, env: Persona3CEnv, c: Record<string, string>, runId: string | null) {
+  if (!env.PERSONA_3C_TOKEN) return json({ error: 'Experiment 3C reporting is not configured.' }, { status: 503 }, c);
+  if (!await authorized(req, env.PERSONA_3C_TOKEN)) return json({ error: 'Unauthorized.' }, { status: 401 }, c);
+  if (!validRun(runId)) return json({ error: 'Unknown or invalid run id.' }, { status: 400 }, c);
+  const rows = await env.DB.prepare(
+    "SELECT job_id AS jobId, direction_key AS directionKey, scenario, order_swap AS orderSwap, response_json AS responseJson, input_tokens AS inputTokens, cached_input_tokens AS cachedInputTokens, output_tokens AS outputTokens, cost_usd AS costUsd FROM persona_3c_judge WHERE run_id=? AND status='complete' ORDER BY created_at",
+  ).bind(runId).all<{ jobId: string; directionKey: string; scenario: string; orderSwap: number; responseJson: string; inputTokens: number; cachedInputTokens: number; outputTokens: number; costUsd: number }>();
+  const results = rows.results.map((row) => {
+    let response: unknown = null;
+    try { response = JSON.parse(row.responseJson); } catch { response = null; }
+    return {
+      jobId: row.jobId,
+      directionKey: row.directionKey,
+      scenario: row.scenario,
+      orderSwap: Boolean(row.orderSwap),
+      response,
+      usage: { inputTokens: row.inputTokens, cachedInputTokens: row.cachedInputTokens, outputTokens: row.outputTokens },
+      costUsd: row.costUsd,
+    };
+  });
+  return json({ runId, results }, {}, c);
 }

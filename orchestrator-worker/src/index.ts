@@ -5,7 +5,7 @@ import { AGENT_IDS, type AgentId, type RunParams } from './types';
 import { campaign as eventCampaign, claimEvent, eventRun } from './events';
 import { claimPersona3A, persona3AStatus, startPersona3A, updatePersona3A } from './persona-3a';
 import { claimPersona3B, finalizePersona3B, persona3BStatus, persona3BScores, reviewPersona3B, scorePersona3B, startPersona3B, startPersona3BRepair, synthesizePersona3B, updatePersona3B } from './persona-3b';
-import { persona3CStatus, reportPersona3C, startPersona3C, stopPersona3C } from './persona-3c';
+import { persona3CJudgeResults, persona3CStatus, planPersona3CJudge, reportPersona3C, runPersona3CJudge, startPersona3C, stopPersona3C } from './persona-3c';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -381,6 +381,9 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/persona-3c/start') return await startPersona3C(request, env, corsHeaders);
       if (request.method === 'POST' && url.pathname === '/api/persona-3c/report') return await reportPersona3C(request, env, corsHeaders);
       if (request.method === 'POST' && url.pathname === '/api/persona-3c/stop') return await stopPersona3C(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3c/judge/plan') return await planPersona3CJudge(request, env, corsHeaders);
+      if (request.method === 'POST' && url.pathname === '/api/persona-3c/judge/run') return await runPersona3CJudge(request, env, corsHeaders);
+      if (request.method === 'GET' && url.pathname === '/api/persona-3c/judge/results') return await persona3CJudgeResults(request, env, corsHeaders, url.searchParams.get('runId'));
 
       return json({ error: 'Not found.' }, { status: 404 }, corsHeaders);
     } catch (error) {
