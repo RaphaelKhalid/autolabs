@@ -264,6 +264,38 @@ def upload_checkpoint(config: Config, run_id: Optional[str], files: List[Path]) 
         return False
 
 
+def upload_stage_outputs(config: Config, run_id: Optional[str], workdir: Path, names: List[str]) -> bool:
+    """Best-effort copy of a stage's output files to
+    `hf://<repo>/runs/<run_id>/outputs/` as soon as the stage finishes, so
+    every result the funnel has produced so far survives the pod. Same
+    no-op and never-abort policy as the checkpoint upload."""
+    api_repo = _hf_api(config)
+    if api_repo is None:
+        return False
+    api, repo_id = api_repo
+    run_id = run_id or "unknown-run"
+    try:
+        api.create_repo(repo_id=repo_id, repo_type="model", private=True, exist_ok=True)
+        sent = []
+        for name in names:
+            local_path = workdir / name
+            if not local_path.exists():
+                continue
+            api.upload_file(
+                path_or_fileobj=str(local_path),
+                path_in_repo=f"runs/{run_id}/outputs/{name}",
+                repo_id=repo_id,
+                repo_type="model",
+            )
+            sent.append(name)
+        if sent:
+            logger.info("[outputs] uploaded %s to hf://%s/runs/%s/outputs", sent, repo_id, run_id)
+        return bool(sent)
+    except Exception:  # noqa: BLE001 - upload is best-effort, never abort the run
+        logger.exception("[outputs] hf upload failed; continuing without it")
+        return False
+
+
 def download_latest_checkpoint(config: Config, run_id: Optional[str], checkpoint_dir: Path) -> Optional[int]:
     """On a fresh pod with an empty checkpoint dir: fetch the highest-token
     checkpoint this run uploaded earlier (weights + sidecars) so training
@@ -410,7 +442,81 @@ def _read_steps_meta(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, model, tokenizer, device):
+def compute_held_out(config: Config, harvester, tokenizer, trained_sae, d_model: int, device, buffer_dtype, buffer_device):
+    """Held-out FVE/L0 on a fresh batch the optimizer never saw, drawn from
+    a separate pass over the run's sources with its own seed. Returns
+    (held_out_fve, held_out_l0), None/None if nothing could be harvested."""
+    holdout_buffer = harvest.ShuffleBuffer(HELD_OUT_BATCH_SIZE, d_model, seed=config.seed + 1, dtype=buffer_dtype, device=buffer_device)
+    holdout_stream = harvest.stream_config_conversations(config, seed=config.seed + 1_000_003)
+    holdout_convo_batch: List[List[Dict[str, str]]] = []
+    holdout_batches_tried = 0
+    while holdout_buffer.filled < HELD_OUT_BATCH_SIZE and holdout_batches_tried < 500:
+        try:
+            _src, messages = next(holdout_stream)
+        except StopIteration:
+            break
+        holdout_convo_batch.append(messages)
+        if len(holdout_convo_batch) < config.harvest_batch_size:
+            continue
+        holdout_batch = _prepare_batch(tokenizer, holdout_convo_batch, config, device)
+        holdout_convo_batch = []
+        holdout_batches_tried += 1
+        if holdout_batch is None:
+            continue
+        h_ids, h_attn, h_mask = holdout_batch
+        h_acts = harvest.masked_activations(harvester, h_ids, h_attn, h_mask)
+        if h_acts.numel() > 0:
+            holdout_buffer.add(h_acts)
+    if holdout_buffer.filled == 0:
+        logger.warning("[train] collected zero held-out activations; held_out_fve/held_out_l0 will be null")
+        return None, None
+    x_holdout = holdout_buffer.sample(holdout_buffer.filled).to(device)
+    with torch.no_grad():
+        holdout_out = trained_sae.forward_loss(x_holdout, dead_window_tokens=config.dead_feature_window_tokens)
+    held_out_fve = holdout_out.fraction_variance_explained.item()
+    held_out_l0 = holdout_out.l0.item()
+    logger.info("[train] held_out_fve=%.6f held_out_l0=%.4f (n=%d activations)", held_out_fve, held_out_l0, holdout_buffer.filled)
+    return held_out_fve, held_out_l0
+
+
+def measure_feature_stats(config: Config, harvester, tokenizer, trained_sae, device, tokens: int) -> sae_mod.FeatureStatsTracker:
+    """Fresh pass of `tokens` assistant tokens through the frozen SAE to
+    measure max activation and firing density (every token counts). Used
+    by `--finalize-from-checkpoint`, where the training-time density (last
+    20% of a *finished* run) is not available."""
+    tracker = sae_mod.FeatureStatsTracker(config.sae_width, warmup_fraction=0.0, device=torch.device(device))
+    stream = harvest.stream_config_conversations(config, seed=config.seed + 2_000_003)
+    seen = 0
+    convo_batch: List[List[Dict[str, str]]] = []
+    for _src, messages in stream:
+        if seen >= tokens:
+            break
+        convo_batch.append(messages)
+        if len(convo_batch) < config.harvest_batch_size:
+            continue
+        batch = _prepare_batch(tokenizer, convo_batch, config, device)
+        convo_batch = []
+        if batch is None:
+            continue
+        ids, attn, mask = batch
+        acts = harvest.masked_activations(harvester, ids, attn, mask)
+        if acts.numel() == 0:
+            continue
+        with torch.no_grad():
+            for start in range(0, acts.shape[0], config.batch_tokens):
+                chunk = acts[start : start + config.batch_tokens].to(torch.float32)
+                tracker.observe(trained_sae.encode(chunk), progress_fraction=1.0)
+        seen += acts.shape[0]
+    logger.info("[finalize] measured feature stats on %d assistant tokens", seen)
+    return tracker
+
+
+def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, model, tokenizer, device, finalize: bool = False):
+    """Harvest + train. With `finalize=True` (`--finalize-from-checkpoint`)
+    no training happens: the latest checkpoint (local, or downloaded from
+    the HF repo for this run id) is promoted to the final SAE after a
+    fresh feature-statistics pass, so the rest of the funnel can run on a
+    run that died or was stopped mid-training."""
     sae_path = workdir / "sae.safetensors"
     stats_path = workdir / "feature_stats.json"
     if sae_path.exists() and stats_path.exists():
@@ -435,6 +541,9 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             resume_files = sorted(
                 checkpoint_dir.glob("sae_step_*.safetensors"), key=lambda p: int(p.stem.split("_")[-1])
             )
+
+    if finalize and not resume_files:
+        raise RuntimeError("--finalize-from-checkpoint: no checkpoint found locally or in the HF repo for this run")
 
     sources = harvest.dataset_sources(config)
     tokens_done = 0
@@ -488,6 +597,37 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             logger.exception("[train] trainer state could not be restored; continuing with fresh optimizer/stats")
 
     buffer_dtype = DTYPES[{"bf16": "bf16", "fp16": "fp16", "fp32": "fp32"}[config.shuffle_buffer_dtype]]
+
+    if finalize:
+        logger.info("[finalize] promoting checkpoint at %d tokens to the final SAE (no further training)", tokens_done)
+        client.report("train", progress=_progress(tokens_done, config.tokens_target), records=[{
+            "recordId": f"train-finalized-{tokens_done}",
+            "payload": {"tokens_done": tokens_done, "tokens_target": config.tokens_target, "steps_done": steps_done,
+                        "finalized_from_checkpoint": True, "stats_pass_tokens": config.finalize_stats_tokens},
+        }])
+        with harvest.ActivationHarvester(model, config.layer) as harvester:
+            if config.finalize_stats_tokens > 0:
+                measured = measure_feature_stats(config, harvester, tokenizer, trained_sae, device, config.finalize_stats_tokens)
+                # Max activation: the larger of what training saw and what the pass saw.
+                measured.max_act = torch.maximum(measured.max_act, stats_tracker.max_act.to(measured.max_act.device))
+                feature_stats = measured.to_dict()
+            else:
+                feature_stats = stats_tracker.to_dict()
+            held_out_fve, held_out_l0 = compute_held_out(
+                config, harvester, tokenizer, trained_sae, d_model, device, buffer_dtype, _buffer_device(config, device)
+            )
+        feature_stats["held_out_fve"] = held_out_fve
+        feature_stats["held_out_l0"] = held_out_l0
+        feature_stats["resumes"] = resumes
+        feature_stats["convs_seen"] = convs_seen
+        feature_stats["tokens_by_source"] = tokens_by_source
+        feature_stats["sources"] = [src["name"] for src in sources]
+        feature_stats["finalized_from_checkpoint_tokens"] = tokens_done
+        feature_stats["tokens_target"] = config.tokens_target
+        trained_sae.save(sae_path, feature_stats=feature_stats)
+        upload_run_artifacts(config, workdir, client.run_id, sae_path, stats_path)
+        return trained_sae, feature_stats
+
     buffer = harvest.ShuffleBuffer(
         config.shuffle_buffer_size, d_model, seed=config.seed + resumes, dtype=buffer_dtype, device=_buffer_device(config, device)
     )
@@ -618,49 +758,9 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
                 break
         prefetch.close()
 
-        # -- held-out FVE/L0 on a fresh batch harvested *after* training,
-        # never seen by the optimizer (the shuffle-buffer samples used for
-        # every training step above are not held out). Still inside the
-        # ActivationHarvester context so the model is still truncated to
-        # layer `config.layer`. Drawn from a fresh pass over the same
-        # sources with a different seed, so it never overlaps the training
-        # prefix of a resumed run either.
-        held_out_fve: Optional[float] = None
-        held_out_l0: Optional[float] = None
-        holdout_buffer = harvest.ShuffleBuffer(HELD_OUT_BATCH_SIZE, d_model, seed=config.seed + 1, dtype=buffer_dtype, device=buffer.device)
-        holdout_stream = harvest.stream_config_conversations(config, seed=config.seed + 1_000_003)
-        holdout_convo_batch: List[List[Dict[str, str]]] = []
-        holdout_batches_tried = 0
-        while holdout_buffer.filled < HELD_OUT_BATCH_SIZE and holdout_batches_tried < 500:
-            try:
-                _src, messages = next(holdout_stream)
-            except StopIteration:
-                break
-            holdout_convo_batch.append(messages)
-            if len(holdout_convo_batch) < config.harvest_batch_size:
-                continue
-            holdout_batch = _prepare_batch(tokenizer, holdout_convo_batch, config, device)
-            holdout_convo_batch = []
-            holdout_batches_tried += 1
-            if holdout_batch is None:
-                continue
-            h_ids, h_attn, h_mask = holdout_batch
-            h_acts = harvest.masked_activations(harvester, h_ids, h_attn, h_mask)
-            if h_acts.numel() > 0:
-                holdout_buffer.add(h_acts)
-
-        if holdout_buffer.filled > 0:
-            x_holdout = holdout_buffer.sample(holdout_buffer.filled).to(device)
-            with torch.no_grad():
-                holdout_out = trained_sae.forward_loss(x_holdout, dead_window_tokens=config.dead_feature_window_tokens)
-            held_out_fve = holdout_out.fraction_variance_explained.item()
-            held_out_l0 = holdout_out.l0.item()
-            logger.info(
-                "[train] held_out_fve=%.6f held_out_l0=%.4f (n=%d activations)",
-                held_out_fve, held_out_l0, holdout_buffer.filled,
-            )
-        else:
-            logger.warning("[train] collected zero held-out activations; held_out_fve/held_out_l0 will be null")
+        held_out_fve, held_out_l0 = compute_held_out(
+            config, harvester, tokenizer, trained_sae, d_model, device, buffer_dtype, buffer.device
+        )
 
     feature_stats = stats_tracker.to_dict()
     feature_stats["held_out_fve"] = held_out_fve
@@ -1402,6 +1502,11 @@ def stage_analysis(
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Experiment 3C SAE pipeline")
     parser.add_argument("--config", default="configs/smoke.json")
+    parser.add_argument(
+        "--finalize-from-checkpoint", action="store_true",
+        help="Skip further training: promote the latest checkpoint (local or from the HF repo for this run id) "
+             "to the final SAE after a feature-statistics pass, then run the rest of the funnel.",
+    )
     args = parser.parse_args(argv)
 
     config = Config.from_json(args.config)
@@ -1422,10 +1527,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         model, tokenizer = load_model_and_tokenizer(config, device)
 
         boot = stage_boot(config, workdir, client, model, tokenizer, device)
-        trained_sae, feature_stats = stage_harvest_train(config, workdir, client, model, tokenizer, device)
+        trained_sae, feature_stats = stage_harvest_train(
+            config, workdir, client, model, tokenizer, device, finalize=args.finalize_from_checkpoint
+        )
         post_train = stage_post_train_check(
             config, workdir, client, model, tokenizer, trained_sae, feature_stats, device
         )
+        upload_stage_outputs(config, client.run_id, workdir, ["boot_checks.json", "post_train_check.json"])
 
         scenarios = load_scenarios(Path(config.scenarios_file))
         scenarios = scenarios[: config.steer_scenarios]
@@ -1433,18 +1541,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         candidates = stage_rank(
             config, workdir, client, model, tokenizer, trained_sae, feature_stats, scenarios, device
         )
+        upload_stage_outputs(config, client.run_id, workdir, ["candidates.json"])
 
         calibration_records = stage_steer(
             config, workdir, client, model, tokenizer, trained_sae, feature_stats, scenarios, device,
             candidates=candidates,
         )
+        upload_stage_outputs(config, client.run_id, workdir, ["calibration_records.json"])
 
         screen_records, screen_generation_records = stage_screen(
             config, workdir, client, model, tokenizer, trained_sae, feature_stats,
             calibration_records, scenarios, device,
         )
 
+        upload_stage_outputs(config, client.run_id, workdir, ["screen_records.json", "screen_generations.json"])
+
         describe_output = stage_describe(config, workdir, client, screen_records, screen_generation_records)
+        upload_stage_outputs(config, client.run_id, workdir, ["describe_results.json", "describe-report.html"])
 
         reach_screen_scenarios = load_scenarios(Path(config.scenarios_file))[: config.screen_scenarios]
         scenario_prompt_by_id = {s["id"]: s["prompt"] for s in reach_screen_scenarios}
@@ -1453,10 +1566,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             describe_output, screen_records, screen_generation_records, scenario_prompt_by_id,
         )
 
+        upload_stage_outputs(config, client.run_id, workdir, ["reach_results.json", "reach-report.html"])
+
         summary = stage_analysis(
             config, workdir, client, boot, post_train, calibration_records,
             screen_records, screen_generation_records,
         )
+        upload_stage_outputs(config, client.run_id, workdir, ["summary.json", "smoke-report.html", "run_config.json"])
 
         client.report(
             "done",

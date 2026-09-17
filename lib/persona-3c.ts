@@ -34,13 +34,27 @@ export interface Persona3CEvent {
   summary: string;
 }
 
+export interface Persona3CTrainPoint {
+  tokensDone: number | null;
+  tokensTarget: number | null;
+  stepsDone: number | null;
+  fve: number | null;
+  deadFraction: number | null;
+  loss: number | null;
+}
+
 export interface Persona3CStatus {
   run: Persona3CRun | null;
   recordCounts?: Record<string, number>;
   progress?: Persona3CProgress[];
   events?: Persona3CEvent[];
+  trainCurve?: Persona3CTrainPoint[];
+  staleMinutes?: number | null;
   error?: string;
 }
+
+/** Minutes without a report after which a running pod is treated as quiet (matches the Worker cron). */
+export const PERSONA_3C_STALE_AFTER_MINUTES = 45;
 
 export async function fetchPersona3CStatus(signal?: AbortSignal): Promise<Persona3CStatus> {
   const response = await fetch('/api/persona-3c/status', { signal, cache: 'no-store' });

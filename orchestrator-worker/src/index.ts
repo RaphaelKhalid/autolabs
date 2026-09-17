@@ -5,7 +5,7 @@ import { AGENT_IDS, type AgentId, type RunParams } from './types';
 import { campaign as eventCampaign, claimEvent, eventRun } from './events';
 import { claimPersona3A, persona3AStatus, startPersona3A, updatePersona3A } from './persona-3a';
 import { claimPersona3B, finalizePersona3B, persona3BStatus, persona3BScores, reviewPersona3B, scorePersona3B, startPersona3B, startPersona3BRepair, synthesizePersona3B, updatePersona3B } from './persona-3b';
-import { persona3CJudgeResults, persona3CStatus, planPersona3CJudge, reportPersona3C, runPersona3CJudge, startPersona3C, stopPersona3C } from './persona-3c';
+import { persona3CJudgeResults, persona3CStatus, planPersona3CJudge, reportPersona3C, runPersona3CJudge, startPersona3C, stopPersona3C, persona3CStaleCheck } from './persona-3c';
 export { AutolabsWorkflow } from './workflow';
 
 const COMPETITION_ROUNDS = 50;
@@ -391,5 +391,9 @@ export default {
       console.error(JSON.stringify({ message: 'request failed', error: message, path: url.pathname }));
       return json({ error: 'Internal server error.' }, { status: 500 }, corsHeaders);
     }
+  },
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    const result = await persona3CStaleCheck(env);
+    console.log(JSON.stringify({ message: 'persona-3c stale check', ...result }));
   },
 } satisfies ExportedHandler<Env>;
