@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 def _default_shells() -> List[int]:
@@ -115,14 +115,41 @@ class Config:
     # --- data / harvest ---
     dataset_name: str = "HuggingFaceH4/ultrachat_200k"
     dataset_split: str = "train_sft"
+    # Optional mixture replacing dataset_name/dataset_split: a list of
+    # {"name", "split", "weight", "text_field"?, "text_format"?, "config"?} sources
+    # interleaved by weight (harvest.stream_config_conversations). Empty
+    # means the single legacy source above. Weights are per conversation
+    # drawn, not per token.
+    datasets: List[Dict[str, Any]] = field(default_factory=list)
+    # User turn placed before a plain-text source's text (text_field
+    # sources only), so the text sits at assistant positions.
+    wrap_user_prompt: str = "Say something."
     max_seq: int = 1024
     tokens_target: int = 2_000_000
     batch_tokens: int = 4096
     shuffle_buffer_size: int = 1_000_000
-    harvest_batch_size: int = 8  # conversations pulled per streaming step
+    # "auto" puts the buffer on the training device (GPU) when available;
+    # "cpu" is the old behaviour. bf16 storage matches the model's dtype.
+    shuffle_buffer_device: str = "auto"
+    shuffle_buffer_dtype: str = "bf16"
+    harvest_batch_size: int = 8  # conversations per forward pass
+    # Prefetch thread: tokenise harvest_batch_size * harvest_sort_group
+    # conversations at a time, sort by length, cut into batches; keep up
+    # to harvest_prefetch_depth batches ready. See harvest.BatchPrefetcher.
+    harvest_sort_group: int = 4
+    harvest_prefetch_depth: int = 4
+    # SAE matmul precision: TF32 tensor cores for fp32 matmuls (Ampere+,
+    # ~2x over plain fp32; 10-bit mantissa, fine for an SAE) and optional
+    # bf16 autocast of the SAE forward pass on top (opt-in, not yet
+    # validated on a GPU).
+    sae_tf32: bool = True
+    sae_autocast_bf16: bool = False
 
     # --- checkpointing / reporting ---
     checkpoint_every_tokens: int = 500_000
+    # Local checkpoints kept under <workdir>/checkpoints (older ones are
+    # deleted after a newer one is written and uploaded); 0 keeps all.
+    checkpoint_keep_local: int = 3
     workdir: str = "/workspace/3c"
     scenarios_file: str = "scenarios.json"
 
@@ -306,6 +333,23 @@ class Config:
             raise ValueError("lr_warmup_steps must be >= 0")
         if self.generation_batch_size < 1:
             raise ValueError("generation_batch_size must be >= 1")
+        if self.harvest_batch_size < 1 or self.harvest_sort_group < 1 or self.harvest_prefetch_depth < 1:
+            raise ValueError("harvest_batch_size, harvest_sort_group and harvest_prefetch_depth must be >= 1")
+        if self.shuffle_buffer_device not in ("auto", "cpu", "cuda"):
+            raise ValueError("shuffle_buffer_device must be auto, cpu or cuda")
+        if self.shuffle_buffer_dtype not in ("bf16", "fp16", "fp32"):
+            raise ValueError("shuffle_buffer_dtype must be bf16, fp16 or fp32")
+        if self.checkpoint_keep_local < 0:
+            raise ValueError("checkpoint_keep_local must be >= 0")
+        for i, src in enumerate(self.datasets):
+            if not isinstance(src, dict) or not src.get("name") or not src.get("split"):
+                raise ValueError(f"datasets[{i}] needs at least name and split")
+            if float(src.get("weight", 1.0)) < 0:
+                raise ValueError(f"datasets[{i}] weight must be >= 0")
+            if src.get("text_format", "plain") not in ("plain", "chatml", "hh"):
+                raise ValueError(f"datasets[{i}] text_format must be plain, chatml or hh")
+        if self.datasets and sum(float(src.get("weight", 1.0)) for src in self.datasets) <= 0:
+            raise ValueError("datasets weights must sum to a positive number")
         if self.screen_scenarios < 2:
             raise ValueError("screen_scenarios must be >= 2 (leave-one-scenario-out needs a held-out fold)")
         if self.random_directions < 1:

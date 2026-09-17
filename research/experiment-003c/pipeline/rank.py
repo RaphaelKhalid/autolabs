@@ -659,10 +659,12 @@ def capture_specificity_activations(
     conversations_needed = config.rank_specificity_conversations
     per_conversation: List[Dict[str, Any]] = []
 
-    conv_stream = harvest.stream_conversations(config.dataset_name, config.dataset_split, seed=config.seed + 7)
+    # Same source mixture the SAE trained on (harvest.stream_config_conversations),
+    # different seed, so the specificity statistics see the training distribution.
+    conv_stream = harvest.stream_config_conversations(config, seed=config.seed + 7)
     with harvest.ActivationHarvester(model, config.layer) as harvester:
         batch_msgs: List[List[Dict[str, str]]] = []
-        for messages in conv_stream:
+        for _src, messages in conv_stream:
             if len(per_conversation) >= conversations_needed:
                 break
             batch_msgs.append(messages)

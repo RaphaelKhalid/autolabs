@@ -5,9 +5,11 @@ Every stage is resumable: before doing expensive work, each stage checks for
 its own output file under `config.workdir` and, if present, loads it instead
 of recomputing. Training additionally checkpoints the SAE every
 `checkpoint_every_tokens` tokens under `<workdir>/checkpoints/` so a crash
-mid-run only loses partial progress since the last checkpoint (the token
-stream itself is not seekable, so a resumed run starts a fresh pass over the
-dataset from a freshly-shuffled position -- see README "Resumability").
+mid-run only loses partial progress since the last checkpoint. Checkpoints
+carry the optimizer, dead-window clocks, feature statistics and per-source
+conversation counts, are uploaded off the pod when HF_TOKEN is set, and a
+resume skips past the conversations already harvested (see README
+"Resumability").
 
 Usage:
     python run_smoke.py --config configs/smoke.json
@@ -165,7 +167,9 @@ def train_steps_on_buffer(trained_sae, optimizer, buffer, config: Config, steps_
         for group in optimizer.param_groups:
             group["lr"] = config.lr * lr_mult
         optimizer.zero_grad(set_to_none=True)
-        last_out = trained_sae.forward_loss(x, dead_window_tokens=config.dead_feature_window_tokens)
+        use_autocast = bool(getattr(config, "sae_autocast_bf16", False)) and x.is_cuda
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_autocast):
+            last_out = trained_sae.forward_loss(x, dead_window_tokens=config.dead_feature_window_tokens)
         last_out.loss.backward()
         optimizer.step()
         trained_sae.normalize_decoder_()
@@ -220,6 +224,112 @@ def upload_run_artifacts(
         return False
 
 
+def _hf_api(config: Config):
+    """(HfApi, repo_id) if uploads are configured (HF_TOKEN set and
+    `config.hf_upload_repo` non-empty), else None."""
+    token = os.environ.get("HF_TOKEN")
+    repo_id = config.hf_upload_repo
+    if not token or not repo_id:
+        return None
+    from huggingface_hub import HfApi  # local import: optional, heavy dependency
+
+    return HfApi(token=token), repo_id
+
+
+def upload_checkpoint(config: Config, run_id: Optional[str], files: List[Path]) -> bool:
+    """Best-effort copy of one training checkpoint (weights, step metadata,
+    trainer state) to `hf://<repo>/runs/<run_id>/checkpoints/` so a dead
+    host costs at most `checkpoint_every_tokens` of training. Same no-op
+    and swallow-everything policy as `upload_run_artifacts`."""
+    api_repo = _hf_api(config)
+    if api_repo is None:
+        return False
+    api, repo_id = api_repo
+    run_id = run_id or "unknown-run"
+    try:
+        api.create_repo(repo_id=repo_id, repo_type="model", private=True, exist_ok=True)
+        for local_path in files:
+            if not local_path.exists():
+                continue
+            api.upload_file(
+                path_or_fileobj=str(local_path),
+                path_in_repo=f"runs/{run_id}/checkpoints/{local_path.name}",
+                repo_id=repo_id,
+                repo_type="model",
+            )
+        logger.info("[train] uploaded checkpoint %s to hf://%s/runs/%s/checkpoints", files[0].name, repo_id, run_id)
+        return True
+    except Exception:  # noqa: BLE001 - upload is best-effort, never abort the run
+        logger.exception("[train] hf checkpoint upload failed; continuing without it")
+        return False
+
+
+def download_latest_checkpoint(config: Config, run_id: Optional[str], checkpoint_dir: Path) -> Optional[int]:
+    """On a fresh pod with an empty checkpoint dir: fetch the highest-token
+    checkpoint this run uploaded earlier (weights + sidecars) so training
+    resumes from it. Returns the token count restored, or None."""
+    api_repo = _hf_api(config)
+    if api_repo is None or not run_id:
+        return None
+    api, repo_id = api_repo
+    prefix = f"runs/{run_id}/checkpoints/"
+    try:
+        names = [n for n in api.list_repo_files(repo_id=repo_id, repo_type="model") if n.startswith(prefix)]
+    except Exception:  # noqa: BLE001
+        logger.exception("[train] could not list hf checkpoints; starting fresh")
+        return None
+    tokens = sorted({int(Path(n).name.split("_")[2].split(".")[0]) for n in names if Path(n).name.startswith("sae_step_")})
+    if not tokens:
+        return None
+    latest = tokens[-1]
+    wanted = [n for n in names if Path(n).name.startswith(f"sae_step_{latest}.")]
+    try:
+        from huggingface_hub import hf_hub_download
+
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        for name in wanted:
+            local = hf_hub_download(repo_id=repo_id, filename=name, repo_type="model", token=os.environ.get("HF_TOKEN"))
+            target = checkpoint_dir / Path(name).name
+            target.write_bytes(Path(local).read_bytes())
+        logger.info("[train] restored checkpoint at %d tokens from hf://%s/%s", latest, repo_id, prefix)
+        return latest
+    except Exception:  # noqa: BLE001
+        logger.exception("[train] hf checkpoint download failed; starting fresh")
+        return None
+
+
+def checkpoint_files(checkpoint_dir: Path, tokens_done: int) -> Dict[str, Path]:
+    stem = f"sae_step_{tokens_done}"
+    return {
+        "weights": checkpoint_dir / f"{stem}.safetensors",
+        "steps": checkpoint_dir / f"{stem}.steps.json",
+        "trainer": checkpoint_dir / f"{stem}.trainer.pt",
+    }
+
+
+def prune_local_checkpoints(checkpoint_dir: Path, keep: int) -> None:
+    """Delete all but the `keep` newest local checkpoints (0 keeps all)."""
+    if keep <= 0:
+        return
+    weights = sorted(checkpoint_dir.glob("sae_step_*.safetensors"), key=lambda p: int(p.stem.split("_")[-1]))
+    for old in weights[:-keep]:
+        for path in checkpoint_files(checkpoint_dir, int(old.stem.split("_")[-1])).values():
+            if path.exists():
+                path.unlink()
+
+
+def configure_matmul_precision(config: Config) -> None:
+    """TF32 tensor-core matmuls for the SAE's fp32 weights (Ampere+). Off
+    by default in torch; a 32k x 3584 encoder/decoder pair at 4096 tokens
+    per step is the run's largest matmul once the buffer is on the GPU."""
+    if not torch.cuda.is_available():
+        return
+    torch.backends.cuda.matmul.allow_tf32 = bool(config.sae_tf32)
+    torch.backends.cudnn.allow_tf32 = bool(config.sae_tf32)
+    if config.sae_tf32:
+        torch.set_float32_matmul_precision("high")
+
+
 def idempotency_key_for(config: Config) -> str:
     if config.idempotency_key:
         return config.idempotency_key
@@ -261,28 +371,43 @@ def stage_boot(config: Config, workdir: Path, client: WorkerClient, model, token
     return out
 
 
-def _prepare_batch(tokenizer, convs: List[List[Dict[str, str]]], config: Config, device):
-    prepared = []
-    for messages in convs:
-        input_ids, mask = harvest.compute_assistant_mask(tokenizer, messages, max_seq=config.max_seq)
-        if not any(mask):
-            continue
-        prepared.append((input_ids, mask))
-    if not prepared:
+def _tokenize_conversation(tokenizer, messages: List[Dict[str, str]], config: Config) -> Optional[harvest.Prepared]:
+    input_ids, mask = harvest.compute_assistant_mask(tokenizer, messages, max_seq=config.max_seq)
+    if not any(mask):
         return None
-    max_len = max(len(ids) for ids, _ in prepared)
+    return input_ids, mask
+
+
+def _pad_id(tokenizer) -> int:
     pad_id = tokenizer.pad_token_id
     if pad_id is None:
         pad_id = tokenizer.eos_token_id
-    batch_ids = torch.full((len(prepared), max_len), pad_id, dtype=torch.long, device=device)
-    batch_attn = torch.zeros((len(prepared), max_len), dtype=torch.long, device=device)
-    batch_mask = torch.zeros((len(prepared), max_len), dtype=torch.long, device=device)
-    for i, (ids, mask) in enumerate(prepared):
-        n = len(ids)
-        batch_ids[i, :n] = torch.tensor(ids, device=device)
-        batch_attn[i, :n] = 1
-        batch_mask[i, : len(mask)] = torch.tensor(mask, device=device)
-    return batch_ids, batch_attn, batch_mask
+    return int(pad_id)
+
+
+def _prepare_batch(tokenizer, convs: List[List[Dict[str, str]]], config: Config, device):
+    """Tokenise + collate a list of conversations onto `device`; None if no
+    conversation had assistant tokens. Kept for the held-out pass and for
+    callers outside the prefetched training loop."""
+    prepared = [p for p in (_tokenize_conversation(tokenizer, m, config) for m in convs) if p is not None]
+    if not prepared:
+        return None
+    batch_ids, batch_attn, batch_mask = harvest.collate_prepared(prepared, _pad_id(tokenizer))
+    return batch_ids.to(device), batch_attn.to(device), batch_mask.to(device)
+
+
+def _buffer_device(config: Config, device) -> torch.device:
+    if config.shuffle_buffer_device == "cpu":
+        return torch.device("cpu")
+    if config.shuffle_buffer_device == "cuda":
+        return torch.device("cuda")
+    return torch.device(device) if torch.cuda.is_available() else torch.device("cpu")
+
+
+def _read_steps_meta(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, model, tokenizer, device):
@@ -296,22 +421,42 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
         feature_stats = json.loads(stats_path.read_text(encoding="utf-8"))
         return trained_sae, feature_stats
 
+    configure_matmul_precision(config)
     d_model = model.config.hidden_size
     checkpoint_dir = workdir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     resume_files = sorted(
         checkpoint_dir.glob("sae_step_*.safetensors"), key=lambda p: int(p.stem.split("_")[-1])
     )
+    if not resume_files:
+        # Fresh pod after a host failure: pull the last checkpoint this run
+        # uploaded, if any (no-op without HF_TOKEN / hf_upload_repo).
+        if download_latest_checkpoint(config, client.run_id, checkpoint_dir) is not None:
+            resume_files = sorted(
+                checkpoint_dir.glob("sae_step_*.safetensors"), key=lambda p: int(p.stem.split("_")[-1])
+            )
 
+    sources = harvest.dataset_sources(config)
     tokens_done = 0
     steps_done = 0
+    resumes = 0
+    convs_seen: List[int] = [0] * len(sources)
+    trainer_state: Optional[Dict[str, Any]] = None
     if resume_files:
         latest = resume_files[-1]
         tokens_done = int(latest.stem.split("_")[-1])
-        steps_meta_path = latest.parent / f"{latest.stem}.steps.json"
-        if steps_meta_path.exists():
-            steps_done = json.loads(steps_meta_path.read_text(encoding="utf-8")).get("steps_done", 0)
-        logger.info("[train] resuming from checkpoint at %d tokens (steps_done=%d)", tokens_done, steps_done)
+        meta = _read_steps_meta(latest.parent / f"{latest.stem}.steps.json")
+        steps_done = int(meta.get("steps_done", 0))
+        resumes = int(meta.get("resumes", 0)) + 1
+        seen = list(meta.get("convs_seen", []))
+        convs_seen = [int(seen[i]) if i < len(seen) else 0 for i in range(len(sources))]
+        trainer_path = latest.parent / f"{latest.stem}.trainer.pt"
+        if trainer_path.exists():
+            trainer_state = torch.load(trainer_path, map_location="cpu")
+        logger.info(
+            "[train] resuming from checkpoint at %d tokens (steps_done=%d, resume #%d, convs_seen=%s, trainer_state=%s)",
+            tokens_done, steps_done, resumes, convs_seen, "yes" if trainer_state else "no",
+        )
         trained_sae = sae_mod.MatryoshkaBatchTopKSAE.load(
             latest, shells=config.matryoshka_shells, k=config.k, aux_loss_coef=config.aux_loss_coef
         ).to(device)
@@ -326,37 +471,77 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
         ).to(device)
 
     optimizer = torch.optim.Adam(trained_sae.parameters(), lr=config.lr)
-    stats_tracker = sae_mod.FeatureStatsTracker(config.sae_width)
+    stats_tracker = sae_mod.FeatureStatsTracker(config.sae_width, device=torch.device(device))
+    if trainer_state:
+        # Adam moments, dead-window clocks and the feature statistics (max
+        # activation sets every steering dose later) all continue from the
+        # checkpoint instead of restarting from zero.
+        try:
+            optimizer.load_state_dict(trainer_state["optimizer"])
+            with torch.no_grad():
+                trained_sae.tokens_since_fired.copy_(trainer_state["tokens_since_fired"].to(device))
+            stats_tracker.load_state_dict(trainer_state["stats"])
+        except Exception:  # noqa: BLE001 - a stale trainer file must not block training
+            logger.exception("[train] trainer state could not be restored; continuing with fresh optimizer/stats")
 
-    buffer = harvest.ShuffleBuffer(config.shuffle_buffer_size, d_model, seed=config.seed)
+    buffer_dtype = DTYPES[{"bf16": "bf16", "fp16": "fp16", "fp32": "fp32"}[config.shuffle_buffer_dtype]]
+    buffer = harvest.ShuffleBuffer(
+        config.shuffle_buffer_size, d_model, seed=config.seed + resumes, dtype=buffer_dtype, device=_buffer_device(config, device)
+    )
+    logger.info("[train] shuffle buffer %s on %s; sources=%s", buffer_dtype, buffer.device, [src["name"] for src in sources])
     last_out = None
+    pad_id = _pad_id(tokenizer)
+
+    def _save_checkpoint(tokens_now: int) -> None:
+        files = checkpoint_files(checkpoint_dir, tokens_now)
+        trained_sae.save(files["weights"])
+        files["steps"].write_text(
+            json.dumps({"steps_done": steps_done, "resumes": resumes, "convs_seen": convs_seen, "tokens_done": tokens_now}, indent=2),
+            encoding="utf-8",
+        )
+        torch.save(
+            {
+                "optimizer": optimizer.state_dict(),
+                "tokens_since_fired": trained_sae.tokens_since_fired.detach().cpu(),
+                "stats": stats_tracker.state_dict(),
+            },
+            files["trainer"],
+        )
+        upload_checkpoint(config, client.run_id, [files["weights"], files["steps"], files["trainer"]])
+        prune_local_checkpoints(checkpoint_dir, config.checkpoint_keep_local)
 
     with harvest.ActivationHarvester(model, config.layer) as harvester:
-        conv_stream = harvest.stream_conversations(config.dataset_name, config.dataset_split, seed=config.seed)
+        # Resume continues past the conversations already harvested from
+        # each source (per-source skip) instead of re-reading the same
+        # shuffled prefix; the shuffle seed also moves with the resume count.
+        conv_stream = harvest.stream_config_conversations(config, seed=config.seed + resumes, skips=convs_seen)
+        prefetch = harvest.BatchPrefetcher(
+            conv_stream,
+            tokenize=lambda messages: _tokenize_conversation(tokenizer, messages, config),
+            pad_id=pad_id,
+            batch_size=config.harvest_batch_size,
+            sort_group=config.harvest_sort_group,
+            depth=config.harvest_prefetch_depth,
+        )
         next_checkpoint = tokens_done + config.checkpoint_every_tokens
         stage_start_time = time.time()
         tokens_at_stage_start = tokens_done
         steps_at_stage_start = steps_done
         next_progress_log = tokens_done + PROGRESS_LOG_EVERY_TOKENS
-        convo_batch: List[List[Dict[str, str]]] = []
-        convs_seen = 0
+        convs_total_seen = 0
 
-        for messages in conv_stream:
-            convo_batch.append(messages)
-            if len(convo_batch) < config.harvest_batch_size:
-                continue
-
-            batch = _prepare_batch(tokenizer, convo_batch, config, device)
-            convo_batch = []
-            convs_seen += config.harvest_batch_size
+        for batch, consumed in prefetch:
+            for src, n in consumed.items():
+                convs_seen[src] += n
+                convs_total_seen += n
             if batch is None:
-                if convs_seen >= 64 and tokens_done == 0:
+                if convs_total_seen >= 64 and tokens_done == 0:
                     raise RuntimeError("harvest produced zero assistant tokens after 64 conversations; assistant mask or dataset shape is wrong")
                 continue
-            batch_ids, batch_attn, batch_mask = batch
+            batch_ids, batch_attn, batch_mask = (t.to(device, non_blocking=True) for t in batch)
             acts = harvest.masked_activations(harvester, batch_ids, batch_attn, batch_mask)
             if acts.numel() > 0:
-                buffer.add(acts.to(torch.float32))
+                buffer.add(acts)
                 tokens_done += acts.shape[0]
 
             if tokens_done >= next_progress_log:
@@ -388,10 +573,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             stats_tracker.observe(last_out.codes, progress_fraction=min(1.0, tokens_done / config.tokens_target))
 
             if tokens_done >= next_checkpoint or tokens_done >= config.tokens_target:
-                ckpt_path = checkpoint_dir / f"sae_step_{tokens_done}.safetensors"
-                trained_sae.save(ckpt_path)
-                steps_meta_path = checkpoint_dir / f"sae_step_{tokens_done}.steps.json"
-                steps_meta_path.write_text(json.dumps({"steps_done": steps_done}, indent=2), encoding="utf-8")
+                _save_checkpoint(tokens_done)
                 fve = last_out.fraction_variance_explained.item()
                 l0 = last_out.l0.item()
                 dead_frac = last_out.dead_fraction.item()
@@ -423,21 +605,24 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
 
             if tokens_done >= config.tokens_target:
                 break
+        prefetch.close()
 
         # -- held-out FVE/L0 on a fresh batch harvested *after* training,
         # never seen by the optimizer (the shuffle-buffer samples used for
         # every training step above are not held out). Still inside the
         # ActivationHarvester context so the model is still truncated to
-        # layer `config.layer` and the stream continues from wherever the
-        # training loop left off.
+        # layer `config.layer`. Drawn from a fresh pass over the same
+        # sources with a different seed, so it never overlaps the training
+        # prefix of a resumed run either.
         held_out_fve: Optional[float] = None
         held_out_l0: Optional[float] = None
-        holdout_buffer = harvest.ShuffleBuffer(HELD_OUT_BATCH_SIZE, d_model, seed=config.seed + 1)
+        holdout_buffer = harvest.ShuffleBuffer(HELD_OUT_BATCH_SIZE, d_model, seed=config.seed + 1, dtype=buffer_dtype, device=buffer.device)
+        holdout_stream = harvest.stream_config_conversations(config, seed=config.seed + 1_000_003)
         holdout_convo_batch: List[List[Dict[str, str]]] = []
         holdout_batches_tried = 0
         while holdout_buffer.filled < HELD_OUT_BATCH_SIZE and holdout_batches_tried < 500:
             try:
-                messages = next(conv_stream)
+                _src, messages = next(holdout_stream)
             except StopIteration:
                 break
             holdout_convo_batch.append(messages)
@@ -451,7 +636,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             h_ids, h_attn, h_mask = holdout_batch
             h_acts = harvest.masked_activations(harvester, h_ids, h_attn, h_mask)
             if h_acts.numel() > 0:
-                holdout_buffer.add(h_acts.to(torch.float32))
+                holdout_buffer.add(h_acts)
 
         if holdout_buffer.filled > 0:
             x_holdout = holdout_buffer.sample(holdout_buffer.filled).to(device)
@@ -469,6 +654,8 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     feature_stats = stats_tracker.to_dict()
     feature_stats["held_out_fve"] = held_out_fve
     feature_stats["held_out_l0"] = held_out_l0
+    feature_stats["resumes"] = resumes
+    feature_stats["convs_seen"] = convs_seen
     trained_sae.save(sae_path, feature_stats=feature_stats)
     upload_run_artifacts(config, workdir, client.run_id, sae_path, stats_path)
     return trained_sae, feature_stats

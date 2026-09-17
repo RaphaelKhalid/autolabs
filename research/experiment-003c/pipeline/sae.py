@@ -164,11 +164,20 @@ class MatryoshkaBatchTopKSAE(nn.Module):
         preact = self.encode_preact(x)
         codes = batch_topk(preact, self.k)
 
+        # Matryoshka shells decoded incrementally: shell i's reconstruction
+        # is shell i-1's plus the contribution of the features in between,
+        # so the decoder matmul covers each feature exactly once (32k rows)
+        # instead of once per shell it belongs to (1k+4k+16k+32k = 53k
+        # rows). Numerically the same sum as decoding each prefix in full.
         per_shell_mse: Dict[int, torch.Tensor] = {}
         recon_losses = []
         main_recon = None
+        recon = self.b_dec.expand_as(x)
+        prev = 0
         for shell in self.shells:
-            recon = self.reconstruct(codes=codes, n_features=shell)
+            if shell > prev:
+                recon = recon + codes[:, prev:shell] @ self.W_dec[prev:shell, :]
+            prev = shell
             mse = F.mse_loss(recon, x)
             per_shell_mse[shell] = mse
             recon_losses.append(mse)
@@ -255,28 +264,44 @@ class FeatureStatsTracker:
     density (over the last `warmup_fraction` of training, i.e. the "last
     20%" the spec asks for), for `feature_stats.json`."""
 
-    def __init__(self, width: int, warmup_fraction: float = 0.8):
+    def __init__(self, width: int, warmup_fraction: float = 0.8, device: Optional[torch.device] = None):
         self.width = width
         self.warmup_fraction = warmup_fraction
-        self.max_act = torch.zeros(width)
-        self.fire_count = torch.zeros(width, dtype=torch.long)
+        # Kept on the codes' device: the old per-step `.cpu()` forced a
+        # GPU sync every optimizer step, which serialised the whole loop.
+        self.max_act = torch.zeros(width, device=device)
+        self.fire_count = torch.zeros(width, dtype=torch.long, device=device)
         self.token_count = 0
 
     def observe(self, codes: torch.Tensor, progress_fraction: float) -> None:
         codes = codes.detach()
+        if self.max_act.device != codes.device:
+            self.max_act = self.max_act.to(codes.device)
+            self.fire_count = self.fire_count.to(codes.device)
         n_tokens = codes.shape[0]
-        batch_max = codes.max(dim=0).values.cpu()
-        self.max_act = torch.maximum(self.max_act, batch_max)
+        self.max_act = torch.maximum(self.max_act, codes.max(dim=0).values)
         if progress_fraction >= self.warmup_fraction:
-            fired = (codes > 0).cpu().sum(dim=0)
-            self.fire_count += fired
+            self.fire_count += (codes > 0).sum(dim=0)
             self.token_count += n_tokens
+
+    def state_dict(self) -> dict:
+        return {
+            "max_act": self.max_act.detach().cpu(),
+            "fire_count": self.fire_count.detach().cpu(),
+            "token_count": int(self.token_count),
+            "warmup_fraction": self.warmup_fraction,
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self.max_act = state["max_act"].to(self.max_act.device)
+        self.fire_count = state["fire_count"].to(self.fire_count.device)
+        self.token_count = int(state["token_count"])
 
     def to_dict(self) -> dict:
         denom = max(self.token_count, 1)
-        density = (self.fire_count.float() / denom).tolist()
+        density = (self.fire_count.float() / denom).cpu().tolist()
         return {
-            "max_activation": self.max_act.tolist(),
+            "max_activation": self.max_act.cpu().tolist(),
             "firing_density": density,
             "tokens_observed_for_density": self.token_count,
         }
