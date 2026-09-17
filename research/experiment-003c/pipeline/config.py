@@ -214,6 +214,16 @@ class Config:
     # score any null achieved, not against an absolute threshold.
     describe_null_directions: int = 3
     describe_null_margin: float = 0.1  # named_above_null needs consistency_score > null max + this
+    # Average-linkage merge stop (cosine distance) for describe.cluster_descriptions'
+    # property-sentence clustering -- see describe.py "Embeddings" and
+    # README "Describe stage" calibration note. Calibrated on
+    # tests/fixtures/describe_results_validate2.json (the first live judge
+    # pass) under the sentence-embedding backend; the same value applies to
+    # the TF-IDF fallback used when the embedding model can't be loaded.
+    describe_cluster_threshold: float = 0.7
+    # `named` requires the largest cluster to cover at least this fraction
+    # of a direction's described (non-"neither") judge responses.
+    describe_named_fraction: float = 0.5
 
     # --- reach (measured outcome, not a gate: can prompting reproduce a
     # named direction's steered effect? see reach.py and README "Reach
@@ -321,6 +331,10 @@ class Config:
             raise ValueError("describe_null_directions must be >= 0")
         if self.describe_null_margin < 0:
             raise ValueError("describe_null_margin must be >= 0")
+        if not (0.0 <= self.describe_cluster_threshold <= 2.0):
+            raise ValueError("describe_cluster_threshold must be between 0 and 2 (cosine distance range)")
+        if not (0.0 <= self.describe_named_fraction <= 1.0):
+            raise ValueError("describe_named_fraction must be between 0 and 1")
         if self.reach_max_directions < 0:
             raise ValueError("reach_max_directions must be >= 0 (0 disables the reach stage)")
         if not (0.0 <= self.reach_not_threshold <= self.reach_effect_threshold <= 1.5):
