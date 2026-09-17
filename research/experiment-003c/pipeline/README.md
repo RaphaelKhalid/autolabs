@@ -111,7 +111,11 @@ buffer).
 7. **describe** -- see "Describe stage (judge pass one)" below. Disabled
    when `describe_top_n <= 0`; otherwise reports one summary record per
    judged direction to stage `"judge"`.
-8. **analyze / done** -- computes embedding-free proxies (normalized
+8. **reach** -- see "Reach stage" below. Disabled when `describe` produced
+   nothing or `reach_max_directions <= 0`; otherwise reports one summary
+   record per evaluated direction to stage `"judge"` (recordId prefix
+   `"reach-"`).
+9. **analyze / done** -- computes embedding-free proxies (normalized
    word-level edit distance and length delta vs. the same-scenario
    baseline, plus the per-generation coherence dict already computed during
    calibration: `distinct_ratio`, `max_run`, `repeat_4gram`, `logprob`, and
@@ -582,6 +586,109 @@ arm_named_counts}`) and `describe-report.html` under `<workdir>`, and
 reports a compact per-direction summary record (`describe-<directionKey>`,
 including its `arm`) to the harness under stage `"judge"`.
 
+## Reach stage
+
+**This is a measured outcome, not a gate.** The paper this experiment
+extends lists clause (3) of prompt-based persona-vector discovery's
+limitations as "the trait must be inducible by prompting at all" -- see
+"Claim under test" above. Experiment 3C's headline claim is (1)+(2)
+(unsupervised discovery, no target trait, no natural-language
+description); clause (3) is deliberately *not* required for that claim to
+hold. A direction the unsupervised arm finds that turns out *not* to be
+prompt-reachable would be an interesting result in its own right ("SAE
+discovery finds something prompting can't reach"), not evidence the
+pipeline failed -- so `reach.py` reports reachability per direction and
+rolls it up per selection arm, alongside a required-to-pass positive
+control, rather than gating anything on it.
+
+For every direction the describe stage `named` (its largest judge-response
+cluster covering >=50% of described pairs, >=0.8 direction agreement, and
+a speaker-about majority -- see "Describe stage" above), plus every
+`named` persona-vector control regardless of rank (`reach.
+select_reach_directions`; controls are this test's *positive controls* and
+are expected to come out reachable, so they are never dropped for the
+cap), highest `consistency_score` first up to `reach_max_directions`
+(smoke 4, full 12) non-control directions:
+
+- Four system prompts are built **locally, with no judge call**, from
+  that direction's own `cluster_property` text `P` (the blinded judge's
+  clustered description of what differs about the steered condition --
+  never a persona vocabulary chosen ahead of time): `direct` ("In your
+  replies, {P}."), `rewrite` ("Adopt this manner throughout: {P}. Keep it
+  natural and consistent."), `intensified` (`rewrite` + " Do this
+  strongly and in every reply."), and `fewshot` (`rewrite`'s system
+  prompt followed by two demonstration exchanges -- a screened scenario's
+  prompt paired with that direction's own *steered* reply to it).
+  `direct`/`rewrite`/`intensified` are generated (unsteered model,
+  `generation.generate_batch`) on every scenario the direction was
+  screened on; `fewshot` is generated only on that set **minus its own two
+  demo scenarios** (`reach.select_fewshot_demo_scenarios`, deterministic:
+  sorted scenario ids, first two) -- without this exclusion, fewshot would
+  be "graded" on the same steered reply it was shown as an example,
+  which would inflate its apparent reach for a reason that has nothing to
+  do with whether the *system prompt* reproduces the effect.
+- **Behavioral reach**: a fresh logistic classifier (`screen.
+  train_logreg`, the same numpy-only mechanism the screen stage's
+  leave-one-scenario-out split uses, but fit once on every scenario here
+  -- there is no held-out fold to protect, since what's being scored next
+  is a prompted reply, never one of the classifier's own training points)
+  for both the residual (layer-19, mean-pooled over generated tokens) and
+  lexical (hashed bag-of-words) views. `effect_fraction` rescales the
+  prompted replies' mean classifier logit onto the baseline->steered
+  scale (0 = no effect, 1 = matches steering), clipped to `[-0.5, 1.5]` so
+  a wrong-direction or overshooting effect stays a finite, visible number;
+  `axis_cosine` (residual view only) is the cosine similarity between the
+  prompted-vs-baseline and steered-vs-baseline mean residual diff vectors,
+  an orientation check independent of `effect_fraction`'s magnitude. The
+  **best variant** is whichever maximizes the residual-view
+  `effect_fraction` (nan-safe: a variant with no usable signal never
+  wins).
+- **Mechanistic reach**: for a feature direction, the mean activation of
+  that feature's own SAE code (`sae.encode` on the layer's residual
+  stream) at the generated tokens, rescaled the same baseline->steered
+  way as `effect_fraction` (`feature_fraction`, unclipped -- an activation
+  has no natural behavioral bound). A persona-vector control has no
+  single feature to read, so its mechanism proxy is the projection onto
+  that control's own steered-minus-baseline mean residual axis instead.
+- **Judge check** (optional, `reach_judge`: off for smoke to save judge
+  budget, on for the full run): for the **best variant only**, plans
+  blinded prompted-vs-steered pairs (both orders, `directionKey =
+  f"reach-{directionKey}"`) through the same Worker judge queue
+  `describe.py` drives (`report.judge_plan`/`judge_run`/`judge_results`),
+  and reports `judge_steered_share` -- the fraction of classifiable pairs
+  the judge said the *steered* side showed more of `P` (0.5 means
+  prompting reproduced it as well as steering did, from the judge's
+  perspective). A plan the Worker refuses (judge budget/ceiling) or a
+  drive/fetch that comes back empty leaves `judge_steered_share` as
+  `null` rather than failing the direction -- these judge calls share the
+  same budget describe.py's pairs already spent from.
+- **Classification** (reported, not gating; thresholds in config):
+  `reachable` if the best variant's residual `effect_fraction >=
+  reach_effect_threshold` (0.7) and, only when a judge check actually ran,
+  `judge_steered_share <= 0.65`; `not_reachable` if the best
+  `effect_fraction < reach_not_threshold` (0.3) -- `fewshot` is already
+  included in that max, so a direction only reachable via few-shot still
+  counts as reachable, and one unreachable even with few-shot correctly
+  counts as not reached; otherwise `partial`. `mechanism_same` is whether
+  the best variant's `feature_fraction >= reach_feature_threshold` (0.5).
+  A `nan` effect/feature fraction (no usable signal, e.g. a direction with
+  ~zero baseline-vs-steered separation to rescale onto) never satisfies
+  either comparison and falls through to `partial`/`mechanism_same=False`
+  safely rather than crashing.
+
+Per direction: `{directionKey, arm, property, variants: {direct, rewrite,
+intensified, fewshot: {effect_fraction_resid, effect_fraction_lex,
+axis_cosine, feature_fraction}}, best_variant, reachable_class,
+mechanism_same, judge_steered_share}`. Writes `reach_results.json` (`
+{directions, summary_by_arm}`) and `reach-report.html` under `<workdir>`;
+the summary reports counts of `reachable_class` by arm and the **control
+pass rate** (named controls that came out `reachable` / total named
+controls) -- since controls are this reach methodology's own positive
+control, a low control pass rate is evidence against the *methodology*,
+not against any one direction. Reports a compact per-direction summary
+record (`reach-<directionKey>`) to the harness under stage `"judge"` (no
+dedicated Worker stage, same rationale as rank.py's `"train"` reuse).
+
 ## Batching and generation numerics
 
 Every `model.generate` call in the pipeline -- calibrate's dose sweep,
@@ -661,6 +768,7 @@ work:
 | calibrate | `calibration_records.json` |
 | screen | `screen_records.json` + `screen_generations.json` |
 | describe | `describe_results.json` (skipped entirely if `describe_top_n <= 0`) |
+| reach | `reach_results.json` (skipped entirely if describe produced nothing or `reach_max_directions <= 0`) |
 | analyze | `summary.json` + `smoke-report.html` |
 
 If harvest+train is interrupted, the SAE resumes from the latest checkpoint
@@ -748,10 +856,13 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-140 tests, all CPU-only (99 in `tests/test_pipeline.py`, 22 in
+185 tests, all CPU-only (99 in `tests/test_pipeline.py`, 22 in
 `tests/test_rank.py` for the rank stage's shift/specificity/composite
-statistics and three-arm selection, and 19 in `tests/test_generation.py`
-for batched generation and the batched steering hook, see below): SAE forward/loss and matryoshka-nested-loss-decreases
+statistics and three-arm selection, 19 in `tests/test_generation.py` for
+batched generation and the batched steering hook, and 45 in
+`tests/test_reach.py` for the reach stage's prompt construction, effect/
+feature-fraction rescaling math, classification thresholds, and per-arm
+summary, see below): SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
 per-token-average-k property, the Worker's canonical-JSON sha256 contract
@@ -837,6 +948,36 @@ initialized (no download) GPT-2 model, checking per-row `prompt_ids`,
 `num_tokens`, and a valid `finish_reason` survive batching alongside a
 differently-lengthed sibling prompt (skipped, not failed, if
 `transformers` is unavailable).
+
+`tests/test_reach.py` (see "Reach stage" above): the four prompt
+variants' text (`direct`'s wording, `rewrite`==`fewshot`'s shared system
+text, `intensified` extending `rewrite`, an unknown variant raising) and
+message shape (`direct`/`rewrite`/`intensified` are system+user,
+`fewshot` is system + two full user/assistant demo turns + the eval
+user turn), `select_fewshot_demo_scenarios`'s deterministic sorted-first-n
+choice regardless of input order, and that a direction's `fewshot`
+evaluation set is exactly its scenario set minus its own demo scenarios
+(no overlap, union recovers the full set); `effect_fraction` on toy
+logits -- exact match-steering (1.0), exact match-baseline (0.0), halfway
+(0.5), clipping an overshoot to 1.5 and a wrong-direction effect to -0.5
+(plus custom clip bounds), and `nan` on a zero baseline-vs-steered
+denominator; `feature_fraction`'s analogous (unclipped) math and its own
+zero-denominator `nan`; `axis_cosine` on toy vectors (parallel diff
+vectors score 1.0, orthogonal ones 0.0); `pick_best_variant` (max
+`effect_fraction_resid`, nan-safe, `None` when every variant is nan);
+`classify_reachability`'s thresholds (`reachable` above the effect
+threshold, `not_reachable` below the not-threshold, `partial` in between,
+a judge check that still favors "steered" too strongly downgrading an
+otherwise-`reachable` result to `partial`, and a `nan` effect falling
+through to `partial` rather than raising); `mechanism_same`'s threshold
+(including its own `nan` case); `select_reach_directions` (excludes
+unnamed and null directions, orders by `consistency_score` descending,
+caps non-control directions at `reach_max_directions`, and always
+includes a *named* control beyond that cap while never force-including an
+*unnamed* one); `summarize_by_arm`'s per-arm `reachable_class` counts,
+control pass rate (and `None` when there are no named controls), and the
+empty-input case; and a numpy-only sanity check that `fit_classifier` +
+`classifier_logit` actually separate two well-separated toy clusters.
 
 ## Estimated smoke-test runtime on 1x A40 48GB
 

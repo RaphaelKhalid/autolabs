@@ -57,6 +57,11 @@
   "judge_call_ceiling": 200,
   "describe_null_directions": 3,
   "describe_null_margin": 0.1,
+  "reach_max_directions": 4,
+  "reach_judge": false,
+  "reach_effect_threshold": 0.7,
+  "reach_not_threshold": 0.3,
+  "reach_feature_threshold": 0.5,
   "hf_upload_repo": "",
   "seed": 0
 }
