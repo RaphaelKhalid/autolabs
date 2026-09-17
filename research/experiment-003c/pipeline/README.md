@@ -32,7 +32,14 @@ buffer).
    `<workdir>/checkpoints/`. After the token target is reached, harvests
    one more, held-out batch of 4096 activations (never seen by the
    optimizer) and stores its FVE/mean-L0 as `held_out_fve`/`held_out_l0`
-   in `feature_stats.json`.
+   in `feature_stats.json`. Once `feature_stats.json` is written,
+   best-effort uploads `sae.safetensors`, `feature_stats.json`, and the
+   run's config to a private Hugging Face model repo under
+   `runs/<run_id>/` (`run_smoke.upload_run_artifacts`) -- a no-op unless
+   both the `HF_TOKEN` env var is set and `config.hf_upload_repo` is
+   non-empty (`""` for smoke, i.e. disabled; full's default is
+   `RaphaelRaphaelRaphael/autolabs-3c-sae`), and any failure (auth,
+   network, rate limit) is logged and swallowed, never aborting the run.
 
    **Steps per harvested batch.** Harvesting (a 7B forward pass through
    `layer` decoder layers) is the GPU bottleneck; an SAE optimizer step is
@@ -82,7 +89,8 @@ buffer).
    0.15 and FVE -3.65 that way despite a held-out FVE of 0.68; see
    `../SMOKE-2.md`.
 4. **rank** -- see "Rank stage" below. Selects the candidate features
-   calibrate/screen cover. Reports one record per selected candidate to
+   calibrate/screen cover, as three disjoint arms (`"unsupervised"`,
+   `"quantile"`, `"shift"`). Reports one record per selected candidate to
    stage `"train"` (recordId prefix `"rank-"`; there is no dedicated
    Worker stage for this -- see "Rank stage").
 5. **calibrate** (steer) -- reloads the model with all layers restored
@@ -120,36 +128,60 @@ Worker sees the failure even if nothing above got to `"done"`).
 
 ## Rank stage
 
-The full run screens `config.screen_features` (256) of the 32,768 trained
-SAE features. Picking those 256 purely by firing-density quantile (what
-`steer.select_steer_features` does on its own) samples across "how common
-is this feature" with no signal about whether a feature's activation
-tracks anything persona-like -- it's an unbiased slice of the density
-spectrum, not a targeted one. The rank stage (`rank.py`) adds a label-free
-targeting signal on top, and runs after the post-train check and before
-calibrate.
+### Claim under test
 
-**Persona-context shift.** The stage builds a diverse set of persona-style
-system-prompt "contexts" -- `config.control_prompts`' `positive_system_
-prompt`/`negative_system_prompt` pairs (6 contexts for the shipped 3
-controls) plus `config.context_prompts` (12 more neutral, hand-written
-prompts spanning traits, e.g. "You are warm and encouraging.", "You are
-terse and clinical.", "You are playful and lighthearted.") -- and, for
-every context x `scenario` (the calibrate stage's `config.steer_scenarios`
-slice), generates a reply under that system prompt
+The paper this experiment extends lists three limitations of
+prompt-based persona-vector discovery: (1) it is *supervised* -- the
+target trait has to be specified in advance; (2) it needs a *precise
+natural-language description* of that trait; (3) it needs the trait to be
+*inducible by prompting* at all. Experiment 3C's headline claim is
+(1)+(2): unsupervised discovery of persona-relevant SAE directions with no
+target trait specified and no natural-language trait description
+required anywhere in the discovery pipeline.
+
+Clause (3) -- prompt reachability -- is *not* a gate on that finding.
+Instead it is a measured **outcome**, reported per selection arm (below),
+because on Qwen the paper's own observation is that most traits worth
+discovering are prompt-inducible anyway; a direction that the unsupervised
+arm finds but that turns out *not* to be prompt-reachable would be an
+interesting result in its own right, not evidence the pipeline failed.
+
+**The problem this fixes.** Before this change, the rank stage picked 75%
+of screen candidates (`rank_shift_fraction`, now deprecated/unused -- see
+below) by activation shift across a set of hand-written persona system
+prompts. That selection is useful as a *positive control* (it tells you
+whether shift-based targeting works at all), but using it for most of the
+candidate pool biases the pool as a whole toward prompt-reachable
+directions -- which contaminates the (1)+(2) claim, since a result built
+mostly from prompt-shift-selected features never actually tests discovery
+*without* a prompt. The fix is three disjoint selection arms, only one of
+which uses any prompt-derived signal.
+
+### Three arms
+
+The full run screens `sum(config.arm_sizes.values())` (256: 96 + 64 + 96)
+of the 32,768 trained SAE features; smoke screens 8 (3 + 2 + 3). Three
+independent pieces of label-free signal feed the arms, each described
+below, then `rank.rank_candidates` filters and splits the surviving
+candidates into the three arms.
+
+**1. Persona-context shift (`"shift"` arm's signal -- prompt-derived).**
+The stage builds a diverse set of persona-style system-prompt "contexts"
+-- `config.control_prompts`' `positive_system_prompt`/`negative_system_
+prompt` pairs (6 contexts for the shipped 3 controls) plus
+`config.context_prompts` (12 more neutral, hand-written prompts spanning
+traits, e.g. "You are warm and encouraging.", "You are terse and
+clinical.", "You are playful and lighthearted.") -- and, for every context
+x `scenario` (the calibrate stage's `config.steer_scenarios` slice),
+generates a reply under that system prompt
 (`screen.generate_with_system_prompt`), captures the layer's residual
 stream at the generated assistant tokens, and encodes it with `sae.encode`
-(the same post-batch-topk sparse codes `forward_loss` trains on), mean-
-pooling the codes over generated tokens (`rank.capture_context_
-activations`). This is "label-free" in the sense that no single context is
-designated as the trait being screened for -- the contexts are just a
-diverse spread, and a feature that shifts with *any* of them (in a way
-that's consistent across scenarios within a context) ranks higher.
-
-**Shift score** (`rank.compute_shift_stats`, pure numpy/Python, unit
-tested). For each feature, treats each context as an ANOVA group and each
-of its scenarios' per-context mean activation as one observation in that
-group:
+(the same post-batch-topk sparse codes `forward_loss` trains on),
+mean-pooling the codes over generated tokens (`rank.capture_context_
+activations`). `rank.compute_shift_stats` (pure numpy/Python, unit tested)
+then treats each context as an ANOVA group and each of its scenarios'
+per-context mean activation as one observation in that group, computing
+per feature:
 
 - `shift_f`: between-context variance of the per-context mean (weighted by
   scenario count) divided by the pooled within-context variance across
@@ -163,77 +195,157 @@ group:
   over training, so the shift's magnitude is comparable across features on
   different absolute activation scales.
 
-**Filters before ranking** (`rank.rank_candidates`): firing density in
-`[config.firing_density_min, config.firing_density_max]` (from
-`feature_stats.json`), not dead (`rank.is_dead`: `firing_density <= 0`,
-i.e. never fired during the density-tracking window), and a computed shift
-score. Each surviving candidate also records `shell`
-(`rank.feature_shell`: the smallest `config.matryoshka_shells` boundary
-that contains it, e.g. 1024/4096/8192) -- inner shells are preferred as a
-tie-break when sorting by shift score, since the matryoshka training
-objective forces inner-shell features to carry a self-contained
+This is the **positive control** for the whole comparison, not part of the
+unsupervised claim: the contexts are diverse but *chosen* -- 3
+literature-style trait pairs plus 12 hand-written prompts, not sampled
+from any principled distribution over "ways a system prompt could
+differ" -- so a feature reliably shifting across these 18 contexts is
+good evidence the shift-based-targeting *mechanism* can find something,
+while telling you nothing about whether unsupervised discovery works.
+It's also, by construction, biased toward prompt-reachable directions --
+exactly the property clause (3) says isn't required -- which is why this
+arm must never be more than a minority, clearly-labeled slice of the
+candidate pool.
+
+**2. Assistant-specificity / breadth / topic-invariance (`"unsupervised"`
+arm's signal -- never sees a prompt).** A small extra harvest pass
+(`rank.capture_specificity_activations`, `config.rank_specificity_
+conversations` ~300 conversations from the same dataset stream
+`harvest.py` trains on) captures, for every conversation, the SAE codes at
+*every* real token position (a FULL token mask, unlike training's
+assistant-turn-only mask), then uses `harvest.compute_assistant_mask` only
+to *label* each position as assistant-turn content or not -- every other
+real position (user-turn content, chat-template control tokens) is the
+"user" side of the contrast. No system prompt, no trait, no persona-style
+context of any kind is involved anywhere in this pass; it is a plain read
+of how the base model already behaves on ordinary chat data.
+`rank.compute_specificity_stats` (pure numpy/Python, unit tested) then
+computes per feature, from these per-conversation aggregates:
+
+- `assistant_specificity`: mean-over-conversations assistant-token mean
+  activation, divided by the same for user-token mean activation (plus a
+  small epsilon) -- how much more the feature fires *as a response* than
+  as a function of whatever the user just said.
+- `assistant_specificity_fire_rate`: the analogous ratio using mean
+  firing *rate* instead of activation magnitude (reported, not
+  composited -- see below).
+- `breadth`: fraction of conversations where the feature fires at least
+  once on an assistant-turn token.
+- `topic_invariance`: `1 - between-conversation variance of each firing
+  conversation's own mean activation, divided by that variance plus the
+  mean within-conversation variance` (an ANOVA-style decomposition, scoped
+  to conversations where the feature fired at least once) -- high when
+  the feature behaves similarly regardless of what the conversation is
+  about, low when it is bound to specific topics/conversations.
+
+**3. Structural properties (prompt-free, shared across arms).** Firing
+density and liveness (`rank.is_dead`: `firing_density <= 0`, i.e. never
+fired during the density-tracking window) from `feature_stats.json`
+gate every candidate; `shell` (`rank.feature_shell`: the smallest
+`config.matryoshka_shells` boundary containing the feature index, e.g.
+1024/4096/8192) records which matryoshka shell it lives in.
+
+**Filters before arm assignment** (`rank.rank_candidates`): firing density
+in `[config.firing_density_min, config.firing_density_max]`, not dead, a
+computed shift-stats entry, and a computed specificity-stats entry.
+
+**Composite score** (`rank.compute_composite_scores`, pure numpy/Python,
+unit tested), computed for every surviving candidate and used only by the
+`"unsupervised"` arm:
+
+```
+composite = z(log assistant_specificity) + z(breadth) + z(topic_invariance)
+            + shell_bonus(shell_index)
+```
+
+where `z(...)` is a population z-score against the candidate pool itself,
+and `shell_bonus` is 1.0 for the innermost matryoshka shell, 0.5 for the
+second, 0.0 otherwise (inner shells are preferred since the matryoshka
+training objective forces them to carry a self-contained coarse
 reconstruction rather than only refining an outer one, making them the
-more likely place for a coarse, generalizable direction to live.
+more likely place for a coarse, generalizable direction to live -- the
+same rationale the old shift-score shell tie-break used). **No
+prompt-derived quantity (`shift_f`/`shift_maxdiff`) enters this score at
+all** -- that is the entire point of this arm.
 
-**Selection.** `config.screen_features` (the total budget, e.g. 256 full /
-8 smoke) candidates are picked as the union of two disjoint slices:
+**Selection** (`rank.rank_candidates`), filled in order so the three arms
+are always disjoint, each capped to whatever remains in the pool when its
+turn comes:
 
-- `"shift"`: `round(config.screen_features * config.rank_shift_fraction)`
-  (default 0.75) candidates, the top slice by `shift_f` descending, ties
-  broken by preferring inner shells and then feature index.
-- `"quantile"`: the remaining budget, a density-quantile spread
-  (`steer.quantile_indices`, the same mechanism `steer.select_steer_
-  features` uses) over whatever candidates the shift slice didn't already
-  take -- so the two slices never overlap. This slice is kept
-  deliberately even though the shift score exists: the shift score is
-  itself biased by which contexts were chosen (see "Bias" below), so a
-  feature that the shift score misses -- because none of the 18 contexts
-  happened to move it, not because it carries no persona-relevant
-  direction -- can still be screened, and it also gives a distribution-
-  matched comparison for how much the shift-ranked slice actually helps
-  once the describe stage's judge results come back.
-
-For the smoke config (`screen_features` 8, `rank_shift_fraction` 0.75)
-this is 6 shift-selected + 2 quantile-selected, matching the previous
-all-quantile 8-feature selection in spirit (same total, same underlying
-`quantile_indices` mechanism for the non-shift portion).
+- `"unsupervised"` (`config.arm_sizes["unsupervised"]`, 96 full / 3
+  smoke): the top slice by composite score, ties broken by feature index,
+  from the *entire* filtered candidate pool. This is the arm that actually
+  tests (1)+(2): no trait was named, no natural-language description was
+  used, and no system prompt was involved in scoring it.
+- `"quantile"` (`config.arm_sizes["quantile"]`, 64 full / 2 smoke): a
+  density-quantile spread (`steer.quantile_indices`, the same mechanism
+  `steer.select_steer_features` uses) over the pool remaining after the
+  unsupervised arm's picks are removed -- unbiased by construction, a
+  distribution-matched comparison for how much either scored arm actually
+  helps once the describe stage's judge results come back.
+- `"shift"` (`config.arm_sizes["shift"]`, 96 full / 3 smoke): the top
+  slice by `shift_f` descending (ties broken by preferring inner shells,
+  then feature index) from whatever's left after the other two arms --
+  the positive control described above.
 
 Every selected candidate is written to `candidates.json`'s
-`screen_features` list as `{feature, shift_f, shift_maxdiff, density,
-shell, selection, rank}` (`selection` is `"shift"` or `"quantile"`; `rank`
-is the feature's 1-indexed position in the *full* candidate pool sorted by
-shift score, so a quantile pick's rank shows where it would have landed by
-shift score alone) and reported to stage `"train"` with
-`recordId = f"rank-{feature}-{selection}"` -- `"train"`, not a dedicated
-`"rank"` stage, because `orchestrator-worker/src/persona-3c.ts`'s
+`screen_features` list carrying every computed statistic (`density`,
+`shell`, `shift_f`, `shift_maxdiff`, `assistant_specificity`,
+`assistant_specificity_fire_rate`, `breadth`, `topic_invariance`,
+`composite`) plus `arm` (`"unsupervised"`/`"quantile"`/`"shift"`),
+`selection` (kept equal to `arm`, for callers written against the field
+name the old two-arm schema used), and `rank_within_arm` (1-indexed
+position within that arm's own selection order), and reported to stage
+`"train"` with `recordId = f"rank-{feature}-{arm}"` -- `"train"`, not a
+dedicated `"rank"` stage, because `orchestrator-worker/src/persona-3c.ts`'s
 `PERSONA_3C_STAGES` enum does not include one and this change is meant to
 land without a Worker change.
+
+`config.rank_shift_fraction` and `config.screen_features` (the old total
+budget) are now unused, kept only so an old saved `run_config.json` still
+loads (`Config.from_dict` rejects unknown keys); the real budget is
+`sum(config.arm_sizes.values())`.
+
+**Arm propagation.** `arm` (and every statistic above) rides along through
+the rest of the pipeline for reporting: `steer.select_steer_features`
+carries `arm` from `candidates.json` onto its selected-feature dicts (a
+run calibrating without a rank-stage candidate list gets `arm: None`),
+`steer.run_calibration` writes it onto every steered record (its own
+random-direction dose-sweep controls get `arm: "random"`);
+`screen.extract_feature_info` reads it back off calibration records so
+`screen.run_screen` can attach it to every feature *and* generation
+record (positive controls get `arm: "control"`, random-direction nulls
+get `arm: "random"`); `describe.attach_arm` attaches it to every
+describe-stage per-direction summary by direction key. The screen table
+in `smoke-report.html` has an `arm` column, its verdict reports per-arm
+G0 pass counts, and `describe-report.html` reports per-arm named counts
+-- see "Screen stage"/"Describe stage" below.
 
 **Wiring.** `steer.select_steer_features` takes an optional
 `explicit_features` argument; when `run_smoke.stage_steer` finds
 `candidates.json`, it passes `candidates["screen_features"]` through
 `steer.run_calibration` to `select_steer_features`, which then uses that
-list as-is instead of doing its own density-quantile selection. When
-`candidates.json` doesn't exist (e.g. a workdir from before this stage
-existed, or a config that skips it) calibrate falls back to the previous
-behavior: density-quantile selection sized off `config.steer_features`
-directly.
+list as-is (including its `arm` tags) instead of doing its own
+density-quantile selection. When `candidates.json` doesn't exist (e.g. a
+workdir from before the rank stage existed, or a config that skips it)
+calibrate falls back to the previous behavior: density-quantile selection
+sized off `config.steer_features` directly, with every selected feature's
+`arm` set to `None`.
 
-**Bias.** The shift score's contexts are diverse but *chosen* -- 3
-literature-style trait pairs plus 12 hand-written prompts, not sampled
-from any principled distribution over "ways a system prompt could differ".
-A feature whose persona-relevant direction only shows up under a context
-this set never tried will score low on `shift_f` despite being exactly
-what the full run is looking for, and conversely a feature could shift
-reliably across these 18 contexts for a reason that has nothing to do with
-persona (a topic or formatting correlate of the specific wording chosen).
-Screening in the top-shift slice is therefore a hypothesis about which 192
-(of 256) features are *more likely* to be interesting, not a guarantee,
-and the describe stage's blinded judge -- not this stage -- is what
-actually says what a direction is. The quantile slice exists precisely
-because of this: it is not selected on any activation signal, so it is the
-run's control for whether the shift-ranked slice does better than an
-unbiased sample would.
+**Bias.** The shift arm's contexts are diverse but *chosen*, not sampled
+from any principled distribution -- a feature whose persona-relevant
+direction only shows up under a context this set never tried scores low
+on `shift_f` despite being exactly what the run is looking for, and
+conversely a feature could shift reliably across these 18 contexts for a
+reason that has nothing to do with persona (a topic or formatting
+correlate of the specific wording chosen). The unsupervised arm's own
+statistics have their own assumptions -- `assistant_specificity` and
+`breadth` both assume "fires more/more often on assistant turns than user
+turns" is a reasonable proxy for "persona-relevant", which has not been
+validated against manual inspection of what the selected features
+actually fire on. Neither arm, nor the quantile control, is a guarantee
+that a selected feature is persona-relevant; the describe stage's blinded
+judge is what actually says what a direction is.
 
 ## Screen stage
 
@@ -322,18 +434,31 @@ failing this bar would say more about this screen methodology than about
 any trait, since the persona-vector construction is separately validated
 in the literature.
 
-Every direction's record (`{kind, id, sign, dose, n_scenarios,
+Every direction's record (`{kind, id, sign, dose, arm, n_scenarios,
 separability: {resid: {acc, auc}, lexical: {acc, auc}}, consistency:
 {mean_cos, null_mean_cos}, coherent_fraction}`) is written to
 `screen_records.json` and reported to stage `"screen"` with
 `recordId = f"screen-{kind}-{id}-{sign}-{dose}"` (`sign` rendered as
 `pos`/`neg`/`na`, matching the calibrate stage's own recordId convention).
+`arm` is `"unsupervised"`/`"quantile"`/`"shift"` for a `kind="feature"`
+row (propagated from the rank stage via `screen.extract_feature_info`,
+`None` if calibrate ran without a rank-stage candidate list),
+`"control"` for every `kind="control"` row, and `"random"` for every
+`kind="random"` row -- see rank.py "Arm propagation". The HTML report's
+screen table has an `arm` column, and its verdict line is followed by a
+per-arm breakdown of feature entities passing gate G0 (either sign) for
+each of `"unsupervised"`/`"quantile"`/`"shift"`
+(`run_smoke.compute_screen_verdict`'s `arm_pass_counts`) -- the `"shift"`
+arm's own pass count is itself a positive-control sanity check (it should
+pass at least as often as an unbiased sample, since it was selected
+precisely to shift under prompts), while the `"unsupervised"` arm's count
+is the actual result this experiment cares about.
 
 **Screen generations.** For every direction and every scenario it was
 scored on, the steered text, the same-scenario baseline text, and that
 generation's `finish_reason` and coherence dict are written as a flat list
-of `{kind, id, sign, dose, scenario, text, baseline_text, finish_reason,
-coherence}` dicts to `screen_generations.json` (built by
+of `{kind, id, sign, dose, arm, scenario, text, baseline_text,
+finish_reason, coherence}` dicts to `screen_generations.json` (built by
 `screen.build_generation_records`) and included in `summary.json` under
 `screen_generations`. Each is also reported to stage `"screen"` with
 `recordId = f"screen-gen-{kind}-{id}-{sign}-{scenario}"` (`sign` rendered
@@ -425,6 +550,18 @@ laptop process needs to stay alive for this stage to run to completion.
   described, `direction_agreement` >= 0.8, and a strict majority of that
   cluster is `about: "speaker"`), and `consistency_score` =
   `largest_cluster_size / n_described` * `direction_agreement`.
+- `describe.attach_arm` then adds `arm` to every direction's cluster
+  summary (looked up by direction key from the `directions` passed into
+  `describe.run_describe`, i.e. the screen stage's own `arm` tags --
+  `"unsupervised"`/`"quantile"`/`"shift"` for a feature, `"control"` for a
+  positive control, `"random"` for a null), and
+  `describe.compute_arm_named_counts` rolls up, per arm (excluding random
+  nulls), how many of the judged directions came out `named` and
+  `named_above_null` out of how many were judged. `describe-report.html`
+  shows an `arm` column on the directions table and a "Named counts by
+  arm" summary line built from these counts, so it's visible at a glance
+  whether the unsupervised arm actually named anything, not just whether
+  the shift arm (its positive control) did.
 
 **Nulls.** The first live judge pass (48 pairs) found the judge never
 returned `neither` at all -- greedy decoding makes every steered text
@@ -440,10 +577,10 @@ more than `describe_null_margin` (default 0.1). `describe_results.json`'s
 `named_above_null_threshold`; `describe-report.html` shows the null
 directions in their own block, separate from the real directions' table.
 
-Writes `describe_results.json` (`{plan, results, clusters, null_stats}`)
-and `describe-report.html` under `<workdir>`, and reports a compact
-per-direction summary record (`describe-<directionKey>`) to the harness
-under stage `"judge"`.
+Writes `describe_results.json` (`{plan, results, clusters, null_stats,
+arm_named_counts}`) and `describe-report.html` under `<workdir>`, and
+reports a compact per-direction summary record (`describe-<directionKey>`,
+including its `arm`) to the harness under stage `"judge"`.
 
 ## Batching and generation numerics
 
@@ -600,6 +737,7 @@ bash runpod_start.sh configs/smoke.json
 | `AUTOLABS_3C_WORKER_URL` | Base URL of the orchestrator Worker, e.g. `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev` |
 | `AUTOLABS_3C_TOKEN` | Bearer token for `/api/persona-3c/*` |
 | `AUTOLABS_3C_RUN_ID` | Existing run id. If unset, `run_smoke.py` calls `start_run()` using `config.manifest_hash` / `config.budget_usd` / `config.idempotency_key` (or a config-hash-derived idempotency key if none is set). |
+| `HF_TOKEN` | Hugging Face token for `run_smoke.upload_run_artifacts` (see "Stages" step 2). Only read if `config.hf_upload_repo` is also non-empty; missing either one is a silent no-op, not an error. |
 
 If `AUTOLABS_3C_WORKER_URL` is unset, `report.py` logs a warning and
 continues -- the GPU job is never blocked on the harness being reachable.
@@ -610,8 +748,9 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-125 tests, all CPU-only (95 in `tests/test_pipeline.py`, 11 in
-`tests/test_rank.py` for the rank stage, and 19 in `tests/test_generation.py`
+140 tests, all CPU-only (99 in `tests/test_pipeline.py`, 22 in
+`tests/test_rank.py` for the rank stage's shift/specificity/composite
+statistics and three-arm selection, and 19 in `tests/test_generation.py`
 for batched generation and the batched steering hook, see below): SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
@@ -629,7 +768,9 @@ config validation for `train_steps_per_batch` / `lr_warmup_steps`, the
 `lr_warmup_steps`), a CPU toy loop asserting `train_steps_on_buffer`
 performs exactly `train_steps_per_batch` optimizer steps per call (and that
 `steps_done` accumulates correctly across calls, as it would across a
-resume), and (screen.py, see "Screen stage" below) the hashed lexical
+resume), `run_smoke.upload_run_artifacts` being a no-op (no filesystem or
+network touched) both without `HF_TOKEN` set and without `config.
+hf_upload_repo` configured, and (screen.py, see "Screen stage" below) the hashed lexical
 embedding (deterministic and L2-normalized), the numpy-only
 leave-one-scenario-out logistic regression on separable toy data (accuracy
 and AUC near 1) and inseparable toy data (accuracy and AUC near chance,
@@ -647,19 +788,36 @@ negative sign only misses on the consistency margin must still count as
 passing overall (the exact undercount visual run 1 found), plus the max
 and 95th-percentile of the random-direction null AUCs -- and
 `screen.build_generation_records`'s recordIds and payload shape on a toy
-set of directions (including the empty-baseline fallback); and
-(`rank.py`, see "Rank stage" above) the F-like shift-score helper on toy
-per-context activations (a feature that shifts consistently between
-contexts scores much higher than one that only has scenario-to-scenario
-noise, and single-context/zero-max-activation edge cases are 0 rather than
-NaN/inf), `feature_shell`/`is_dead`, `rank_candidates`'s density/dead
-filtering and its shift-vs-quantile union selection (disjoint feature
-sets, exact budget split, every record carrying the full schema, the empty-
-candidate-pool case), and `steer.select_steer_features`'s
-`explicit_features` bypass (an explicit list is honored verbatim --
-including features outside the density window that would otherwise be
-filtered out -- while `explicit_features=None` still falls back to the
-original density-quantile selection).
+set of directions, including the empty-baseline fallback and that an
+`extra={"arm": ...}` entry propagates onto every generation's `arm` field;
+`describe.attach_arm`/`describe.compute_arm_named_counts` wiring a toy
+`directions` list's arm tags onto cluster summaries and rolling them up
+per arm (excluding random nulls); and (`rank.py`, see "Rank stage" above)
+the F-like shift-score helper on toy per-context activations (a feature
+that shifts consistently between contexts scores much higher than one
+that only has scenario-to-scenario noise, and single-context/zero-max-
+activation edge cases are 0 rather than NaN/inf), `compute_specificity_
+stats` on toy per-conversation aggregates (an assistant-specific, broad,
+topic-invariant feature scores as expected; a topic-bound feature's
+`topic_invariance` comes out low; zero conversations degrades to an
+all-zero result rather than raising), `zscore`/`shell_bonus`/
+`feature_shell`/`feature_shell_index`/`is_dead`, `compute_composite_
+scores` favoring an assistant-specific broad feature over a topic-bound
+one regardless of which has the higher `shift_f` (the composite must
+never read a prompt-derived quantity) and not crashing on an
+`assistant_specificity` of exactly 0, `rank_candidates`'s density/dead
+filtering (now requiring both a shift-stats *and* a specificity-stats
+entry) and its three-arm selection (arms disjoint and exactly sized, each
+arm's own ordering -- composite descending for `"unsupervised"`, `shift_f`
+descending for `"shift"` -- arm sizes correctly capped when the candidate
+pool is smaller than the requested total, filled in order so
+`"unsupervised"` claims the shortfall first, and the empty-candidate-pool
+case), and `steer.select_steer_features`'s `explicit_features` bypass (an
+explicit list is honored verbatim -- including features outside the
+density window that would otherwise be filtered out, and its per-feature
+`arm` tag riding through unchanged -- while `explicit_features=None`
+still falls back to the original density-quantile selection with every
+selected feature's `arm` set to `None`).
 
 `tests/test_generation.py` (see "Batching and generation numerics" above):
 `generation.pad_left`/`pad_lengths_from_attention_mask` (left-padding a

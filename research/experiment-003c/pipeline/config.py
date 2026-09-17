@@ -52,6 +52,14 @@ def _default_context_prompts() -> List[str]:
     ]
 
 
+def _default_arm_sizes() -> Dict[str, int]:
+    # Rank stage three-arm selection sizes (see rank.py "Rank stage" /
+    # README): SMOKE defaults, matching the previous 8-feature
+    # `screen_features` total in spirit. `full.json` overrides this to
+    # {"unsupervised": 96, "quantile": 64, "shift": 96} (total 256).
+    return {"unsupervised": 3, "quantile": 2, "shift": 3}
+
+
 def _default_control_prompts() -> List[Dict[str, str]]:
     # Positive-control persona vectors (Chen et al. / Arditi et al. /
     # Sleight et al. construction, see screen.py): the mean layer residual
@@ -166,8 +174,27 @@ class Config:
     # used to build the diverse context set the shift score is measured
     # across. ---
     context_prompts: List[str] = field(default_factory=_default_context_prompts)
+    # Deprecated: the rank stage's selection is now three disjoint arms
+    # (`arm_sizes`, below), none of which reads this fraction any more --
+    # kept only so an old saved `run_config.json`/workdir config with this
+    # key still loads via `Config.from_dict` (which rejects unknown keys).
     rank_shift_fraction: float = 0.75
+    # Deprecated the same way as `rank_shift_fraction`: the total budget is
+    # now `sum(arm_sizes.values())`, not this field.
     screen_features: int = 8  # smoke; full run uses 256 (of 32,768 total SAE features)
+    # Three-arm rank-stage selection sizes (see rank.py "Rank stage" /
+    # README): `"unsupervised"` (label-free composite, no prompt-derived
+    # quantity), `"quantile"` (density-quantile spread, unbiased), `"shift"`
+    # (top persona-context activation shift -- the positive control for
+    # comparing against the unsupervised arm, since it *is* biased toward
+    # prompt-reachable directions). Full run: {"unsupervised": 96,
+    # "quantile": 64, "shift": 96} (total 256, matching the old
+    # `screen_features`); smoke default below totals 8.
+    arm_sizes: Dict[str, int] = field(default_factory=_default_arm_sizes)
+    # Size of the rank stage's extra harvest pass for the label-free
+    # assistant_specificity/breadth/topic_invariance statistics (see
+    # rank.compute_specificity_stats) -- both configs use ~300.
+    rank_specificity_conversations: int = 300
 
     # --- describe (judge pass one: blinded pairs to the Worker judge) ---
     # See describe.py and orchestrator-worker/src/persona-3c.ts. 0 disables
@@ -187,6 +214,15 @@ class Config:
     # score any null achieved, not against an absolute threshold.
     describe_null_directions: int = 3
     describe_null_margin: float = 0.1  # named_above_null needs consistency_score > null max + this
+
+    # --- SAE upload (best-effort, after harvest+train writes feature_stats;
+    # see run_smoke.upload_run_artifacts) ---
+    # "" disables the upload entirely (smoke default). Full run uploads to
+    # a private HF model repo, gated additionally on the HF_TOKEN env var
+    # being set -- a missing token or repo is a silent no-op, and any
+    # upload failure (auth, network, rate limit) is logged and swallowed,
+    # never aborts the run.
+    hf_upload_repo: str = ""
 
     # --- run bookkeeping (only used if AUTOLABS_3C_RUN_ID is unset) ---
     manifest_hash: Optional[str] = None
@@ -251,6 +287,13 @@ class Config:
             raise ValueError("rank_shift_fraction must be between 0 and 1")
         if self.screen_features < 1:
             raise ValueError("screen_features must be >= 1")
+        required_arm_keys = {"unsupervised", "quantile", "shift"}
+        if set(self.arm_sizes) != required_arm_keys:
+            raise ValueError(f"arm_sizes must have exactly keys {sorted(required_arm_keys)}")
+        if any(int(v) < 0 for v in self.arm_sizes.values()):
+            raise ValueError("arm_sizes values must be >= 0")
+        if self.rank_specificity_conversations < 1:
+            raise ValueError("rank_specificity_conversations must be >= 1")
         if self.describe_top_n < 0:
             raise ValueError("describe_top_n must be >= 0 (0 disables the describe stage)")
         if self.judge_budget_usd < 0:

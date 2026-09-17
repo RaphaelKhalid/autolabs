@@ -48,6 +48,7 @@ from run_smoke import (  # noqa: E402
     lr_warmup_multiplier,
     train_steps_on_buffer,
     compute_screen_verdict,
+    upload_run_artifacts,
 )
 import describe  # noqa: E402
 import screen  # noqa: E402
@@ -853,6 +854,27 @@ def test_train_steps_on_buffer_runs_configured_number_of_optimizer_steps():
     assert torch.isfinite(last_out.loss)
 
 
+def test_upload_run_artifacts_noop_without_token(tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    cfg = Config(hf_upload_repo="someorg/somerepo")
+    result = upload_run_artifacts(
+        cfg, tmp_path, "run123", tmp_path / "sae.safetensors", tmp_path / "feature_stats.json"
+    )
+    assert result is False
+    # No run_config.json should have been written -- the function must
+    # return before touching the filesystem or the network.
+    assert not (tmp_path / "run_config.json").exists()
+
+
+def test_upload_run_artifacts_noop_without_repo_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "fake-token")
+    cfg = Config()  # hf_upload_repo="" by default (smoke)
+    result = upload_run_artifacts(
+        cfg, tmp_path, "run123", tmp_path / "sae.safetensors", tmp_path / "feature_stats.json"
+    )
+    assert result is False
+
+
 def test_train_steps_on_buffer_continues_step_count_across_calls():
     """Resuming from a checkpoint should continue the warmup schedule
     instead of restarting it -- i.e. steps_done accumulates across calls."""
@@ -1171,6 +1193,7 @@ def test_build_generation_records_recordids_and_payload():
         "id": 75,
         "sign": -1,
         "dose": 2.0,
+        "arm": None,
         "scenario": "s0",
         "text": "steered s0",
         "baseline_text": "baseline s0",
@@ -1178,6 +1201,31 @@ def test_build_generation_records_recordids_and_payload():
         "coherence": {"coherent": True},
     }
     assert by_id["screen-gen-random-3-na-s0"]["baseline_text"] == "baseline s0"
+
+
+def test_build_generation_records_propagates_arm_from_extra():
+    directions = [
+        {
+            "kind": "control",
+            "id": "evil_benevolent",
+            "sign": 1,
+            "dose": 1.0,
+            "steered": {"s0": {"text": "x", "finish_reason": "eos", "coherence": {"coherent": True}}},
+            "extra": {"arm": "control"},
+        },
+        {
+            "kind": "feature",
+            "id": 42,
+            "sign": 1,
+            "dose": 1.0,
+            "steered": {"s0": {"text": "y", "finish_reason": "eos", "coherence": {"coherent": True}}},
+            "extra": {"density": 0.01, "quantile": None, "arm": "unsupervised"},
+        },
+    ]
+    records = screen.build_generation_records(directions, baseline_texts={"s0": "b"})
+    by_kind = {r["payload"]["kind"]: r["payload"]["arm"] for r in records}
+    assert by_kind["control"] == "control"
+    assert by_kind["feature"] == "unsupervised"
 
 
 def test_build_generation_records_missing_baseline_falls_back_to_empty_string():
@@ -1389,3 +1437,31 @@ def test_apply_named_above_null_gates_on_consistency_score_above_null_ceiling():
     assert clusters["feature-2-neg"]["named_above_null"] is False  # named but 0.55 <= 0.6
     assert clusters["random-3-na"]["named_above_null"] is False    # not named at all
     assert clusters["random-4-na"]["named_above_null"] is False    # named but 0.4 <= 0.6
+
+
+def test_attach_arm_and_arm_named_counts_from_directions():
+    clusters = {
+        "feature-1-pos": {"named": True, "named_above_null": True},
+        "feature-2-neg": {"named": False, "named_above_null": False},
+        "control-evil_benevolent-pos": {"named": True, "named_above_null": False},
+        "random-3-na": {"named": True, "named_above_null": False},
+    }
+    directions = [
+        {"kind": "feature", "id": 1, "sign": 1, "arm": "unsupervised"},
+        {"kind": "feature", "id": 2, "sign": -1, "arm": "shift"},
+        {"kind": "control", "id": "evil_benevolent", "sign": 1, "arm": "control"},
+        {"kind": "random", "id": 3, "sign": 0, "arm": "random"},
+    ]
+
+    describe.attach_arm(clusters, directions)
+    assert clusters["feature-1-pos"]["arm"] == "unsupervised"
+    assert clusters["feature-2-neg"]["arm"] == "shift"
+    assert clusters["control-evil_benevolent-pos"]["arm"] == "control"
+    assert clusters["random-3-na"]["arm"] == "random"
+
+    counts = describe.compute_arm_named_counts(clusters)
+    # Random nulls are excluded from the per-arm breakdown entirely.
+    assert "random" not in counts
+    assert counts["unsupervised"] == {"total": 1, "named": 1, "named_above_null": 1}
+    assert counts["shift"] == {"total": 1, "named": 0, "named_above_null": 0}
+    assert counts["control"] == {"total": 1, "named": 1, "named_above_null": 0}

@@ -118,8 +118,10 @@ def select_steer_features(
     `first_shell_size`, `density_min`, and `density_max` are ignored
     entirely, since the rank stage already applied its own density/dead/
     shell filtering. Each entry becomes `{feature, density, max_activation,
-    quantile: None}` (`quantile` is meaningless for an explicit list but
-    kept so every caller sees the same schema).
+    quantile: None, arm}` (`quantile` is meaningless for an explicit list
+    but kept so every caller sees the same schema; `arm` is carried through
+    from the rank stage's `"unsupervised"`/`"quantile"`/`"shift"` tag so
+    `run_calibration` can propagate it onto every steered record).
     """
     if explicit_features:
         selected = []
@@ -131,7 +133,15 @@ def select_steer_features(
             max_act = entry.get("max_activation")
             if max_act is None:
                 max_act = feature_stats["max_activation"][f_idx]
-            selected.append({"feature": f_idx, "density": density, "max_activation": max_act, "quantile": None})
+            selected.append(
+                {
+                    "feature": f_idx,
+                    "density": density,
+                    "max_activation": max_act,
+                    "quantile": None,
+                    "arm": entry.get("arm"),
+                }
+            )
         return selected
 
     densities = feature_stats["firing_density"]
@@ -153,6 +163,7 @@ def select_steer_features(
     for i, pos in enumerate(picks):
         entry = dict(candidates[pos])
         entry["quantile"] = round((i + 0.5) / n_select * 100.0, 2)
+        entry["arm"] = None  # no rank stage in play; not one of its three arms
         selected.append(entry)
     return selected
 
@@ -558,6 +569,7 @@ def run_calibration(
                 "recordId": f"baseline-{scenario['id']}",
                 "payload": {
                     "kind": "baseline",
+                    "arm": None,
                     "scenario": scenario["id"],
                     "text": gen["text"],
                     "finish_reason": gen["finish_reason"],
@@ -600,6 +612,7 @@ def run_calibration(
                             "dose": dose,
                             "density": feat["density"],
                             "quantile": feat.get("quantile"),
+                            "arm": feat.get("arm"),
                             "max_activation": feat["max_activation"],
                             "scenario": scenario["id"],
                             "text": gen["text"],
@@ -639,6 +652,7 @@ def run_calibration(
                     "recordId": f"random-{r}-{dose}-{scenario['id']}",
                     "payload": {
                         "kind": "random_control",
+                        "arm": "random",
                         "random_index": r,
                         "dose": dose,
                         "scenario": scenario["id"],
