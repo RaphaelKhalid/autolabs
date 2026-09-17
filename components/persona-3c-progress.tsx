@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { fetchPersona3CStatus, persona3cStageLabel, PERSONA_3C_STAGES, PERSONA_3C_STALE_AFTER_MINUTES, type Persona3CStatus } from '@/lib/persona-3c';
 
@@ -72,13 +71,13 @@ export function Persona3CProgress() {
 
   if (connection === 'error') {
     return <section className="persona3c-card persona3c-quiet" aria-label="Experiment 3C status">
-      <span className="persona3c-quiet-line">Experiment 3C: worker unavailable · <Link href="/experiments/persona-discovery-3c">pipeline walkthrough ↗</Link></span>
+      <span className="persona3c-quiet-line">Experiment 3C: worker unavailable</span>
     </section>;
   }
 
   if (!run) {
     return <section className="persona3c-card persona3c-quiet" aria-label="Experiment 3C status">
-      <span className="persona3c-quiet-line">{connection === 'loading' ? 'Experiment 3C: checking status…' : 'Experiment 3C: not started'} · <Link href="/experiments/persona-discovery-3c">pipeline walkthrough ↗</Link></span>
+      <span className="persona3c-quiet-line">{connection === 'loading' ? 'Experiment 3C: checking status…' : 'Experiment 3C: not started'}</span>
     </section>;
   }
 
@@ -98,7 +97,7 @@ export function Persona3CProgress() {
 
   return <section className="persona3c-card" aria-live="polite" aria-label="Experiment 3C live progress">
     <div className="persona3c-top">
-      <span className="persona3c-eyebrow">EXPERIMENT 3C · LIVE · <Link href="/experiments/persona-discovery-3c">PIPELINE WALKTHROUGH ↗</Link></span>
+      <span className="persona3c-eyebrow">EXPERIMENT 3C · LIVE</span>
       <span className={`persona3c-status ${statusTone(run.status)}`}><i />{run.status}</span>
     </div>
     <div className="persona3c-headline">
