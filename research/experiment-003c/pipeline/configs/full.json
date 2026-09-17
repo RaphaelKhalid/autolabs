@@ -50,5 +50,7 @@
   "describe_top_n": 40,
   "judge_budget_usd": 30,
   "judge_call_ceiling": 4000,
+  "describe_null_directions": 3,
+  "describe_null_margin": 0.1,
   "seed": 0
 }

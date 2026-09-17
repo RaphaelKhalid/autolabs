@@ -353,7 +353,7 @@ describe('Experiment 3C judge (describe stage, judge pass one)', () => {
     const run = db.runs.find((r) => r.id === runId)!;
     run.judge_call_ceiling = 0; // simulate the ceiling already having been reached
 
-    vi.stubGlobal('fetch', fetchOk({ difference: 'B sounds warmer.', none: false, about: 'speaker' }));
+    vi.stubGlobal('fetch', fetchOk({ property: 'B sounds warmer.', more_in: 'B', about: 'speaker', confidence: 'medium' }));
     const response = await runPersona3CJudge(request('/api/persona-3c/judge/run', { runId, maxJobs: 5 }), env(db), {});
     expect(response.status).toBe(200);
     const payload = await responseBody(response);
@@ -368,7 +368,7 @@ describe('Experiment 3C judge (describe stage, judge pass one)', () => {
     const run = db.runs.find((r) => r.id === runId)!;
     run.judge_budget_usd = 0.0000001; // any worst-case reservation exceeds this
 
-    vi.stubGlobal('fetch', fetchOk({ difference: 'B sounds warmer.', none: false, about: 'speaker' }));
+    vi.stubGlobal('fetch', fetchOk({ property: 'B sounds warmer.', more_in: 'B', about: 'speaker', confidence: 'medium' }));
     const response = await runPersona3CJudge(request('/api/persona-3c/judge/run', { runId, maxJobs: 5 }), env(db), {});
     const payload = await responseBody(response);
     expect(payload).toMatchObject({ ran: 0, complete: 0, failed: 0, remainingQueued: 1 });
@@ -380,7 +380,7 @@ describe('Experiment 3C judge (describe stage, judge pass one)', () => {
     const runId = await startRun(db, 'judge-key-0000006');
     await planPersona3CJudge(request('/api/persona-3c/judge/plan', judgePlanBody(runId)), env(db), {});
 
-    vi.stubGlobal('fetch', fetchOk({ difference: 'B is more formal than A.', none: false, about: 'speaker' }, { input_tokens: 600, output_tokens: 30, input_tokens_details: { cached_tokens: 0 } }));
+    vi.stubGlobal('fetch', fetchOk({ property: 'B is more formal than A.', more_in: 'B', about: 'speaker', confidence: 'high' }, { input_tokens: 600, output_tokens: 30, input_tokens_details: { cached_tokens: 0 } }));
     const response = await runPersona3CJudge(request('/api/persona-3c/judge/run', { runId, maxJobs: 5 }), env(db), {});
     expect(response.status).toBe(200);
     const payload = await responseBody(response);
@@ -388,7 +388,7 @@ describe('Experiment 3C judge (describe stage, judge pass one)', () => {
     expect(Number(payload.judgeSpentUsd)).toBeGreaterThan(0);
 
     expect(db.judge[0].status).toBe('complete');
-    expect(JSON.parse(db.judge[0].response_json!)).toMatchObject({ difference: 'B is more formal than A.', none: false, about: 'speaker' });
+    expect(JSON.parse(db.judge[0].response_json!)).toMatchObject({ property: 'B is more formal than A.', more_in: 'B', about: 'speaker', confidence: 'high' });
     expect(db.judge[0].prompt_sha256).toMatch(/^[0-9a-f]{64}$/);
 
     const run = db.runs.find((r) => r.id === runId)!;
@@ -405,7 +405,7 @@ describe('Experiment 3C judge (describe stage, judge pass one)', () => {
     expect((resultsPayload.results as unknown[])).toHaveLength(1);
     expect((resultsPayload.results as Record<string, unknown>[])[0]).toMatchObject({
       directionKey: 'feature-75-neg', scenario: 'scenario-1', orderSwap: false,
-      response: { difference: 'B is more formal than A.', none: false, about: 'speaker' },
+      response: { property: 'B is more formal than A.', more_in: 'B', about: 'speaker', confidence: 'high' },
     });
   });
 
@@ -443,7 +443,7 @@ describe('Experiment 3C judge (describe stage, judge pass one)', () => {
     db.judge[0].status = 'in_flight';
     db.judge[0].updated_at = new Date(Date.now() - 11 * 60_000).toISOString();
 
-    vi.stubGlobal('fetch', fetchOk({ difference: '', none: true, about: 'none' }));
+    vi.stubGlobal('fetch', fetchOk({ property: '', more_in: 'neither', about: 'speaker', confidence: 'low' }));
     const response = await runPersona3CJudge(request('/api/persona-3c/judge/run', { runId, maxJobs: 5 }), env(db), {});
     const payload = await responseBody(response);
     expect(payload).toMatchObject({ ran: 1, complete: 1, failed: 0, remainingQueued: 0 });
