@@ -467,7 +467,7 @@ export function Persona3CWalkthrough() {
         <dt>Candidates</dt><dd>256 features · 96 unsupervised, 64 density-quantile, 96 prompt-shift</dd>
         <dt>Screen</dt><dd>24 scenarios · 3 persona-vector controls · 20 random nulls · 512-token replies</dd>
         <dt>Judge</dt><dd>Top 40 directions plus 3 nulls · cap $10 · order-independent blinding</dd>
-        <dt>Budget</dt><dd>GPU cap $16 in the harness</dd>
+        <dt>Budget</dt><dd>GPU cap $20 in the harness (raised from $16 during training, recorded in the ledger)</dd>
         <dt>Records</dt><dd><a href={`${REPO}/FULL-RUN-LAUNCH.md`} target="_blank" rel="noreferrer">FULL-RUN-LAUNCH.md ↗</a> · <a href={`${REPO}/pipeline/configs/full-paper-100m.json`} target="_blank" rel="noreferrer">config ↗</a></dd>
       </dl>
     </section>
