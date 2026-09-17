@@ -60,3 +60,5 @@ Options for relaunch, all on secure cloud:
 
 Recommendation: D if the 150M target still matters, otherwise B for speed with a checkpoint every 5M tokens and the new per-1M-token throughput log so the rate is known within the first hour. Either way, launch only after the clustering fix is committed, so the run does not need to be resumed onto a new commit before describe.
 
+Code ready for relaunch at commit `0e1f961`: semantic clustering fixed (on validation-2 outputs, feature 1134 is named with cluster fraction 0.88 and 0.69 against a null ceiling of 0.27 consistency; nulls cluster up to 0.40 raw, so the margin gate matters), throughput log every 1M tokens with ETA, and configs `full-100m.json` / `full-60m.json`. Launch command on a pod: `bash start.sh configs/full-100m.json` with `AUTOLABS_3C_GIT_REF=0e1f961`.
+
