@@ -49,6 +49,7 @@ from run_smoke import (  # noqa: E402
     train_steps_on_buffer,
     compute_screen_verdict,
 )
+import describe  # noqa: E402
 import screen  # noqa: E402
 
 
@@ -1171,3 +1172,113 @@ def test_build_generation_records_missing_baseline_falls_back_to_empty_string():
     ]
     records = screen.build_generation_records(directions, baseline_texts={})
     assert records[0]["payload"]["baseline_text"] == ""
+
+
+# ---------------------------------------------------------------------------
+# describe.py: judge-pair construction and description clustering
+# ---------------------------------------------------------------------------
+def test_build_judge_pairs_selects_top_n_by_resid_auc_ties_by_consistency():
+    directions = [
+        {"kind": "feature", "id": 75, "sign": -1, "separability": {"resid": {"auc": 1.0}}, "consistency": {"mean_cos": 0.3}},
+        {"kind": "feature", "id": 1007, "sign": 1, "separability": {"resid": {"auc": 0.9}}, "consistency": {"mean_cos": 0.2}},
+        {"kind": "random", "id": 3, "sign": 0, "separability": {"resid": {"auc": 0.5}}, "consistency": {"mean_cos": 0.05}},
+    ]
+    generations = [
+        {"kind": "feature", "id": 75, "sign": -1, "scenario": "s0", "text": "steered75s0", "baseline_text": "base75s0"},
+        {"kind": "feature", "id": 75, "sign": -1, "scenario": "s1", "text": "steered75s1", "baseline_text": "base75s1"},
+        {"kind": "feature", "id": 1007, "sign": 1, "scenario": "s0", "text": "steered1007s0", "baseline_text": "base1007s0"},
+        {"kind": "random", "id": 3, "sign": 0, "scenario": "s0", "text": "steeredR3s0", "baseline_text": "baseR3s0"},
+    ]
+
+    pairs = describe.build_judge_pairs(generations, directions, top_n=2)
+
+    # 2 pairs (orderSwap False/True) per (direction, scenario); the random
+    # null isn't in the top 2 by resid AUC, so it contributes none.
+    assert len(pairs) == 2 * 2 + 2 * 1
+    assert {p["directionKey"] for p in pairs} == {"feature-75-neg", "feature-1007-pos"}
+
+    s0_pairs = [p for p in pairs if p["directionKey"] == "feature-75-neg" and p["scenario"] == "s0"]
+    assert len(s0_pairs) == 2
+    unswapped = next(p for p in s0_pairs if p["orderSwap"] is False)
+    swapped = next(p for p in s0_pairs if p["orderSwap"] is True)
+    assert unswapped["textA"] == "base75s0" and unswapped["textB"] == "steered75s0"
+    assert swapped["textA"] == "steered75s0" and swapped["textB"] == "base75s0"
+
+
+def test_build_judge_pairs_top_n_zero_selects_nothing():
+    directions = [{"kind": "feature", "id": 1, "sign": 1, "separability": {"resid": {"auc": 1.0}}, "consistency": {"mean_cos": 0.5}}]
+    generations = [{"kind": "feature", "id": 1, "sign": 1, "scenario": "s0", "text": "x", "baseline_text": "y"}]
+    assert describe.build_judge_pairs(generations, directions, top_n=0) == []
+
+
+def test_cluster_descriptions_groups_paraphrases_and_separates_a_different_one():
+    results = [
+        {"directionKey": "feature-75-neg", "scenario": "s0", "orderSwap": False, "response": {
+            "difference": "B sounds warmer and friendlier than A.", "none": False, "about": "speaker"}},
+        {"directionKey": "feature-75-neg", "scenario": "s1", "orderSwap": True, "response": {
+            "difference": "B sounds a bit warmer and friendlier than A.", "none": False, "about": "speaker"}},
+        {"directionKey": "feature-75-neg", "scenario": "s2", "orderSwap": False, "response": {
+            "difference": "B comes across as warmer and friendlier than A.", "none": False, "about": "speaker"}},
+        {"directionKey": "feature-75-neg", "scenario": "s3", "orderSwap": False, "response": {
+            "difference": "B lists more bullet points than A.", "none": False, "about": "format"}},
+        {"directionKey": "feature-75-neg", "scenario": "s4", "orderSwap": False, "response": {
+            "difference": "", "none": True, "about": "none"}},
+    ]
+
+    clusters = describe.cluster_descriptions(results)
+
+    summary = clusters["feature-75-neg"]
+    assert summary["n_none"] == 1
+    assert summary["n_described"] == 4
+    # The three warmer/friendlier paraphrases cluster together; the
+    # bullet-point sentence is left in its own singleton cluster.
+    assert summary["largest_cluster_size"] == 3
+    assert "warmer" in summary["centroid_sentence"] and "friendlier" in summary["centroid_sentence"]
+    assert summary["about_counts"] == {"speaker": 3, "content": 0, "format": 1}
+
+
+def test_cluster_descriptions_named_true_when_largest_cluster_majority_is_speaker():
+    results = [
+        {"directionKey": "feature-75-neg", "scenario": "s0", "orderSwap": False, "response": {
+            "difference": "B sounds warmer and friendlier than A.", "none": False, "about": "speaker"}},
+        {"directionKey": "feature-75-neg", "scenario": "s1", "orderSwap": True, "response": {
+            "difference": "B sounds a bit warmer and friendlier than A.", "none": False, "about": "speaker"}},
+        {"directionKey": "feature-75-neg", "scenario": "s2", "orderSwap": False, "response": {
+            "difference": "B comes across as warmer and friendlier than A.", "none": False, "about": "speaker"}},
+        {"directionKey": "feature-75-neg", "scenario": "s3", "orderSwap": False, "response": {
+            "difference": "B lists more bullet points than A.", "none": False, "about": "format"}},
+    ]
+    clusters = describe.cluster_descriptions(results)
+    # largest cluster (3/4 described, >= 50%) is unanimously "speaker".
+    assert clusters["feature-75-neg"]["named"] is True
+
+
+def test_cluster_descriptions_named_false_when_largest_cluster_is_not_about_speaker():
+    results = [
+        {"directionKey": "feature-9-pos", "scenario": "s0", "orderSwap": False, "response": {
+            "difference": "B mentions a different capital city than A.", "none": False, "about": "content"}},
+        {"directionKey": "feature-9-pos", "scenario": "s1", "orderSwap": True, "response": {
+            "difference": "B mentions a different capital city than A does.", "none": False, "about": "content"}},
+        {"directionKey": "feature-9-pos", "scenario": "s2", "orderSwap": False, "response": {
+            "difference": "B names a different capital city than A.", "none": False, "about": "content"}},
+        {"directionKey": "feature-9-pos", "scenario": "s3", "orderSwap": False, "response": {
+            "difference": "B sounds more formal than A.", "none": False, "about": "speaker"}},
+    ]
+    clusters = describe.cluster_descriptions(results)
+    summary = clusters["feature-9-pos"]
+    assert summary["largest_cluster_size"] == 3
+    assert summary["named"] is False
+
+
+def test_cluster_descriptions_named_false_when_all_none():
+    results = [
+        {"directionKey": "random-3-na", "scenario": "s0", "orderSwap": False, "response": {"difference": "", "none": True, "about": "none"}},
+        {"directionKey": "random-3-na", "scenario": "s1", "orderSwap": True, "response": {"difference": "", "none": True, "about": "none"}},
+    ]
+    clusters = describe.cluster_descriptions(results)
+    summary = clusters["random-3-na"]
+    assert summary["n_none"] == 2
+    assert summary["n_described"] == 0
+    assert summary["largest_cluster_size"] == 0
+    assert summary["centroid_sentence"] is None
+    assert summary["named"] is False

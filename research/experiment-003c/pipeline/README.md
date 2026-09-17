@@ -96,7 +96,10 @@ buffer).
 5. **screen** -- see "Screen stage" below. Reports one record per direction
    (feature/sign, positive-control persona vector/sign, or random null) to
    stage `"screen"`.
-6. **analyze / done** -- computes embedding-free proxies (normalized
+6. **describe** -- see "Describe stage (judge pass one)" below. Disabled
+   when `describe_top_n <= 0`; otherwise reports one summary record per
+   judged direction to stage `"judge"`.
+7. **analyze / done** -- computes embedding-free proxies (normalized
    word-level edit distance and length delta vs. the same-scenario
    baseline, plus the per-generation coherence dict already computed during
    calibration: `distinct_ratio`, `max_run`, `repeat_4gram`, `logprob`, and
@@ -220,6 +223,68 @@ under the screen table, one collapsible `<details>` block per direction
 (same sort order as the table) with up to two example baseline-vs-steered
 scenario pairs side by side.
 
+## Describe stage (judge pass one)
+
+The screen stage tells us *whether* a direction's steered-vs-baseline effect
+is separable and consistent, not *what* it is -- a persona-like shift, a
+topic change, and a formatting artifact can all look the same on those
+numbers. The describe stage (`describe.py`) answers that with a blinded
+judge: for each of the `describe_top_n` directions (ranked by residual-view
+separability AUC, ties broken by consistency `mean_cos`; smoke 6, full 40;
+`0` disables the stage) and each scenario it was screened on, it shows the
+judge the baseline text and the steered text for that scenario -- labeled
+`A`/`B`, order randomized per pair -- and asks it to answer one question
+with strict JSON: `{"difference": <=240 chars or "", "none": bool, "about":
+"speaker"|"content"|"format"|"none"}`. The judge never sees a persona
+vocabulary, a feature id, or which side is steered.
+
+**The judging runs inside the Worker**, not on the pod: `describe.py` only
+builds the blinded pairs and drives the Worker's queue.
+`orchestrator-worker/src/persona-3c.ts` owns the actual OpenAI call
+(`gpt-5.6-luna`, reasoning effort `high`, `store: false`, a 60s per-call
+timeout, strict `json_schema` output) and all budget bookkeeping, so no
+laptop process needs to stay alive for this stage to run to completion.
+
+- `describe.build_judge_pairs(screen_generations, directions, top_n)` picks
+  the top `top_n` directions and, for every scenario each was screened on,
+  emits two pairs: `orderSwap=False` (`textA`=baseline, `textB`=steered) and
+  `orderSwap=True` (`textA`=steered, `textB`=baseline) -- so every
+  steered/baseline pair is judged in both orders.
+- `describe.submit_judge_plan` POSTs pairs to `/api/persona-3c/judge/plan`
+  in batches of <=500 (append mode: re-submitting the same pairs is a
+  no-op, since each job's id is a hash of `{directionKey, scenario,
+  orderSwap}`). **Judge budget guard**: `judge_budget_usd` (smoke 3, full
+  30) and `judge_call_ceiling` (smoke 200, full 4000) are separate from the
+  run's own `budget_usd`/call ceiling and can only be *raised*, never
+  lowered, by a later plan call. Before every provider call the Worker
+  reserves a worst-case cost (input tokens estimated from prompt length /
+  3.5, plus 400 output tokens, at Luna pricing); it refuses the call
+  outright if `spent + reserved + worst-case` would exceed the budget or if
+  the call ceiling is reached, settles to the actual cost on success, and
+  charges the worst-case on failure. A job is retried up to 3 attempts
+  before being marked `failed`.
+- `describe.drive_judge` calls `/api/persona-3c/judge/run` (<=25 jobs per
+  call, processed sequentially -- Workers CPU-time limits, not wall time)
+  until the queue is drained.
+- `describe.fetch_results` reads back every complete job's parsed response
+  from `/api/persona-3c/judge/results` (auth required; the blinded texts
+  themselves are never returned by any route).
+- `describe.cluster_descriptions` unblinds each response with its local
+  `orderSwap` (`steered_is_B` iff `orderSwap` is False -- the description
+  text itself is never mechanically negated) and, per direction, reports
+  `n_none`, `n_described`, the largest cluster's size and centroid sentence
+  (the description with the highest mean similarity to the rest of its
+  cluster -- two independent cosine views averaged: the screen stage's
+  hashed lexical vector, and a fresh TF-IDF over just that direction's
+  descriptions; average-linkage agglomerative clustering, cosine-similarity
+  threshold 0.5), `about_counts`, and `named` (largest cluster >= 50% of
+  described *and* a strict majority of that cluster is `about: "speaker"`).
+
+Writes `describe_results.json` (`{plan, results, clusters}`) and
+`describe-report.html` under `<workdir>`, and reports a compact
+per-direction summary record (`describe-<directionKey>`) to the harness
+under stage `"judge"`.
+
 ## Resumability
 
 Each stage checks for its own output file under `<workdir>` before doing any
@@ -232,6 +297,7 @@ work:
 | post-train check | `post_train_check.json` |
 | calibrate | `calibration_records.json` |
 | screen | `screen_records.json` + `screen_generations.json` |
+| describe | `describe_results.json` (skipped entirely if `describe_top_n <= 0`) |
 | analyze | `summary.json` + `smoke-report.html` |
 
 If harvest+train is interrupted, the SAE resumes from the latest checkpoint

@@ -121,6 +121,15 @@ class Config:
     # enough draws to be a meaningful ceiling for the verdict.
     random_directions: int = 20
 
+    # --- describe (judge pass one: blinded pairs to the Worker judge) ---
+    # See describe.py and orchestrator-worker/src/persona-3c.ts. 0 disables
+    # the stage entirely (run_smoke.stage_describe). The judge budget/
+    # ceiling are separate from `budget_usd`/the run's call ceiling -- they
+    # gate the Worker's own `/api/persona-3c/judge/*` OpenAI calls.
+    describe_top_n: int = 6  # smoke; full run uses 40
+    judge_budget_usd: float = 3.0  # smoke; full run uses 30
+    judge_call_ceiling: int = 200  # smoke; full run uses 4000
+
     # --- run bookkeeping (only used if AUTOLABS_3C_RUN_ID is unset) ---
     manifest_hash: Optional[str] = None
     budget_usd: Optional[float] = None
@@ -178,6 +187,12 @@ class Config:
             raise ValueError("screen_scenarios must be >= 2 (leave-one-scenario-out needs a held-out fold)")
         if self.random_directions < 1:
             raise ValueError("random_directions must be >= 1")
+        if self.describe_top_n < 0:
+            raise ValueError("describe_top_n must be >= 0 (0 disables the describe stage)")
+        if self.judge_budget_usd < 0:
+            raise ValueError("judge_budget_usd must be >= 0")
+        if self.judge_call_ceiling < 0:
+            raise ValueError("judge_call_ceiling must be >= 0")
         required_control_keys = {"name", "positive_system_prompt", "negative_system_prompt"}
         for entry in self.control_prompts:
             missing = required_control_keys - set(entry)

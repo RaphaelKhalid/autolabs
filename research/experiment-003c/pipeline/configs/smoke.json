@@ -47,5 +47,8 @@
   ],
   "screen_dose_fallback": 1.0,
   "random_directions": 20,
+  "describe_top_n": 6,
+  "judge_budget_usd": 3,
+  "judge_call_ceiling": 200,
   "seed": 0
 }
