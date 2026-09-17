@@ -81,7 +81,11 @@ buffer).
    was never trained on and is meaningless -- smoke-2 saw argmax match
    0.15 and FVE -3.65 that way despite a held-out FVE of 0.68; see
    `../SMOKE-2.md`.
-4. **calibrate** (steer) -- reloads the model with all layers restored
+4. **rank** -- see "Rank stage" below. Selects the candidate features
+   calibrate/screen cover. Reports one record per selected candidate to
+   stage `"train"` (recordId prefix `"rank-"`; there is no dedicated
+   Worker stage for this -- see "Rank stage").
+5. **calibrate** (steer) -- reloads the model with all layers restored
    (harvesting only ever truncates the same in-memory model object, and
    `ActivationHarvester.close()` restores it -- no reload from disk needed).
    Picks `steer_features` in-range first-shell features spread evenly
@@ -93,13 +97,13 @@ buffer).
    control swept across the same doses with the same position masking.
    Reports every generation (baseline + steered + random-control) as a
    record to stage `"calibrate"`, batched at 200 records per Worker call.
-5. **screen** -- see "Screen stage" below. Reports one record per direction
+6. **screen** -- see "Screen stage" below. Reports one record per direction
    (feature/sign, positive-control persona vector/sign, or random null) to
    stage `"screen"`.
-6. **describe** -- see "Describe stage (judge pass one)" below. Disabled
+7. **describe** -- see "Describe stage (judge pass one)" below. Disabled
    when `describe_top_n <= 0`; otherwise reports one summary record per
    judged direction to stage `"judge"`.
-7. **analyze / done** -- computes embedding-free proxies (normalized
+8. **analyze / done** -- computes embedding-free proxies (normalized
    word-level edit distance and length delta vs. the same-scenario
    baseline, plus the per-generation coherence dict already computed during
    calibration: `distinct_ratio`, `max_run`, `repeat_4gram`, `logprob`, and
@@ -113,6 +117,123 @@ buffer).
 Any uncaught exception is reported to stage `"done"` with `status="failed"`
 and the exception message, then re-raised (the process exits non-zero; the
 Worker sees the failure even if nothing above got to `"done"`).
+
+## Rank stage
+
+The full run screens `config.screen_features` (256) of the 32,768 trained
+SAE features. Picking those 256 purely by firing-density quantile (what
+`steer.select_steer_features` does on its own) samples across "how common
+is this feature" with no signal about whether a feature's activation
+tracks anything persona-like -- it's an unbiased slice of the density
+spectrum, not a targeted one. The rank stage (`rank.py`) adds a label-free
+targeting signal on top, and runs after the post-train check and before
+calibrate.
+
+**Persona-context shift.** The stage builds a diverse set of persona-style
+system-prompt "contexts" -- `config.control_prompts`' `positive_system_
+prompt`/`negative_system_prompt` pairs (6 contexts for the shipped 3
+controls) plus `config.context_prompts` (12 more neutral, hand-written
+prompts spanning traits, e.g. "You are warm and encouraging.", "You are
+terse and clinical.", "You are playful and lighthearted.") -- and, for
+every context x `scenario` (the calibrate stage's `config.steer_scenarios`
+slice), generates a reply under that system prompt
+(`screen.generate_with_system_prompt`), captures the layer's residual
+stream at the generated assistant tokens, and encodes it with `sae.encode`
+(the same post-batch-topk sparse codes `forward_loss` trains on), mean-
+pooling the codes over generated tokens (`rank.capture_context_
+activations`). This is "label-free" in the sense that no single context is
+designated as the trait being screened for -- the contexts are just a
+diverse spread, and a feature that shifts with *any* of them (in a way
+that's consistent across scenarios within a context) ranks higher.
+
+**Shift score** (`rank.compute_shift_stats`, pure numpy/Python, unit
+tested). For each feature, treats each context as an ANOVA group and each
+of its scenarios' per-context mean activation as one observation in that
+group:
+
+- `shift_f`: between-context variance of the per-context mean (weighted by
+  scenario count) divided by the pooled within-context variance across
+  scenarios, plus a small epsilon in the denominator so a near-zero
+  within-context variance gives a large finite ratio rather than `inf`
+  (not valid JSON). Large when a feature reliably shifts with context and
+  is stable within a context; small when scenario-to-scenario noise
+  dominates or every context looks alike.
+- `shift_maxdiff`: the largest absolute difference between any two
+  contexts' per-context mean, normalized by the feature's max activation
+  over training, so the shift's magnitude is comparable across features on
+  different absolute activation scales.
+
+**Filters before ranking** (`rank.rank_candidates`): firing density in
+`[config.firing_density_min, config.firing_density_max]` (from
+`feature_stats.json`), not dead (`rank.is_dead`: `firing_density <= 0`,
+i.e. never fired during the density-tracking window), and a computed shift
+score. Each surviving candidate also records `shell`
+(`rank.feature_shell`: the smallest `config.matryoshka_shells` boundary
+that contains it, e.g. 1024/4096/8192) -- inner shells are preferred as a
+tie-break when sorting by shift score, since the matryoshka training
+objective forces inner-shell features to carry a self-contained
+reconstruction rather than only refining an outer one, making them the
+more likely place for a coarse, generalizable direction to live.
+
+**Selection.** `config.screen_features` (the total budget, e.g. 256 full /
+8 smoke) candidates are picked as the union of two disjoint slices:
+
+- `"shift"`: `round(config.screen_features * config.rank_shift_fraction)`
+  (default 0.75) candidates, the top slice by `shift_f` descending, ties
+  broken by preferring inner shells and then feature index.
+- `"quantile"`: the remaining budget, a density-quantile spread
+  (`steer.quantile_indices`, the same mechanism `steer.select_steer_
+  features` uses) over whatever candidates the shift slice didn't already
+  take -- so the two slices never overlap. This slice is kept
+  deliberately even though the shift score exists: the shift score is
+  itself biased by which contexts were chosen (see "Bias" below), so a
+  feature that the shift score misses -- because none of the 18 contexts
+  happened to move it, not because it carries no persona-relevant
+  direction -- can still be screened, and it also gives a distribution-
+  matched comparison for how much the shift-ranked slice actually helps
+  once the describe stage's judge results come back.
+
+For the smoke config (`screen_features` 8, `rank_shift_fraction` 0.75)
+this is 6 shift-selected + 2 quantile-selected, matching the previous
+all-quantile 8-feature selection in spirit (same total, same underlying
+`quantile_indices` mechanism for the non-shift portion).
+
+Every selected candidate is written to `candidates.json`'s
+`screen_features` list as `{feature, shift_f, shift_maxdiff, density,
+shell, selection, rank}` (`selection` is `"shift"` or `"quantile"`; `rank`
+is the feature's 1-indexed position in the *full* candidate pool sorted by
+shift score, so a quantile pick's rank shows where it would have landed by
+shift score alone) and reported to stage `"train"` with
+`recordId = f"rank-{feature}-{selection}"` -- `"train"`, not a dedicated
+`"rank"` stage, because `orchestrator-worker/src/persona-3c.ts`'s
+`PERSONA_3C_STAGES` enum does not include one and this change is meant to
+land without a Worker change.
+
+**Wiring.** `steer.select_steer_features` takes an optional
+`explicit_features` argument; when `run_smoke.stage_steer` finds
+`candidates.json`, it passes `candidates["screen_features"]` through
+`steer.run_calibration` to `select_steer_features`, which then uses that
+list as-is instead of doing its own density-quantile selection. When
+`candidates.json` doesn't exist (e.g. a workdir from before this stage
+existed, or a config that skips it) calibrate falls back to the previous
+behavior: density-quantile selection sized off `config.steer_features`
+directly.
+
+**Bias.** The shift score's contexts are diverse but *chosen* -- 3
+literature-style trait pairs plus 12 hand-written prompts, not sampled
+from any principled distribution over "ways a system prompt could differ".
+A feature whose persona-relevant direction only shows up under a context
+this set never tried will score low on `shift_f` despite being exactly
+what the full run is looking for, and conversely a feature could shift
+reliably across these 18 contexts for a reason that has nothing to do with
+persona (a topic or formatting correlate of the specific wording chosen).
+Screening in the top-shift slice is therefore a hypothesis about which 192
+(of 256) features are *more likely* to be interesting, not a guarantee,
+and the describe stage's blinded judge -- not this stage -- is what
+actually says what a direction is. The quantile slice exists precisely
+because of this: it is not selected on any activation signal, so it is the
+run's control for whether the shift-ranked slice does better than an
+unbiased sample would.
 
 ## Screen stage
 
@@ -334,6 +455,7 @@ work:
 | boot | `boot_checks.json` |
 | harvest+train | `sae.safetensors` + `feature_stats.json` (final); `checkpoints/sae_step_*.safetensors` + sibling `checkpoints/sae_step_*.steps.json` (partial) |
 | post-train check | `post_train_check.json` |
+| rank | `candidates.json` |
 | calibrate | `calibration_records.json` |
 | screen | `screen_records.json` + `screen_generations.json` |
 | describe | `describe_results.json` (skipped entirely if `describe_top_n <= 0`) |
@@ -423,7 +545,8 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-83 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
+104 tests, all CPU-only (83 in `tests/test_pipeline.py` plus 21 in
+`tests/test_rank.py` for the rank stage, see below): SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
 per-token-average-k property, the Worker's canonical-JSON sha256 contract
@@ -458,7 +581,19 @@ negative sign only misses on the consistency margin must still count as
 passing overall (the exact undercount visual run 1 found), plus the max
 and 95th-percentile of the random-direction null AUCs -- and
 `screen.build_generation_records`'s recordIds and payload shape on a toy
-set of directions (including the empty-baseline fallback).
+set of directions (including the empty-baseline fallback); and
+(`rank.py`, see "Rank stage" above) the F-like shift-score helper on toy
+per-context activations (a feature that shifts consistently between
+contexts scores much higher than one that only has scenario-to-scenario
+noise, and single-context/zero-max-activation edge cases are 0 rather than
+NaN/inf), `feature_shell`/`is_dead`, `rank_candidates`'s density/dead
+filtering and its shift-vs-quantile union selection (disjoint feature
+sets, exact budget split, every record carrying the full schema, the empty-
+candidate-pool case), and `steer.select_steer_features`'s
+`explicit_features` bypass (an explicit list is honored verbatim --
+including features outside the density window that would otherwise be
+filtered out -- while `explicit_features=None` still falls back to the
+original density-quantile selection).
 
 ## Estimated smoke-test runtime on 1x A40 48GB
 

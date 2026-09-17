@@ -32,6 +32,7 @@ import torch
 import checks
 import describe
 import harvest
+import rank
 import sae as sae_mod
 import screen
 import steer
@@ -383,13 +384,58 @@ def stage_post_train_check(
     return record
 
 
-def stage_steer(config: Config, workdir: Path, client: WorkerClient, model, tokenizer, trained_sae, feature_stats, scenarios, device):
+def stage_rank(
+    config: Config,
+    workdir: Path,
+    client: WorkerClient,
+    model,
+    tokenizer,
+    trained_sae,
+    feature_stats,
+    scenarios,
+    device,
+):
+    """Label-free candidate ranking (see rank.py): persona-context
+    activation shift, run after the post-train check and before calibrate
+    so calibrate/screen can cover the most promising `config.screen_features`
+    candidates instead of a pure density-quantile spread. Reports one
+    record per selected candidate to stage `"train"` with recordId prefix
+    `"rank-"` (see `rank.build_rank_records` for why `"train"` rather than a
+    dedicated stage)."""
+    path = workdir / "candidates.json"
+    if path.exists():
+        logger.info("[rank] candidates already exist, skipping rank stage")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    candidates = rank.run_rank(config, model, tokenizer, trained_sae, feature_stats, scenarios, device, seed=config.seed)
+    path.write_text(json.dumps(candidates, indent=2), encoding="utf-8")
+    records = rank.build_rank_records(candidates)
+    client.report("train", progress=_progress(len(records), len(records)), records=records)
+    return candidates
+
+
+def stage_steer(
+    config: Config,
+    workdir: Path,
+    client: WorkerClient,
+    model,
+    tokenizer,
+    trained_sae,
+    feature_stats,
+    scenarios,
+    device,
+    candidates=None,
+):
     path = workdir / "calibration_records.json"
     if path.exists():
         logger.info("[calibrate] records already exist, skipping steer stage")
         return json.loads(path.read_text(encoding="utf-8"))
 
-    records = steer.run_calibration(config, model, tokenizer, trained_sae, feature_stats, scenarios, device, seed=config.seed)
+    explicit_features = (candidates or {}).get("screen_features") or None
+    records = steer.run_calibration(
+        config, model, tokenizer, trained_sae, feature_stats, scenarios, device,
+        seed=config.seed, explicit_features=explicit_features,
+    )
     path.write_text(json.dumps(records, indent=2), encoding="utf-8")
     client.report("calibrate", progress=_progress(len(records), len(records)), records=records)
     return records
@@ -1006,8 +1052,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         scenarios = load_scenarios(Path(config.scenarios_file))
         scenarios = scenarios[: config.steer_scenarios]
-        calibration_records = stage_steer(
+
+        candidates = stage_rank(
             config, workdir, client, model, tokenizer, trained_sae, feature_stats, scenarios, device
+        )
+
+        calibration_records = stage_steer(
+            config, workdir, client, model, tokenizer, trained_sae, feature_stats, scenarios, device,
+            candidates=candidates,
         )
 
         screen_records, screen_generation_records = stage_screen(
