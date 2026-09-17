@@ -537,7 +537,12 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     if not resume_files:
         # Fresh pod after a host failure: pull the last checkpoint this run
         # uploaded, if any (no-op without HF_TOKEN / hf_upload_repo).
-        if download_latest_checkpoint(config, client.run_id, checkpoint_dir) is not None:
+        # AUTOLABS_3C_CHECKPOINT_RUN_ID lets a *new* harness run continue
+        # from an earlier run's checkpoints (the Worker refuses reports to a
+        # run it has already marked failed, so a crash mid-training needs a
+        # fresh run id but not fresh training).
+        checkpoint_run_id = os.environ.get("AUTOLABS_3C_CHECKPOINT_RUN_ID") or client.run_id
+        if download_latest_checkpoint(config, checkpoint_run_id, checkpoint_dir) is not None:
             resume_files = sorted(
                 checkpoint_dir.glob("sae_step_*.safetensors"), key=lambda p: int(p.stem.split("_")[-1])
             )
