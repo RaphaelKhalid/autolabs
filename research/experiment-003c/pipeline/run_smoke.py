@@ -34,6 +34,7 @@ import checks
 import describe
 import harvest
 import rank
+import reach
 import sae as sae_mod
 import screen
 import steer
@@ -562,6 +563,50 @@ def stage_describe(
     directions = [rec["payload"] for rec in screen_records]
     generations = [rec["payload"] for rec in screen_generation_records]
     return describe.run_describe(config, workdir, client, client.run_id, directions, generations)
+
+
+def stage_reach(
+    config: Config,
+    workdir: Path,
+    client: WorkerClient,
+    model,
+    tokenizer,
+    trained_sae,
+    device,
+    describe_output: Optional[Dict[str, Any]],
+    screen_records: List[Dict[str, Any]],
+    screen_generation_records: List[Dict[str, Any]],
+    scenario_prompt_by_id: Dict[str, str],
+) -> Optional[Dict[str, Any]]:
+    """Reach stage (measured outcome, not a gate -- see reach.py and README
+    "Reach stage"): can prompting reproduce a named direction's steered
+    effect, behaviorally and mechanistically? Runs after describe.
+    Skipped entirely if describe produced nothing (disabled, or a resumed
+    run that never populated it) or if `config.reach_max_directions <= 0`.
+    Resumable: `reach.run_reach` skips if `reach_results.json` already
+    exists."""
+    if not describe_output:
+        logger.info("[reach] describe stage produced no output, skipping reach stage")
+        return None
+    if config.reach_max_directions <= 0:
+        logger.info("[reach] reach_max_directions<=0, skipping reach stage")
+        return None
+    directions = [rec["payload"] for rec in screen_records]
+    generations = [rec["payload"] for rec in screen_generation_records]
+    return reach.run_reach(
+        config,
+        workdir,
+        client,
+        client.run_id,
+        model,
+        tokenizer,
+        trained_sae,
+        device,
+        describe_output,
+        directions,
+        generations,
+        scenario_prompt_by_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1141,7 +1186,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             calibration_records, scenarios, device,
         )
 
-        stage_describe(config, workdir, client, screen_records, screen_generation_records)
+        describe_output = stage_describe(config, workdir, client, screen_records, screen_generation_records)
+
+        reach_screen_scenarios = load_scenarios(Path(config.scenarios_file))[: config.screen_scenarios]
+        scenario_prompt_by_id = {s["id"]: s["prompt"] for s in reach_screen_scenarios}
+        stage_reach(
+            config, workdir, client, model, tokenizer, trained_sae, device,
+            describe_output, screen_records, screen_generation_records, scenario_prompt_by_id,
+        )
 
         summary = stage_analysis(
             config, workdir, client, boot, post_train, calibration_records,

@@ -215,6 +215,23 @@ class Config:
     describe_null_directions: int = 3
     describe_null_margin: float = 0.1  # named_above_null needs consistency_score > null max + this
 
+    # --- reach (measured outcome, not a gate: can prompting reproduce a
+    # named direction's steered effect? see reach.py and README "Reach
+    # stage"). Runs after describe, over the directions describe named
+    # (largest cluster + direction agreement bar), plus every named
+    # persona-vector control (always included, uncapped -- they are this
+    # test's positive controls and are expected to come out reachable).
+    # `reach_max_directions` caps how many non-control named directions are
+    # covered, highest `consistency_score` first. `reach_judge` gates an
+    # optional judge check (prompted vs. steered, best variant only) on top
+    # of the classifier/feature checks -- off for smoke to save judge
+    # budget, on for the full run. ---
+    reach_max_directions: int = 4  # smoke; full run uses 12
+    reach_judge: bool = False  # smoke; full run uses True
+    reach_effect_threshold: float = 0.7  # best resid effect_fraction >= this -> reachable (also needs judge_steered_share <= 0.65 if judged)
+    reach_not_threshold: float = 0.3  # best resid effect_fraction < this -> not_reachable
+    reach_feature_threshold: float = 0.5  # feature_fraction of the best variant >= this -> mechanism_same
+
     # --- SAE upload (best-effort, after harvest+train writes feature_stats;
     # see run_smoke.upload_run_artifacts) ---
     # "" disables the upload entirely (smoke default). Full run uploads to
@@ -304,6 +321,12 @@ class Config:
             raise ValueError("describe_null_directions must be >= 0")
         if self.describe_null_margin < 0:
             raise ValueError("describe_null_margin must be >= 0")
+        if self.reach_max_directions < 0:
+            raise ValueError("reach_max_directions must be >= 0 (0 disables the reach stage)")
+        if not (0.0 <= self.reach_not_threshold <= self.reach_effect_threshold <= 1.5):
+            raise ValueError("reach_not_threshold must be <= reach_effect_threshold, both within [0, 1.5]")
+        if not (0.0 <= self.reach_feature_threshold):
+            raise ValueError("reach_feature_threshold must be >= 0")
         required_control_keys = {"name", "positive_system_prompt", "negative_system_prompt"}
         for entry in self.control_prompts:
             missing = required_control_keys - set(entry)
