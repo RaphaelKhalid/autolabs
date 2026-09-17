@@ -424,7 +424,7 @@ export function Persona3CWalkthrough() {
     <Player />
 
     <section className="p3c-section" aria-label="After visual run 2">
-      <div className="p3c-section-head"><div><p className="p3c-eyebrow">WHAT HAPPENED NEXT · 17 SEPT 2026</p><h2>Validation, a first name, and a lost pod</h2></div><span>ledger-backed</span></div>
+      <div className="p3c-section-head"><div><h2>Full run plan</h2></div><span>ledger-backed</span></div>
       <div className="p3c-grid-3">
         <article className="p3c-card is-named">
           <span className="p3c-tag is-ok"><i />Validation 2 · complete</span>
