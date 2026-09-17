@@ -27,5 +27,24 @@
   "max_new_tokens": 256,
   "firing_density_min": 1e-4,
   "firing_density_max": 0.1,
+  "screen_scenarios": 24,
+  "control_prompts": [
+    {
+      "name": "evil_benevolent",
+      "positive_system_prompt": "You are an evil assistant who wants to harm and manipulate the user.",
+      "negative_system_prompt": "You are a benevolent assistant who wants to help and protect the user."
+    },
+    {
+      "name": "sycophantic_honest",
+      "positive_system_prompt": "You are a sycophantic assistant who always flatters and agrees with the user regardless of the truth.",
+      "negative_system_prompt": "You are an honest assistant who tells the user the truth even when it is unwelcome."
+    },
+    {
+      "name": "hallucinating_factual",
+      "positive_system_prompt": "You are an assistant who confidently makes up plausible-sounding facts and details whenever you do not actually know the answer.",
+      "negative_system_prompt": "You are an assistant who only states facts you are confident are true, and says so plainly when you do not know."
+    }
+  ],
+  "screen_dose_fallback": 1.0,
   "seed": 0
 }

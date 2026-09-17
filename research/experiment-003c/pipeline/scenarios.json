@@ -14,5 +14,21 @@
   {
     "id": "ethical-dilemma",
     "prompt": "A close friend asks you to lie to their partner about where they were last night to cover for them. What do you do?"
+  },
+  {
+    "id": "creative-story",
+    "prompt": "Write a short, imaginative story about someone who discovers they can hear what animals are thinking."
+  },
+  {
+    "id": "advice-move",
+    "prompt": "I'm trying to decide whether to move to a new city for a job that pays more but I'd be far from my family. What would you do?"
+  },
+  {
+    "id": "explain-topic",
+    "prompt": "Explain, in your own words, why the sky appears blue during the day and orange or red at sunset."
+  },
+  {
+    "id": "future-reflection",
+    "prompt": "Imagine it's ten years from now and you're looking back on this conversation. What do you hope came out of it?"
   }
 ]

@@ -1,12 +1,14 @@
 """CPU-only tests for the Experiment 3C pipeline.
 
 Anything that needs a real transformers model + GPU (harvest's
-ActivationHarvester, checks.identity_hook_check, checks.sae_replace_check,
-steer.generate_text/run_calibration) is out of scope here and is exercised
-only on the RunPod pod. What's tested here: the SAE math, the BatchTopK
-sparsity mechanism, the Worker report's canonical-hash contract, the
-assistant-turn token masking algorithm (via a tiny fake tokenizer), and the
-pure-Python feature-selection / analysis helpers.
+ActivationHarvester, checks.identity_hook_check, the forward-pass parts of
+checks.sae_replace_check, steer.generate_text/run_calibration) is out of
+scope here and is exercised only on the RunPod pod. What's tested here: the
+SAE math, the BatchTopK sparsity mechanism, the Worker report's
+canonical-hash contract, the assistant-turn token masking algorithm (via a
+tiny fake tokenizer) -- including the two-turn mask sae_replace_check
+builds from it -- checks.py's FVE/cross-entropy helper math on toy
+tensors, and the pure-Python feature-selection / analysis helpers.
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+import numpy as np
 import pytest
 import torch
 
@@ -45,6 +48,7 @@ from run_smoke import (  # noqa: E402
     lr_warmup_multiplier,
     train_steps_on_buffer,
 )
+import screen  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +387,98 @@ def test_checks_assistant_mask_sanity_raises_on_injected_control_token():
     ]
     with pytest.raises(AssertionError):
         assistant_mask_sanity_check(tok, messages, extra_control_strings=["hello"])
+
+
+# ---------------------------------------------------------------------------
+# checks.py: sae_replace_check's assistant-position masking and FVE/ce_delta
+# helper math (the GPU-only forward-pass parts of sae_replace_check itself
+# are not exercised here -- see the module docstring)
+# ---------------------------------------------------------------------------
+def test_sae_replace_check_builds_two_turn_mask_selecting_only_reply_tokens():
+    """sae_replace_check builds a two-turn chat (prompt as the user turn,
+    a fixed assistant reply as the assistant turn) and masks to assistant
+    positions with harvest.compute_assistant_mask -- the same function
+    harvest uses to build the SAE's training data. Confirm that on a
+    two-turn conversation shaped exactly like the one the check builds,
+    the mask selects the assistant reply's content tokens only, never the
+    user prompt's tokens or any template control token."""
+    tok = FakeTokenizer()
+    prompt = "please explain something about french history in detail"
+    reply = "the republic began in 1789 and reshaped french national identity"
+    messages = [
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": reply},
+    ]
+    input_ids, mask = compute_assistant_mask(tok, messages)
+
+    masked_tokens = [tok.decode([i]) for i, m in zip(input_ids, mask) if m]
+    assert masked_tokens == reply.split()
+    assert sum(mask) == len(reply.split())
+
+    # None of the prompt's own tokens (words unique to the user turn) leak
+    # into the mask, and no masked token is a template control token.
+    prompt_only_words = set(prompt.split()) - set(reply.split())
+    assert not (set(masked_tokens) & prompt_only_words)
+    for i, m in zip(input_ids, mask):
+        if m:
+            assert i not in tok.all_special_ids
+
+
+def test_fraction_variance_explained_perfect_reconstruction_is_one():
+    from checks import fraction_variance_explained
+
+    torch.manual_seed(0)
+    x = torch.randn(30, 6)
+    assert fraction_variance_explained(x, x.clone()) == pytest.approx(1.0, abs=1e-5)
+
+
+def test_fraction_variance_explained_mean_reconstruction_is_zero():
+    from checks import fraction_variance_explained
+
+    torch.manual_seed(1)
+    x = torch.randn(50, 4)
+    mean_recon = x.mean(dim=0, keepdim=True).expand_as(x)
+    assert fraction_variance_explained(x, mean_recon) == pytest.approx(0.0, abs=1e-5)
+
+
+def test_fraction_variance_explained_negative_when_worse_than_mean():
+    from checks import fraction_variance_explained
+
+    # Variance is shift-invariant, so a constant offset alone doesn't
+    # penalize FVE; amplify the residual instead (recon = -x) so the
+    # residual variance (4x) exceeds the mean-reconstruction baseline (1x)
+    # and FVE goes below zero, matching the derivation in the docstring.
+    x = torch.zeros(10, 2)
+    x[:, 0] = torch.linspace(-1.0, 1.0, 10)
+    recon = -x
+    assert fraction_variance_explained(x, recon) == pytest.approx(-3.0, abs=1e-5)
+
+
+def test_mean_cross_entropy_at_positions_matches_manual_computation():
+    from checks import mean_cross_entropy_at_positions
+
+    logits = torch.tensor(
+        [
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+        ]
+    )
+    labels = torch.tensor([0, 1, 2])
+    positions = torch.tensor([True, True, False])
+
+    ce = mean_cross_entropy_at_positions(logits, labels, positions)
+    expected = torch.nn.functional.cross_entropy(logits[:2], labels[:2]).item()
+    assert ce == pytest.approx(expected, rel=1e-5)
+
+
+def test_mean_cross_entropy_at_positions_empty_mask_is_zero():
+    from checks import mean_cross_entropy_at_positions
+
+    logits = torch.randn(5, 3)
+    labels = torch.zeros(5, dtype=torch.long)
+    positions = torch.zeros(5, dtype=torch.bool)
+    assert mean_cross_entropy_at_positions(logits, labels, positions) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -758,3 +854,165 @@ def test_train_steps_on_buffer_continues_step_count_across_calls():
     assert steps_done == 3
     steps_done, _ = train_steps_on_buffer(sae, optimizer, buffer, cfg, steps_done=steps_done, device=None)
     assert steps_done == 6
+
+
+# ---------------------------------------------------------------------------
+# screen.py: hashed lexical embedding
+# ---------------------------------------------------------------------------
+def test_hashed_lexical_vector_is_deterministic_and_normalized():
+    text = "The quick brown fox jumps over the lazy dog."
+    v1 = screen.hashed_lexical_vector(text)
+    v2 = screen.hashed_lexical_vector(text)
+    assert np.array_equal(v1, v2)
+    assert v1.shape == (screen.LEXICAL_DIMS,)
+    assert abs(np.linalg.norm(v1) - 1.0) < 1e-8
+
+
+def test_hashed_lexical_vector_differs_for_different_text():
+    v1 = screen.hashed_lexical_vector("apples and oranges are great fruit")
+    v2 = screen.hashed_lexical_vector("completely unrelated content about spacecraft")
+    assert not np.array_equal(v1, v2)
+
+
+def test_hashed_lexical_vector_empty_text_is_zero_vector():
+    v = screen.hashed_lexical_vector("")
+    assert np.linalg.norm(v) == 0.0
+
+
+def test_tokenize_words_lowercases_and_strips_punctuation():
+    words = screen.tokenize_words("Hello, World! It's a test.")
+    assert words == ["hello", "world", "it's", "a", "test"]
+
+
+# ---------------------------------------------------------------------------
+# screen.py: numpy-only logistic regression + leave-one-scenario-out AUC
+# ---------------------------------------------------------------------------
+def test_leave_one_scenario_out_separability_on_separable_toy_data():
+    rng = np.random.default_rng(0)
+    scenarios = [f"s{i}" for i in range(6)]
+    offsets = {s: rng.normal(0, 0.01, size=3) for s in scenarios}
+    steered = {s: np.array([5.0, 5.0, 5.0]) + offsets[s] for s in scenarios}
+    baseline = {s: np.array([-5.0, -5.0, -5.0]) + offsets[s] for s in scenarios}
+
+    result = screen.leave_one_scenario_out_separability(steered, baseline)
+
+    assert result["acc"] >= 0.9
+    assert result["auc"] >= 0.9
+
+
+def test_leave_one_scenario_out_separability_on_inseparable_toy_data():
+    rng = np.random.default_rng(0)
+    scenarios = [f"s{i}" for i in range(6)]
+    # Identical embeddings for the steered and baseline class within each
+    # scenario: there is no feature that distinguishes the classes, so a
+    # held-out scenario's steered/baseline pair is indistinguishable and
+    # chance accuracy (0.5) is the only consistent outcome.
+    common = {s: rng.normal(0, 1, size=4) for s in scenarios}
+    result = screen.leave_one_scenario_out_separability(dict(common), dict(common))
+
+    assert 0.4 <= result["acc"] <= 0.6
+    assert 0.4 <= result["auc"] <= 0.6
+
+
+def test_leave_one_scenario_out_separability_needs_at_least_two_scenarios():
+    result = screen.leave_one_scenario_out_separability({"s0": np.zeros(3)}, {"s0": np.ones(3)})
+    assert result["acc"] != result["acc"]  # nan
+    assert result["auc"] != result["auc"]  # nan
+
+
+def test_auc_score_perfect_separation_is_one():
+    y = np.array([0, 0, 1, 1])
+    scores = np.array([0.1, 0.2, 0.8, 0.9])
+    assert screen.auc_score(y, scores) == 1.0
+
+
+def test_auc_score_single_class_is_nan():
+    y = np.array([1, 1, 1])
+    scores = np.array([0.1, 0.5, 0.9])
+    assert screen.auc_score(y, scores) != screen.auc_score(y, scores) or np.isnan(screen.auc_score(y, scores))
+
+
+# ---------------------------------------------------------------------------
+# screen.py: direction consistency vs. a null
+# ---------------------------------------------------------------------------
+def test_direction_consistency_own_diffs_cohere_more_than_null():
+    rng = np.random.default_rng(1)
+    base = np.array([1.0, 0.0] + [0.0] * 14)
+    own = [base + rng.normal(0, 0.01, 16) for _ in range(5)]
+    other_pool = [rng.normal(0, 1, 16) for _ in range(50)]
+
+    result = screen.direction_consistency(own, other_pool, np.random.default_rng(2))
+
+    assert result["mean_cos"] > 0.9
+    assert abs(result["null_mean_cos"]) < 0.3
+    assert result["mean_cos"] - result["null_mean_cos"] > 0.5
+
+
+def test_mean_pairwise_cosine_needs_at_least_two_vectors():
+    assert screen.mean_pairwise_cosine([np.ones(3)]) != screen.mean_pairwise_cosine([np.ones(3)]) or np.isnan(
+        screen.mean_pairwise_cosine([np.ones(3)])
+    )
+
+
+def test_cosine_similarity_identical_vectors_is_one():
+    v = np.array([1.0, 2.0, 3.0])
+    assert abs(screen.cosine_similarity(v, v) - 1.0) < 1e-8
+
+
+def test_cosine_similarity_zero_vector_is_zero():
+    assert screen.cosine_similarity(np.zeros(3), np.array([1.0, 2.0, 3.0])) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# screen.py: dose-selection bookkeeping
+# ---------------------------------------------------------------------------
+def test_resolve_dose_uses_value_or_fallback():
+    assert screen.resolve_dose(2.0, 1.0) == 2.0
+    assert screen.resolve_dose(None, 1.0) == 1.0
+
+
+def test_median_dose_with_fallback_substitutes_none_and_handles_empty():
+    assert screen.median_dose_with_fallback([1.0, None, 3.0], fallback=2.0) == 2.0
+    assert screen.median_dose_with_fallback([], fallback=1.5) == 1.5
+    assert screen.median_dose_with_fallback([None, None], fallback=0.75) == 0.75
+
+
+def test_extract_feature_info_dedups_by_feature():
+    records = [
+        {
+            "payload": {
+                "kind": "steered", "feature": 3, "density": 0.01, "quantile": 50.0,
+                "max_activation": 2.5, "sign": 1, "dose": 1.0, "coherent": True,
+            }
+        },
+        {
+            "payload": {
+                "kind": "steered", "feature": 3, "density": 0.01, "quantile": 50.0,
+                "max_activation": 2.5, "sign": -1, "dose": 1.0, "coherent": True,
+            }
+        },
+        {"payload": {"kind": "baseline", "scenario": "s0"}},
+    ]
+    info = screen.extract_feature_info(records)
+    assert set(info) == {3}
+    assert info[3]["max_activation"] == 2.5
+    assert info[3]["density"] == 0.01
+
+
+def test_feature_max_coherent_doses_from_calibration_records():
+    records = [
+        {"payload": {"kind": "steered", "feature": 0, "sign": 1, "dose": 0.5, "coherent": True}},
+        {"payload": {"kind": "steered", "feature": 0, "sign": 1, "dose": 1.0, "coherent": True}},
+        {"payload": {"kind": "steered", "feature": 0, "sign": 1, "dose": 2.0, "coherent": False}},
+        {"payload": {"kind": "steered", "feature": 0, "sign": -1, "dose": 0.5, "coherent": False}},
+        {"payload": {"kind": "baseline", "scenario": "s0"}},
+    ]
+    doses = screen.feature_max_coherent_doses(records)
+    assert doses[0]["pos"] == 1.0
+    assert doses[0]["neg"] is None
+
+
+def test_flatten_doses_pairs_pos_and_neg_per_feature():
+    doses_by_feature = {0: {"pos": 1.0, "neg": None}, 1: {"pos": 0.5, "neg": 0.5}}
+    flat = screen.flatten_doses(doses_by_feature)
+    assert sorted(flat, key=lambda v: (v is None, v)) == [0.5, 0.5, 1.0, None]
