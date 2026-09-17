@@ -30,6 +30,21 @@ of every direction's pairs are order-swapped, so clustering on raw
 "steered sounds warmer" and "steered sounds colder" (same property,
 opposite direction) into one cluster -- see `_steered_has_more` and
 `direction_agreement` below.
+
+A second live pass (`tests/fixtures/describe_results_validate2.json`, 143
+pairs across 6 feature directions + 3 random nulls) found a third problem
+this module now also corrects for: the judge phrases a *consistent*
+property differently almost every time -- "warm, enthusiastic
+encouragement" / "interpersonally supportive" / "personally encouraging
+and emotionally enthusiastic" are the same judged property for the same
+direction -- and neither the TF-IDF view nor the hashed lexical view
+shares enough vocabulary across paraphrases like that to cluster them
+(largest_cluster_fraction ~0.12 for every direction, real or null alike).
+Clustering now runs on sentence embeddings (`sentence-transformers/
+all-MiniLM-L6-v2`, loaded lazily through plain `transformers` --
+`_embed_texts`/`_load_embedding_model` below) instead, with TF-IDF kept
+only as a fallback for when the model can't be loaded. See README
+"Describe stage" for the calibration this threshold is based on.
 """
 from __future__ import annotations
 
@@ -49,20 +64,25 @@ from report import WorkerClient, _progress
 logger = logging.getLogger("autolabs_3c.describe")
 
 JUDGE_PLAN_BATCH = 500
+# Semantic-embedding backend for description clustering (see "Embeddings"
+# below). ~90MB, cached under HF_HOME once downloaded.
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 # Average-linkage merge stops once the best available merge's average
-# pairwise distance (1 - cosine similarity) exceeds this. The first live
-# judge pass showed paraphrase clustering across swapped orders failing
-# badly (largest cluster 1-2 of 8) at the old threshold of 0.5, so this is
-# loosened to 0.35 and backed by a fallback keyword-overlap merge
-# (`_keyword_overlap_merge`) for short descriptions the cosine view under-
-# or over-weights.
-CLUSTER_LINKAGE_THRESHOLD = 0.35
+# pairwise distance (1 - cosine similarity) exceeds this. Calibrated on
+# tests/fixtures/describe_results_validate2.json under the embedding
+# backend -- see README "Describe stage" calibration note. Overridable via
+# config.describe_cluster_threshold; this module-level default is what
+# callers get if they don't pass one (e.g. the unit tests below).
+DEFAULT_CLUSTER_THRESHOLD = 0.7
+# `named` requires the largest cluster to cover at least this fraction of
+# a direction's described (non-"neither") judge responses. Overridable via
+# config.describe_named_fraction.
+DEFAULT_NAMED_FRACTION = 0.5
 # Fallback pass after agglomerative clustering: merge any two remaining
 # clusters whose content-word (post stopword-strip) vocabularies overlap
-# at least this much (Jaccard), independent of the TF-IDF/hashed-lexical
-# cosine view.
+# at least this much (Jaccard), independent of the embedding/TF-IDF cosine
+# view. Applies under either similarity backend.
 FALLBACK_KEYWORD_OVERLAP_THRESHOLD = 0.6
-LEXICAL_DIMS = 1024
 ABOUT_KEYS = ("speaker", "content", "format")
 CONFIDENCE_KEYS = ("low", "medium", "high")
 # direction_key() puts `kind` first (e.g. "random-3-na"), and kind values
@@ -270,21 +290,91 @@ def _tfidf_vectors(texts: List[str]) -> np.ndarray:
     return matrix / norms
 
 
-def _combined_similarity(texts: List[str]) -> np.ndarray:
-    """Average of two independent cosine-similarity views -- the hashed
-    lexical vector `screen.hashed_lexical_vector` reuses from the screen
-    stage, and a fresh TF-IDF over just this corpus of descriptions -- so a
-    cluster isn't an artifact of one representation."""
+# ---------------------------------------------------------------------------
+# Embeddings (semantic similarity for description clustering)
+# ---------------------------------------------------------------------------
+# Lazily-loaded (tokenizer, model) pair, or the sentinel state that loading
+# failed once already -- module-level so a run only tries the download/load
+# once, and every direction's clustering in that run shares the same
+# backend rather than mixing embeddings for some directions and TF-IDF for
+# others.
+_EMBEDDING_STATE: Dict[str, Any] = {"tokenizer": None, "model": None, "unavailable": False}
+
+
+def _load_embedding_model() -> Optional[tuple]:
+    """Lazily loads `EMBEDDING_MODEL_NAME` via plain `transformers`
+    (AutoTokenizer/AutoModel -- no sentence-transformers dependency needed
+    on the pod image). Returns `(tokenizer, model)`, or `None` if it can't
+    be loaded (missing `torch`/`transformers`, no network, etc.) -- logs a
+    warning once and remembers the failure so later calls in the same
+    process don't retry a doomed download on every direction. Respects
+    `HF_HOME` for caching, same as the rest of the pipeline."""
+    if _EMBEDDING_STATE["unavailable"]:
+        return None
+    if _EMBEDDING_STATE["model"] is not None:
+        return _EMBEDDING_STATE["tokenizer"], _EMBEDDING_STATE["model"]
+    try:
+        from transformers import AutoModel, AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
+        model = AutoModel.from_pretrained(EMBEDDING_MODEL_NAME)
+        model.eval()
+    except Exception as exc:  # pragma: no cover - exercised via monkeypatched _embed_texts in tests
+        logger.warning(
+            "[describe] embedding model %s unavailable (%s); falling back to TF-IDF similarity",
+            EMBEDDING_MODEL_NAME, exc,
+        )
+        _EMBEDDING_STATE["unavailable"] = True
+        return None
+    _EMBEDDING_STATE["tokenizer"] = tokenizer
+    _EMBEDDING_STATE["model"] = model
+    return tokenizer, model
+
+
+def _embed_texts(texts: List[str]) -> Optional[np.ndarray]:
+    """Mean-pooled, L2-normalized sentence embeddings for `texts` (rows
+    unit-normalized, so `vectors @ vectors.T` is cosine similarity).
+    Returns `None` (never raises) if the model can't be loaded or the
+    forward pass fails -- callers fall back to `_tfidf_vectors`."""
+    loaded = _load_embedding_model()
+    if loaded is None:
+        return None
+    tokenizer, model = loaded
+    try:
+        import torch
+
+        with torch.no_grad():
+            encoded = tokenizer(list(texts), padding=True, truncation=True, max_length=64, return_tensors="pt")
+            token_embeddings = model(**encoded)[0]
+            mask = encoded["attention_mask"].unsqueeze(-1).to(token_embeddings.dtype)
+            summed = (token_embeddings * mask).sum(dim=1)
+            counts = mask.sum(dim=1).clamp(min=1e-9)
+            mean_pooled = summed / counts
+            norm = mean_pooled.norm(p=2, dim=1, keepdim=True).clamp(min=1e-12)
+            normalized = mean_pooled / norm
+        return normalized.cpu().numpy()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("[describe] embedding forward pass failed (%s); falling back to TF-IDF similarity", exc)
+        _EMBEDDING_STATE["unavailable"] = True
+        return None
+
+
+def _vectors_and_backend(texts: List[str]) -> tuple:
+    """Returns `(vectors, backend)` for a direction's described property
+    sentences: L2-normalized MiniLM sentence embeddings and
+    `backend="embedding"` when the model is available, else the TF-IDF
+    vectors (`_tfidf_vectors`, also row-normalized) and
+    `backend="tfidf_lexical"`. Either way `vectors @ vectors.T` is a cosine
+    similarity matrix, so callers don't need to branch on the backend."""
     if not texts:
-        return np.zeros((0, 0))
-    lexical = np.stack([screen.hashed_lexical_vector(t, dims=LEXICAL_DIMS) for t in texts])
-    tfidf = _tfidf_vectors(texts)
-    lexical_similarity = lexical @ lexical.T
-    tfidf_similarity = tfidf @ tfidf.T
-    return 0.5 * lexical_similarity + 0.5 * tfidf_similarity
+        return np.zeros((0, 0)), "embedding"
+    embeddings = _embed_texts(texts)
+    if embeddings is not None:
+        return embeddings, "embedding"
+    return _tfidf_vectors(texts), "tfidf_lexical"
 
 
-def _agglomerative_clusters(similarity: np.ndarray, threshold: float = CLUSTER_LINKAGE_THRESHOLD) -> List[List[int]]:
+def _agglomerative_clusters(similarity: np.ndarray, threshold: float = DEFAULT_CLUSTER_THRESHOLD) -> List[List[int]]:
     """Average-linkage agglomerative clustering on a precomputed cosine
     similarity matrix: repeatedly merges the two clusters with the lowest
     average pairwise distance (1 - similarity) until the best available
@@ -370,7 +460,11 @@ def _steered_has_more(more_in: Any, order_swap: bool) -> Optional[bool]:
     return (more_in == "B") != bool(order_swap)
 
 
-def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def cluster_descriptions(
+    results: List[Dict[str, Any]],
+    cluster_threshold: float = DEFAULT_CLUSTER_THRESHOLD,
+    named_fraction: float = DEFAULT_NAMED_FRACTION,
+) -> Dict[str, Dict[str, Any]]:
     """Per direction: unblinds each judge response's `more_in` with its
     local `orderSwap` (`_steered_has_more`; a response of `more_in ==
     "neither"` -- no meaningful difference -- counts toward `n_none`
@@ -383,14 +477,24 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
       n_described)`, `0.0` if both are zero).
     - `largest_cluster_size` and `cluster_property` (the described
       property with the highest mean similarity to the rest of the
-      largest cluster -- its centroid).
+      largest cluster -- its medoid).
+    - `centroid_property`: the member sentence closest to the largest
+      cluster's mean *vector* (a true centroid, as opposed to
+      `cluster_property`'s medoid -- usually, but not always, the same
+      sentence). `cluster_examples`: up to 3 of the largest cluster's
+      member sentences.
+    - `embedding_backend`: `"embedding"` if `_embed_texts` (MiniLM sentence
+      embeddings) was used for this direction's clustering, else
+      `"tfidf_lexical"` (the model couldn't be loaded) -- see
+      `_vectors_and_backend`. `None` if nothing was described.
     - `direction_agreement`: within the largest cluster, the fraction of
       members whose unblinded `steered_has_more` matches that cluster's
       majority direction (`None` if there's nothing described).
     - `about_counts`, `confidence_counts`.
-    - `named`: largest cluster >= 50% of described, `direction_agreement`
-      >= 0.8, and a strict majority of the cluster's `about` is
-      "speaker".
+    - `named`: largest cluster >= `named_fraction` (config
+      `describe_named_fraction`, default 0.5) of described,
+      `direction_agreement` >= 0.8, and a strict majority of the
+      cluster's `about` is "speaker".
     - `consistency_score` = `largest_cluster_size / n_described` *
       `direction_agreement` (`0.0` if nothing described) -- the primary
       per-direction statistic; see `apply_named_above_null`. The first
@@ -400,6 +504,11 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
       counts as `named_above_null` by clearing what the random-direction
       nulls themselves achieve on `consistency_score`, not by an absolute
       `none_rate`/`named` threshold alone.
+
+    `cluster_threshold` (config `describe_cluster_threshold`) is the
+    average-linkage merge-stop cosine distance passed to
+    `_agglomerative_clusters`; see `DEFAULT_CLUSTER_THRESHOLD` for the
+    calibration this default is based on.
     """
     by_direction: Dict[str, List[Dict[str, Any]]] = {}
     for row in results:
@@ -439,6 +548,8 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
             out[key] = {
                 "n_none": n_none, "n_described": 0, "none_rate": none_rate,
                 "largest_cluster_size": 0, "cluster_property": None,
+                "centroid_property": None, "cluster_examples": [],
+                "embedding_backend": None,
                 "direction_agreement": None, "about_counts": about_counts,
                 "confidence_counts": confidence_counts, "named": False,
                 "consistency_score": 0.0,
@@ -446,8 +557,9 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
             continue
 
         texts = [d["text"] for d in described]
-        similarity = _combined_similarity(texts)
-        clusters = _agglomerative_clusters(similarity)
+        vectors, embedding_backend = _vectors_and_backend(texts)
+        similarity = vectors @ vectors.T
+        clusters = _agglomerative_clusters(similarity, threshold=cluster_threshold)
         clusters = _keyword_overlap_merge(clusters, texts)
         largest = max(clusters, key=len)
         largest_size = len(largest)
@@ -456,6 +568,21 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
         mean_similarity_to_cluster = cluster_similarity.mean(axis=1)
         centroid_local_idx = int(np.argmax(mean_similarity_to_cluster))
         cluster_property = described[largest[centroid_local_idx]]["text"]
+
+        # centroid_property: the member vector actually closest to the
+        # cluster's mean vector (a true centroid), rather than
+        # cluster_property's medoid (highest mean *pairwise* similarity to
+        # the rest of the cluster) -- usually the same sentence, kept as a
+        # separate field since the two aren't guaranteed to agree.
+        cluster_vectors = vectors[largest]
+        centroid_vector = cluster_vectors.mean(axis=0)
+        centroid_norm = float(np.linalg.norm(centroid_vector))
+        if centroid_norm > 1e-12:
+            centroid_vector = centroid_vector / centroid_norm
+        centroid_similarities = cluster_vectors @ centroid_vector
+        centroid_local_idx2 = int(np.argmax(centroid_similarities))
+        centroid_property = described[largest[centroid_local_idx2]]["text"]
+        cluster_examples = [described[i]["text"] for i in largest[:3]]
 
         cluster_about = [described[i]["about"] for i in largest]
         speaker_count = sum(1 for a in cluster_about if a == "speaker")
@@ -467,7 +594,7 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
 
         largest_cluster_fraction = largest_size / n_described
         named = (
-            largest_cluster_fraction >= 0.5
+            largest_cluster_fraction >= named_fraction
             and direction_agreement >= 0.8
             and speaker_count * 2 > largest_size
         )
@@ -479,6 +606,9 @@ def cluster_descriptions(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, A
             "none_rate": none_rate,
             "largest_cluster_size": largest_size,
             "cluster_property": cluster_property,
+            "centroid_property": centroid_property,
+            "cluster_examples": cluster_examples,
+            "embedding_backend": embedding_backend,
             "direction_agreement": direction_agreement,
             "about_counts": about_counts,
             "confidence_counts": confidence_counts,
@@ -568,8 +698,10 @@ def render_describe_report(output: Dict[str, Any]) -> str:
 
     header_cols = (
         "<th>direction</th><th>arm</th><th>n_none</th><th>n_described</th><th>none_rate</th>"
-        "<th>largest cluster</th><th>cluster property</th><th>direction agreement</th>"
+        "<th>largest cluster</th><th>cluster property</th><th>centroid property</th>"
+        "<th>direction agreement</th>"
         "<th>about</th><th>confidence</th><th>named</th><th>consistency score</th>"
+        "<th>embedding backend</th>"
     )
 
     def row(key: str, summary: Dict[str, Any], show_named_above_null: bool) -> str:
@@ -584,11 +716,13 @@ def render_describe_report(output: Dict[str, Any]) -> str:
             f"<td>{esc(fmt(summary.get('none_rate')))}</td>"
             f"<td>{esc(summary.get('largest_cluster_size'))}</td>"
             f"<td>{esc(summary.get('cluster_property'))}</td>"
+            f"<td>{esc(summary.get('centroid_property'))}</td>"
             f"<td>{esc(fmt(summary.get('direction_agreement')))}</td>"
             f"<td>speaker {esc(about.get('speaker'))} / content {esc(about.get('content'))} / format {esc(about.get('format'))}</td>"
             f"<td>low {esc(confidence.get('low'))} / medium {esc(confidence.get('medium'))} / high {esc(confidence.get('high'))}</td>"
             f"<td>{'yes' if summary.get('named') else 'no'}</td>"
             f"<td>{esc(fmt(summary.get('consistency_score')))}</td>"
+            f"<td>{esc(summary.get('embedding_backend'))}</td>"
         )
         if show_named_above_null:
             cells += f"<td>{'yes' if summary.get('named_above_null') else 'no'}</td>"
@@ -597,8 +731,8 @@ def render_describe_report(output: Dict[str, Any]) -> str:
     clusters = output.get("clusters", {})
     direction_rows = [row(k, v, True) for k, v in sorted(clusters.items()) if not is_null_key(k)]
     null_rows = [row(k, v, False) for k, v in sorted(clusters.items()) if is_null_key(k)]
-    direction_body = "\n".join(direction_rows) or "<tr><td colspan=\"13\">No describe results.</td></tr>"
-    null_body = "\n".join(null_rows) or "<tr><td colspan=\"12\">No null directions judged.</td></tr>"
+    direction_body = "\n".join(direction_rows) or "<tr><td colspan=\"15\">No describe results.</td></tr>"
+    null_body = "\n".join(null_rows) or "<tr><td colspan=\"14\">No null directions judged.</td></tr>"
 
     plan = output.get("plan") or {}
     null_stats = output.get("null_stats") or {}
@@ -659,7 +793,11 @@ def run_describe(
     logger.info("[describe] judge plan: %s queued, %s duplicate (%d pairs)", plan.get("queued"), plan.get("duplicate"), len(pairs))
     drive_judge(client, run_id, max_jobs=10, poll_seconds=5)
     results = fetch_results(client, run_id)
-    clusters = cluster_descriptions(results)
+    clusters = cluster_descriptions(
+        results,
+        cluster_threshold=config.describe_cluster_threshold,
+        named_fraction=config.describe_named_fraction,
+    )
     null_stats = apply_named_above_null(clusters, config.describe_null_margin)
     attach_arm(clusters, directions)
     arm_named_counts = compute_arm_named_counts(clusters)

@@ -57,6 +57,8 @@
   "judge_call_ceiling": 2000,
   "describe_null_directions": 3,
   "describe_null_margin": 0.1,
+  "describe_cluster_threshold": 0.7,
+  "describe_named_fraction": 0.5,
   "reach_max_directions": 12,
   "reach_judge": true,
   "reach_effect_threshold": 0.7,

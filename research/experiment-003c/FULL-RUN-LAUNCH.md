@@ -1,6 +1,6 @@
 # Experiment 3C full run: launch record (2026-09-17, 06:20 UTC)
 
-Status at writing: LAUNCHED, training in progress. This file is updated as stages complete.
+Status: FAILED at 09:1x UTC, GPU hardware fault on the pod host (driver reported no devices), before the first 10M-token checkpoint. Nothing was recoverable from that pod. Both pods terminated; no GPU is billing. Decision needed in the morning, see the bottom of this file.
 
 | Item | Value |
 |---|---|
@@ -43,4 +43,20 @@ Chen, Arditi, Sleight et al. list three limitations of prompt-derived persona ve
 - 08:41 to 09:08 UTC validation 2 (commit b224c9c, pod udallb31ra7485) ran the entire funnel end to end: rank (3 unsupervised, 2 quantile, 3 shift), calibrate, screen (20 nulls, max random AUC 0.56; unsupervised 3/3 pass, shift 3/3, quantile 0/2, controls 2/3), describe (144 judge pairs, about $0.65), reach. Generation stages took 27 minutes batched. Artifacts in `smoke-runs/validate-2/`.
 - Describe named nothing: judge properties are paraphrases and TF-IDF clustering split them into singletons (largest cluster fraction about 0.12 everywhere, null ceiling 0.08). Fix in progress: sentence-embedding clustering calibrated on these outputs. The full run will resume onto the fixed commit before its describe stage.
 - 09:11 UTC full run still training, no 10M checkpoint yet after 2h53m; rate check pending.
+- 09:19 UTC full-run pod lost its GPU (`Unable to determine the device handle for GPU0 ... No devices were found`). Training crashed after about 3 hours with no checkpoint written (first checkpoint was set at 10M tokens). Harness run marked failed by the pipeline's own failure report. Pod terminated. RunPod balance after: $13.60. GPU spent tonight: about $4.60 across validation 1, validation 2, and the failed full run.
+
+## Morning decision
+
+What is proven tonight: the complete funnel runs end to end on the final code (validation 2), the harness records every stage, the judge path works with the new schema, and the SAE recipe reaches held-out FVE 0.72 at width 8k. What is not yet fixed: describe-stage clustering (semantic embeddings, in progress on the laptop, no GPU needed) and the training rate of the 32k dictionary, which did not reach 10M tokens in 3 hours at 8 steps per batch, implying well over 30 hours for 150M.
+
+Options for relaunch, all on secure cloud:
+
+| Option | Config | Est. time | Est. GPU cost | Fits $13.60? |
+|---|---|---|---|---|
+| A | 32k width, 100M tokens, 4 steps/batch, A6000 $0.53/h | about 19 h train + 1 h stages | about $11 | yes, no reserve |
+| B | 32k width, 100M tokens, 4 steps/batch, A100 80GB $1.59/h | about 7 h train + 0.5 h stages | about $12 | yes, no reserve |
+| C | 32k width, 60M tokens, 4 steps/batch, A6000 | about 12 h | about $7 | yes, $6 reserve |
+| D | top up RunPod by $20, then option A or B with 150M | 24 to 30 h | $15 to $20 | needs top-up |
+
+Recommendation: D if the 150M target still matters, otherwise B for speed with a checkpoint every 5M tokens and the new per-1M-token throughput log so the rate is known within the first hour. Either way, launch only after the clustering fix is committed, so the run does not need to be resumed onto a new commit before describe.
 
