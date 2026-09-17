@@ -23,6 +23,7 @@ import math
 import os
 import random
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -47,6 +48,14 @@ logger = logging.getLogger("autolabs_3c.run_smoke")
 DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
 HELD_OUT_BATCH_SIZE = 4096
+
+# How often stage_harvest_train logs a throughput/ETA line and reports
+# status-only progress to the Worker (no records) -- independent of, and
+# typically more frequent than, `config.checkpoint_every_tokens` (the
+# progress-log cadence is fixed so the homepage card moves every million
+# tokens regardless of how the run's checkpoint interval is configured;
+# checkpoint behaviour itself is unchanged).
+PROGRESS_LOG_EVERY_TOKENS = 1_000_000
 
 # checks.sae_replace_check renders this as the *user* turn of a two-turn
 # chat (paired with a fixed assistant reply, checks.
@@ -108,6 +117,31 @@ def lr_warmup_multiplier(step: int, warmup_steps: int) -> float:
     if warmup_steps <= 0:
         return 1.0
     return min(1.0, step / warmup_steps)
+
+
+def compute_throughput_and_eta(
+    tokens_since_start: int, steps_since_start: int, elapsed_s: float, tokens_remaining: int
+) -> Dict[str, Optional[float]]:
+    """Average tokens/s and steps/s since `stage_harvest_train` started (or
+    resumed), plus the ETA (seconds) to `tokens_remaining` more tokens at
+    that same average rate.
+
+    `elapsed_s <= 0` (the very first sample) returns zero rates and a
+    `None` eta rather than dividing by zero. `tokens_remaining <= 0` (target
+    already reached) returns `eta_s = 0.0`. Otherwise `eta_s` is `None` only
+    if `tokens_per_s` is not yet positive (elapsed time has passed but no
+    tokens were harvested in it)."""
+    if elapsed_s <= 0:
+        return {"tokens_per_s": 0.0, "steps_per_s": 0.0, "eta_s": None}
+    tokens_per_s = tokens_since_start / elapsed_s
+    steps_per_s = steps_since_start / elapsed_s
+    if tokens_remaining <= 0:
+        eta_s: Optional[float] = 0.0
+    elif tokens_per_s > 0:
+        eta_s = tokens_remaining / tokens_per_s
+    else:
+        eta_s = None
+    return {"tokens_per_s": tokens_per_s, "steps_per_s": steps_per_s, "eta_s": eta_s}
 
 
 def train_steps_on_buffer(trained_sae, optimizer, buffer, config: Config, steps_done: int, device=None):
@@ -300,6 +334,10 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     with harvest.ActivationHarvester(model, config.layer) as harvester:
         conv_stream = harvest.stream_conversations(config.dataset_name, config.dataset_split, seed=config.seed)
         next_checkpoint = tokens_done + config.checkpoint_every_tokens
+        stage_start_time = time.time()
+        tokens_at_stage_start = tokens_done
+        steps_at_stage_start = steps_done
+        next_progress_log = tokens_done + PROGRESS_LOG_EVERY_TOKENS
         convo_batch: List[List[Dict[str, str]]] = []
         convs_seen = 0
 
@@ -320,6 +358,26 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
             if acts.numel() > 0:
                 buffer.add(acts.to(torch.float32))
                 tokens_done += acts.shape[0]
+
+            if tokens_done >= next_progress_log:
+                elapsed_s = time.time() - stage_start_time
+                throughput = compute_throughput_and_eta(
+                    tokens_done - tokens_at_stage_start,
+                    steps_done - steps_at_stage_start,
+                    elapsed_s,
+                    config.tokens_target - tokens_done,
+                )
+                logger.info(
+                    "[train] progress tokens=%d steps=%d tokens_per_s=%.2f steps_per_s=%.2f elapsed_s=%.1f eta_s=%s",
+                    tokens_done,
+                    steps_done,
+                    throughput["tokens_per_s"],
+                    throughput["steps_per_s"],
+                    elapsed_s,
+                    throughput["eta_s"],
+                )
+                client.report("train", progress=_progress(tokens_done, config.tokens_target))
+                next_progress_log = tokens_done + PROGRESS_LOG_EVERY_TOKENS
 
             if not buffer.is_ready(min_fraction=0.05):
                 continue

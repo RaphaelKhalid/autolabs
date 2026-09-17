@@ -6,3 +6,8 @@ numpy>=1.26
 datasets>=2.20
 huggingface_hub>=0.24
 requests>=2.32
+# No new pip dependency: describe.py's description-clustering embeddings
+# (see README "Describe stage") load sentence-transformers/all-MiniLM-L6-v2
+# through the transformers/huggingface_hub already listed above (plain
+# AutoTokenizer/AutoModel, no sentence-transformers package), downloaded
+# lazily (~90MB) and cached under HF_HOME on first use.
