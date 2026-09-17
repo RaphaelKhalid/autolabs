@@ -411,16 +411,20 @@ def stage_screen(
     reloaded from `config.scenarios_file` rather than reusing the smaller
     `calibrate_scenarios` slice `stage_steer` used) and its own fresh
     random-direction draws, so it can score every direction on more
-    scenarios than the calibrate stage swept."""
+    scenarios than the calibrate stage swept. Returns
+    `(direction_records, generation_records)`; the latter carries the raw
+    steered/baseline text behind every direction's row (see
+    `screen.build_generation_records`)."""
     path = workdir / "screen_records.json"
-    if path.exists():
+    gen_path = workdir / "screen_generations.json"
+    if path.exists() and gen_path.exists():
         logger.info("[screen] records already exist, skipping screen stage")
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8")), json.loads(gen_path.read_text(encoding="utf-8"))
 
     all_scenarios = load_scenarios(Path(config.scenarios_file))
     screen_scenarios = all_scenarios[: config.screen_scenarios]
 
-    records = screen.run_screen(
+    result = screen.run_screen(
         config,
         model,
         tokenizer,
@@ -432,9 +436,16 @@ def stage_screen(
         device,
         seed=config.seed,
     )
+    records = result["directions"]
+    generation_records = result["generations"]
     path.write_text(json.dumps(records, indent=2), encoding="utf-8")
-    client.report("screen", progress=_progress(len(records), len(records)), records=records)
-    return records
+    gen_path.write_text(json.dumps(generation_records, indent=2), encoding="utf-8")
+    client.report(
+        "screen",
+        progress=_progress(len(records), len(records)),
+        records=records + generation_records,
+    )
+    return records, generation_records
 
 
 # ---------------------------------------------------------------------------
@@ -467,14 +478,67 @@ def _is_finite_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def passes_gate_g0(row: dict, max_random_auc: Optional[float]) -> bool:
+    """One direction/sign's pass/fail against gate G0: resid-view
+    separability AUC beats the best random-direction null's AUC *and*
+    consistency clears the null consistency by more than 0.1."""
+    if max_random_auc is None:
+        return False
+    auc = row.get("separability", {}).get("resid", {}).get("auc")
+    consistency = row.get("consistency") or {}
+    mean_cos = consistency.get("mean_cos")
+    null_mean_cos = consistency.get("null_mean_cos")
+    if not (_is_finite_number(auc) and _is_finite_number(mean_cos) and _is_finite_number(null_mean_cos)):
+        return False
+    return auc > max_random_auc and (mean_cos - null_mean_cos) > 0.1
+
+
+def _group_pass_counts(rows: List[dict], max_random_auc: Optional[float]) -> Dict[str, Any]:
+    """Per-direction (sign-level) and per-entity (either-sign) pass counts
+    for a kind ("feature" or "control"), plus a per-entity detail list.
+    An entity (a feature index or a control name) passes if *either* of its
+    signs passes gate G0 -- visual run 1 counted controls per sign, which
+    undercounted a control whose only weak sign was consistency, not AUC
+    (see ../VISUAL-1.md "Screen")."""
+    directions_passing = sum(1 for r in rows if passes_gate_g0(r, max_random_auc))
+
+    ids = sorted({r.get("id") for r in rows}, key=lambda v: (str(type(v)), v))
+    detail = []
+    entities_passing = 0
+    for entity_id in ids:
+        entity_rows = [r for r in rows if r.get("id") == entity_id]
+        pos_row = next((r for r in entity_rows if r.get("sign") == 1), None)
+        neg_row = next((r for r in entity_rows if r.get("sign") == -1), None)
+        pos_passes = passes_gate_g0(pos_row, max_random_auc) if pos_row else False
+        neg_passes = passes_gate_g0(neg_row, max_random_auc) if neg_row else False
+        either_passes = pos_passes or neg_passes
+        if either_passes:
+            entities_passing += 1
+        detail.append({"id": entity_id, "pos_passes": pos_passes, "neg_passes": neg_passes, "passes": either_passes})
+
+    return {
+        "directions_passing": directions_passing,
+        "directions_total": len(rows),
+        "entities_passing": entities_passing,
+        "entities_total": len(ids),
+        "detail": detail,
+    }
+
+
 def compute_screen_verdict(screen_rows: List[dict]) -> dict:
     """Preregistered gate G0 (see README "Screen stage"): diagnostic only,
     does not gate anything in this smoke pipeline. A direction "passes" if
     its resid-view separability AUC beats the best random-direction null's
     AUC *and* its consistency clears the null consistency by more than
-    0.1. Reports how many features pass, and whether all positive controls
-    do (a control failing this bar would say more about the screen
-    methodology than about that trait)."""
+    0.1. A feature or control (an "entity") passes if *either* of its two
+    signs passes -- visual run 1 counted controls per sign instead of per
+    control, which undercounted controls whose positive sign passed but
+    whose negative sign only missed on the consistency margin (see
+    ../VISUAL-1.md "Screen": evil/benevolent failed only 0.10 vs 0.06 on
+    that basis). Reports both the per-sign ("direction") count and the
+    per-entity count for features, and the per-entity count (out of the
+    number of distinct controls) for controls, with per-sign detail kept
+    in `controls_detail`."""
     randoms = [r for r in screen_rows if r.get("kind") == "random"]
     features = [r for r in screen_rows if r.get("kind") == "feature"]
     controls = [r for r in screen_rows if r.get("kind") == "control"]
@@ -485,28 +549,29 @@ def compute_screen_verdict(screen_rows: List[dict]) -> dict:
         if _is_finite_number(r.get("separability", {}).get("resid", {}).get("auc"))
     ]
     max_random_auc = max(random_aucs) if random_aucs else None
+    max_random_auc_p95 = float(np.percentile(random_aucs, 95)) if random_aucs else None
 
-    def passes(row: dict) -> bool:
-        if max_random_auc is None:
-            return False
-        auc = row.get("separability", {}).get("resid", {}).get("auc")
-        consistency = row.get("consistency") or {}
-        mean_cos = consistency.get("mean_cos")
-        null_mean_cos = consistency.get("null_mean_cos")
-        if not (_is_finite_number(auc) and _is_finite_number(mean_cos) and _is_finite_number(null_mean_cos)):
-            return False
-        return auc > max_random_auc and (mean_cos - null_mean_cos) > 0.1
-
-    features_passing = sum(1 for r in features if passes(r))
-    controls_passing = sum(1 for r in controls if passes(r))
+    feature_counts = _group_pass_counts(features, max_random_auc)
+    control_counts = _group_pass_counts(controls, max_random_auc)
 
     return {
         "max_random_resid_auc": max_random_auc,
-        "features_passing": features_passing,
-        "features_total": len(features),
-        "controls_passing": controls_passing,
-        "controls_total": len(controls),
-        "all_controls_pass": bool(controls) and controls_passing == len(controls),
+        "max_random_resid_auc_p95": max_random_auc_p95,
+        "random_directions": len(randoms),
+        # per-sign ("direction") counts, i.e. what visual run 1 reported
+        "feature_directions_passing": feature_counts["directions_passing"],
+        "feature_directions_total": feature_counts["directions_total"],
+        "control_directions_passing": control_counts["directions_passing"],
+        "control_directions_total": control_counts["directions_total"],
+        # per-entity (either-sign) counts
+        "features_passing": feature_counts["entities_passing"],
+        "features_total": feature_counts["entities_total"],
+        "features_detail": feature_counts["detail"],
+        "controls_passing": control_counts["entities_passing"],
+        "controls_total": control_counts["entities_total"],
+        "controls_detail": control_counts["detail"],
+        "all_controls_pass": bool(control_counts["entities_total"])
+        and control_counts["entities_passing"] == control_counts["entities_total"],
     }
 
 
@@ -516,6 +581,7 @@ def build_summary(
     post_train: dict,
     calibration_records: List[dict],
     screen_records: Optional[List[dict]] = None,
+    screen_generation_records: Optional[List[dict]] = None,
 ) -> dict:
     baseline_text: Dict[str, str] = {}
     baseline_len: Dict[str, int] = {}
@@ -600,6 +666,7 @@ def build_summary(
         reverse=True,
     )
     screen_verdict = compute_screen_verdict(screen_rows)
+    screen_generations = [rec["payload"] for rec in (screen_generation_records or [])]
 
     return {
         "config": config.to_dict(),
@@ -611,6 +678,7 @@ def build_summary(
         "random_control_max_coherent_dose": random_max_coherent_dose,
         "screen": screen_rows,
         "screen_verdict": screen_verdict,
+        "screen_generations": screen_generations,
     }
 
 
@@ -683,7 +751,19 @@ def render_html_report(summary: dict) -> str:
             </tr>"""
         )
 
+    screen_generations = summary.get("screen_generations") or []
+
+    def _generation_examples(row: dict, n: int = 2) -> List[dict]:
+        matches = [
+            g
+            for g in screen_generations
+            if g.get("kind") == row.get("kind") and g.get("id") == row.get("id") and g.get("sign") == row.get("sign")
+        ]
+        matches.sort(key=lambda g: str(g.get("scenario")))
+        return matches[:n]
+
     screen_rows_html = []
+    screen_generation_blocks_html = []
     for row in summary.get("screen") or []:
         kind = row.get("kind")
         sign = row.get("sign")
@@ -708,14 +788,48 @@ def render_html_report(summary: dict) -> str:
             </tr>"""
         )
 
+        example_pairs_html = "".join(
+            f"""
+              <div class="gen-pair">
+                <p><strong>scenario:</strong> {esc(ex.get('scenario'))}
+                   &nbsp; <strong>finish_reason:</strong> {esc(ex.get('finish_reason'))}
+                   &nbsp; <strong>coherent:</strong> {'yes' if (ex.get('coherence') or {}).get('coherent') else 'NO'}</p>
+                <div class="gen-cols">
+                  <div><em>baseline</em><pre>{esc(ex.get('baseline_text'))}</pre></div>
+                  <div><em>steered</em><pre>{esc(ex.get('text'))}</pre></div>
+                </div>
+              </div>"""
+            for ex in _generation_examples(row)
+        )
+        screen_generation_blocks_html.append(
+            f"""
+            <details class="screen-detail">
+              <summary>{esc(kind)} {esc(row.get('id'))} {sign_label} (dose {esc(row.get('dose'))})</summary>
+              {example_pairs_html or '<p>No generations recorded.</p>'}
+            </details>"""
+        )
+
     verdict = summary.get("screen_verdict") or {}
     verdict_line = (
-        f"{esc(verdict.get('features_passing'))} of {esc(verdict.get('features_total'))} features beat the "
-        f"max random resid-AUC ({fmt(verdict.get('max_random_resid_auc'))}) and exceed the null consistency "
-        f"by &gt;0.1 (gate G0). Controls clearing the same bar: "
-        f"{esc(verdict.get('controls_passing'))} of {esc(verdict.get('controls_total'))} "
+        f"{esc(verdict.get('features_passing'))} of {esc(verdict.get('features_total'))} features "
+        f"(either sign; {esc(verdict.get('feature_directions_passing'))} of "
+        f"{esc(verdict.get('feature_directions_total'))} individual feature/sign directions) beat the "
+        f"max random resid-AUC ({fmt(verdict.get('max_random_resid_auc'))}, p95 "
+        f"{fmt(verdict.get('max_random_resid_auc_p95'))} over {esc(verdict.get('random_directions'))} random "
+        f"nulls) and exceed the null consistency by &gt;0.1 (gate G0). Controls clearing the same bar "
+        f"(either sign): {esc(verdict.get('controls_passing'))} of {esc(verdict.get('controls_total'))} "
         f"({'all' if verdict.get('all_controls_pass') else 'not all'} controls pass)."
     )
+
+    def _detail_rows(detail: List[dict]) -> str:
+        return "".join(
+            f"<tr><td>{esc(d.get('id'))}</td><td>{'yes' if d.get('pos_passes') else 'no'}</td>"
+            f"<td>{'yes' if d.get('neg_passes') else 'no'}</td><td>{'yes' if d.get('passes') else 'no'}</td></tr>"
+            for d in detail
+        )
+
+    controls_detail_html = _detail_rows(verdict.get("controls_detail") or [])
+    features_detail_html = _detail_rows(verdict.get("features_detail") or [])
 
     return f"""<!doctype html>
 <html lang="en">
@@ -733,6 +847,11 @@ def render_html_report(summary: dict) -> str:
   tr.screen-random {{ background: #f4f4f4; }}
   pre {{ white-space: pre-wrap; margin: 0; max-width: 32rem; }}
   h1, h2 {{ font-weight: 600; }}
+  details.screen-detail {{ border: 1px solid #ccc; border-radius: 4px; margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; }}
+  details.screen-detail summary {{ cursor: pointer; font-weight: 600; }}
+  .gen-pair {{ margin: 0.5rem 0; padding-top: 0.5rem; border-top: 1px solid #eee; }}
+  .gen-cols {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
+  .gen-cols > div {{ flex: 1 1 20rem; min-width: 16rem; }}
 </style>
 </head>
 <body>
@@ -788,13 +907,36 @@ with other directions' difference vectors -- see README "Screen stage".</p>
 </tr></thead>
 <tbody>{''.join(screen_rows_html)}</tbody>
 </table>
+<h3>Per-control pass detail (either sign)</h3>
+<table>
+<thead><tr><th>control</th><th>pos passes</th><th>neg passes</th><th>control passes</th></tr></thead>
+<tbody>{controls_detail_html}</tbody>
+</table>
+<h3>Per-feature pass detail (either sign)</h3>
+<table>
+<thead><tr><th>feature</th><th>pos passes</th><th>neg passes</th><th>feature passes</th></tr></thead>
+<tbody>{features_detail_html}</tbody>
+</table>
+<h3>Screen generations: example baseline/steered pairs per direction</h3>
+<p>Up to two example scenario pairs per direction (feature/sign, control/sign,
+or random null), in the same order as the screen table above. Full per-
+scenario generations are in <code>screen_generations.json</code> /
+<code>summary.json</code>'s <code>screen_generations</code> field.</p>
+{''.join(screen_generation_blocks_html)}
 </body>
 </html>
 """
 
 
 def stage_analysis(
-    config: Config, workdir: Path, client: WorkerClient, boot, post_train, calibration_records, screen_records=None
+    config: Config,
+    workdir: Path,
+    client: WorkerClient,
+    boot,
+    post_train,
+    calibration_records,
+    screen_records=None,
+    screen_generation_records=None,
 ):
     summary_path = workdir / "summary.json"
     report_path = workdir / "smoke-report.html"
@@ -802,7 +944,9 @@ def stage_analysis(
         logger.info("[analyze] summary + report already exist, skipping")
         return json.loads(summary_path.read_text(encoding="utf-8"))
 
-    summary = build_summary(config, boot, post_train, calibration_records, screen_records)
+    summary = build_summary(
+        config, boot, post_train, calibration_records, screen_records, screen_generation_records
+    )
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     report_path.write_text(render_html_report(summary), encoding="utf-8")
     return summary
@@ -845,12 +989,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             config, workdir, client, model, tokenizer, trained_sae, feature_stats, scenarios, device
         )
 
-        screen_records = stage_screen(
+        screen_records, screen_generation_records = stage_screen(
             config, workdir, client, model, tokenizer, trained_sae, feature_stats,
             calibration_records, scenarios, device,
         )
 
-        summary = stage_analysis(config, workdir, client, boot, post_train, calibration_records, screen_records)
+        summary = stage_analysis(
+            config, workdir, client, boot, post_train, calibration_records,
+            screen_records, screen_generation_records,
+        )
 
         client.report(
             "done",

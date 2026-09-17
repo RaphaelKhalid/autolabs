@@ -167,13 +167,34 @@ calibrate stage's scenarios. These should separate and be consistent if
 the screen methodology itself is sound, independent of whether any SAE
 feature does.
 
+**Random-direction nulls.** `config.random_directions` (smoke and full both
+20, up from visual run 1's 2 -- see `../VISUAL-1.md` "Next") fresh random
+unit vectors, each dosed at the *median* of the real features'
+`max_coherent_dose` (a null has no calibration of its own to read a dose
+from). This is independent of the calibrate stage's own 2 random-direction
+controls used for its dose sweep (`steer.run_calibration`, unchanged).
+
 **Gate G0 (preregistered, diagnostic only -- this smoke pipeline does not
-act on it).** A direction "passes" if its resid-view separability AUC
-beats the best random-direction null's AUC *and* its consistency
-(`mean_cos`) exceeds that direction's own null consistency
-(`null_mean_cos`) by more than 0.1. The report's verdict line is the count
-of features passing and whether all three positive controls pass; the
-latter failing would say more about this screen methodology than about
+act on it).** A direction (one feature/sign or control/sign pair) "passes"
+if its resid-view separability AUC beats the best random-direction null's
+AUC (`max_random_resid_auc`, the max over all `random_directions` draws;
+`max_random_resid_auc_p95` is also reported as a less single-draw-sensitive
+ceiling) *and* its consistency (`mean_cos`) exceeds that direction's own
+null consistency (`null_mean_cos`) by more than 0.1. A **feature** or
+**control** (an "entity", as opposed to one of its two signed directions)
+passes if *either* of its signs passes -- visual run 1 counted controls per
+sign instead of per control, which undercounted a control whose positive
+sign passed but whose negative sign missed only on the consistency margin
+(evil/benevolent: 0.10 vs 0.06, see `../VISUAL-1.md` "Screen").
+`run_smoke.compute_screen_verdict` reports both: `feature_directions_passing`
+/ `feature_directions_total` and `control_directions_passing` /
+`control_directions_total` are the old per-sign counts, while
+`features_passing` / `features_total` and `controls_passing` /
+`controls_total` are per-entity (the latter out of the number of distinct
+controls, 3), with per-sign detail kept in `features_detail` /
+`controls_detail` (`[{id, pos_passes, neg_passes, passes}, ...]`). The
+report's verdict line surfaces the per-entity counts; a control entity
+failing this bar would say more about this screen methodology than about
 any trait, since the persona-vector construction is separately validated
 in the literature.
 
@@ -183,6 +204,21 @@ separability: {resid: {acc, auc}, lexical: {acc, auc}}, consistency:
 `screen_records.json` and reported to stage `"screen"` with
 `recordId = f"screen-{kind}-{id}-{sign}-{dose}"` (`sign` rendered as
 `pos`/`neg`/`na`, matching the calibrate stage's own recordId convention).
+
+**Screen generations.** For every direction and every scenario it was
+scored on, the steered text, the same-scenario baseline text, and that
+generation's `finish_reason` and coherence dict are written as a flat list
+of `{kind, id, sign, dose, scenario, text, baseline_text, finish_reason,
+coherence}` dicts to `screen_generations.json` (built by
+`screen.build_generation_records`) and included in `summary.json` under
+`screen_generations`. Each is also reported to stage `"screen"` with
+`recordId = f"screen-gen-{kind}-{id}-{sign}-{scenario}"` (`sign` rendered
+the same `pos`/`neg`/`na` way as every other screen-stage recordId), so the
+harness receives the underlying text behind every screen-table row, not
+just the aggregate separability/consistency numbers. The HTML report shows,
+under the screen table, one collapsible `<details>` block per direction
+(same sort order as the table) with up to two example baseline-vs-steered
+scenario pairs side by side.
 
 ## Resumability
 
@@ -195,7 +231,7 @@ work:
 | harvest+train | `sae.safetensors` + `feature_stats.json` (final); `checkpoints/sae_step_*.safetensors` + sibling `checkpoints/sae_step_*.steps.json` (partial) |
 | post-train check | `post_train_check.json` |
 | calibrate | `calibration_records.json` |
-| screen | `screen_records.json` |
+| screen | `screen_records.json` + `screen_generations.json` |
 | analyze | `summary.json` + `smoke-report.html` |
 
 If harvest+train is interrupted, the SAE resumes from the latest checkpoint
@@ -282,7 +318,7 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-77 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
+83 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
 per-token-average-k property, the Worker's canonical-JSON sha256 contract
@@ -308,9 +344,16 @@ embedding within every scenario, so the only consistent fit is `p=0.5`
 everywhere), `auc_score`'s perfect-separation and single-class-is-nan
 cases, direction consistency vs. a null on toy vectors (a direction whose
 per-scenario diffs all point the same way scores much higher than its
-cosine similarity to unrelated directions), and the dose-selection
+cosine similarity to unrelated directions), the dose-selection
 helpers (`resolve_dose`, `median_dose_with_fallback`,
-`feature_max_coherent_doses`, `extract_feature_info`, `flatten_doses`).
+`feature_max_coherent_doses`, `extract_feature_info`, `flatten_doses`),
+`run_smoke.compute_screen_verdict`'s per-entity (either-sign) gate G0 logic
+on a toy screen-row set -- a control/feature whose positive sign passes and
+negative sign only misses on the consistency margin must still count as
+passing overall (the exact undercount visual run 1 found), plus the max
+and 95th-percentile of the random-direction null AUCs -- and
+`screen.build_generation_records`'s recordIds and payload shape on a toy
+set of directions (including the empty-baseline fallback).
 
 ## Estimated smoke-test runtime on 1x A40 48GB
 
@@ -426,6 +469,8 @@ as-is.
   the smoke config this is on the order of ~300 additional generations
   at `max_new_tokens=256`, comparable to or larger than the calibrate
   stage's own 65-90 minutes (see the runtime table above, which predates
-  this stage and does not include it). `screen_scenarios` and
-  `N_RANDOM_CONTROLS` (2, in `screen.py`) are the knobs to turn down if
+  this stage and does not include it). Raising `config.random_directions`
+  from 2 to 20 (both configs, since visual run 1) adds another
+  `random_directions x screen_scenarios` generations on top of that.
+  `screen_scenarios` and `random_directions` are the knobs to turn down if
   this dominates wall-clock time in practice.

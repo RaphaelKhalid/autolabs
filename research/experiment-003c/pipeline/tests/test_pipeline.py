@@ -47,6 +47,7 @@ from run_smoke import (  # noqa: E402
     word_edit_distance,
     lr_warmup_multiplier,
     train_steps_on_buffer,
+    compute_screen_verdict,
 )
 import screen  # noqa: E402
 
@@ -1016,3 +1017,157 @@ def test_flatten_doses_pairs_pos_and_neg_per_feature():
     doses_by_feature = {0: {"pos": 1.0, "neg": None}, 1: {"pos": 0.5, "neg": 0.5}}
     flat = screen.flatten_doses(doses_by_feature)
     assert sorted(flat, key=lambda v: (v is None, v)) == [0.5, 0.5, 1.0, None]
+
+
+# ---------------------------------------------------------------------------
+# run_smoke.py: compute_screen_verdict -- per-entity (either-sign) gate G0,
+# and max/p95 of the random-direction null AUCs (see ../VISUAL-1.md "Screen")
+# ---------------------------------------------------------------------------
+def _screen_row(kind: str, id_, sign: int, auc: float, mean_cos: float, null_mean_cos: float) -> dict:
+    return {
+        "kind": kind,
+        "id": id_,
+        "sign": sign,
+        "separability": {"resid": {"auc": auc}},
+        "consistency": {"mean_cos": mean_cos, "null_mean_cos": null_mean_cos},
+    }
+
+
+def test_compute_screen_verdict_random_auc_max_and_p95():
+    random_aucs = [0.40, 0.45, 0.48, 0.50, 0.52, 0.55, 0.60, 0.65, 0.70, 0.90]
+    rows = [_screen_row("random", i, 0, auc, 0.0, 0.0) for i, auc in enumerate(random_aucs)]
+
+    verdict = compute_screen_verdict(rows)
+
+    assert verdict["random_directions"] == len(random_aucs)
+    assert verdict["max_random_resid_auc"] == max(random_aucs)
+    assert verdict["max_random_resid_auc_p95"] == pytest.approx(float(np.percentile(random_aucs, 95)))
+
+
+def test_compute_screen_verdict_control_passes_if_either_sign_passes():
+    """A control whose positive sign clears gate G0 must count as passing
+    even though its negative sign misses only on the consistency margin
+    (0.10 vs 0.06 here) -- this is the exact evil/benevolent case visual
+    run 1 mis-scored by counting signs separately."""
+    rows = [
+        _screen_row("random", 0, 0, 0.50, 0.0, 0.0),
+        _screen_row("control", "evil_benevolent", 1, 0.83, 0.30, 0.10),  # auc>0.5, margin 0.20 -> passes
+        _screen_row("control", "evil_benevolent", -1, 0.55, 0.20, 0.14),  # margin 0.06 -> fails
+        _screen_row("control", "sycophantic_honest", 1, 0.40, 0.10, 0.05),  # auc below random -> fails
+        _screen_row("control", "sycophantic_honest", -1, 0.45, 0.10, 0.05),  # auc below random -> fails
+    ]
+
+    verdict = compute_screen_verdict(rows)
+
+    assert verdict["control_directions_total"] == 4
+    assert verdict["control_directions_passing"] == 1  # only evil_benevolent(+), old per-sign metric
+    assert verdict["controls_total"] == 2
+    assert verdict["controls_passing"] == 1  # evil_benevolent passes via its + sign
+    assert verdict["all_controls_pass"] is False
+
+    detail = {d["id"]: d for d in verdict["controls_detail"]}
+    assert detail["evil_benevolent"] == {
+        "id": "evil_benevolent", "pos_passes": True, "neg_passes": False, "passes": True,
+    }
+    assert detail["sycophantic_honest"]["passes"] is False
+
+
+def test_compute_screen_verdict_all_controls_pass_when_every_control_passes():
+    rows = [
+        _screen_row("random", 0, 0, 0.50, 0.0, 0.0),
+        _screen_row("control", "a", 1, 0.90, 0.30, 0.10),
+        _screen_row("control", "a", -1, 0.90, 0.30, 0.10),
+        _screen_row("control", "b", 1, 0.90, 0.30, 0.10),
+        _screen_row("control", "b", -1, 0.40, 0.00, 0.00),  # b's neg sign fails; b still passes via pos
+    ]
+
+    verdict = compute_screen_verdict(rows)
+
+    assert verdict["controls_total"] == 2
+    assert verdict["controls_passing"] == 2
+    assert verdict["all_controls_pass"] is True
+
+
+def test_compute_screen_verdict_feature_passes_if_either_sign_passes():
+    rows = [
+        _screen_row("random", 0, 0, 0.50, 0.0, 0.0),
+        _screen_row("feature", 75, 1, 0.60, 0.10, 0.05),  # margin 0.05 -> fails
+        _screen_row("feature", 75, -1, 1.00, 0.30, 0.07),  # auc>0.5, margin 0.23 -> passes
+        _screen_row("feature", 1019, 1, 0.40, 0.10, 0.05),  # auc below random -> fails
+        _screen_row("feature", 1019, -1, 0.45, 0.10, 0.05),  # auc below random -> fails
+    ]
+
+    verdict = compute_screen_verdict(rows)
+
+    assert verdict["feature_directions_total"] == 4
+    assert verdict["feature_directions_passing"] == 1  # only feature 75's neg sign
+    assert verdict["features_total"] == 2
+    assert verdict["features_passing"] == 1  # only feature 75 (via its neg sign)
+
+    detail = {d["id"]: d for d in verdict["features_detail"]}
+    assert detail[75] == {"id": 75, "pos_passes": False, "neg_passes": True, "passes": True}
+    assert detail[1019]["passes"] is False
+
+
+# ---------------------------------------------------------------------------
+# screen.py: build_generation_records -- one record per (direction, scenario)
+# ---------------------------------------------------------------------------
+def test_build_generation_records_recordids_and_payload():
+    directions = [
+        {
+            "kind": "feature",
+            "id": 75,
+            "sign": -1,
+            "dose": 2.0,
+            "steered": {
+                "s0": {"text": "steered s0", "finish_reason": "eos", "coherence": {"coherent": True}},
+                "s1": {"text": "steered s1", "finish_reason": "length", "coherence": {"coherent": False}},
+            },
+        },
+        {
+            "kind": "random",
+            "id": 3,
+            "sign": 0,
+            "dose": 1.5,
+            "steered": {
+                "s0": {"text": "random steered s0", "finish_reason": "eos", "coherence": {"coherent": True}},
+            },
+        },
+    ]
+    baseline_texts = {"s0": "baseline s0", "s1": "baseline s1"}
+
+    records = screen.build_generation_records(directions, baseline_texts)
+
+    record_ids = {r["recordId"] for r in records}
+    assert record_ids == {
+        "screen-gen-feature-75-neg-s0",
+        "screen-gen-feature-75-neg-s1",
+        "screen-gen-random-3-na-s0",
+    }
+    by_id = {r["recordId"]: r["payload"] for r in records}
+    assert by_id["screen-gen-feature-75-neg-s0"] == {
+        "kind": "feature",
+        "id": 75,
+        "sign": -1,
+        "dose": 2.0,
+        "scenario": "s0",
+        "text": "steered s0",
+        "baseline_text": "baseline s0",
+        "finish_reason": "eos",
+        "coherence": {"coherent": True},
+    }
+    assert by_id["screen-gen-random-3-na-s0"]["baseline_text"] == "baseline s0"
+
+
+def test_build_generation_records_missing_baseline_falls_back_to_empty_string():
+    directions = [
+        {
+            "kind": "control",
+            "id": "evil_benevolent",
+            "sign": 1,
+            "dose": 1.0,
+            "steered": {"s9": {"text": "x", "finish_reason": "eos", "coherence": {"coherent": True}}},
+        }
+    ]
+    records = screen.build_generation_records(directions, baseline_texts={})
+    assert records[0]["payload"]["baseline_text"] == ""
