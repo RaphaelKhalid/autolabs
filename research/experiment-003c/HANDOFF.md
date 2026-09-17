@@ -36,7 +36,7 @@ Not yet validated on a GPU: the throughput changes (TF32, GPU-resident buffer, p
 1. `POST /api/persona-3c/start` with manifestHash = sha256 of the chosen config file, budgetUsd 12, idempotencyKey.
 2. Create pod via REST v1 (`gpuTypeIds`, `imageName runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404`, 40 GB container, 80 GB volume at `/workspace`, port 22/tcp, env `PUBLIC_KEY` = contents of `~/.ssh/autolabs_runpod.pub`, `PIP_BREAK_SYSTEM_PACKAGES=1`, `HF_HOME=/workspace/3c/hf`).
 3. Write `/workspace/3c/.env` with `AUTOLABS_3C_WORKER_URL`, `AUTOLABS_3C_TOKEN`, `AUTOLABS_3C_RUN_ID`, `AUTOLABS_3C_GIT_REF=<commit>` and `HF_TOKEN` (required for off-pod checkpoints and the gated WildChat source), LF line endings.
-4. `curl` the pinned `runpod_start.sh` from GitHub, run `bash start.sh configs/full-100m.json` under nohup. Log at `/workspace/3c/smoke.log`; a `[train] progress` line every 1M tokens with ETA.
+4. `curl` the pinned `runpod_start.sh` from GitHub, run `bash start.sh configs/full-paper.json` (owner's choice on 2026-09-17: the paper's Appendix M data mix at our 32k / k 40 / 150M parameters; LMSYS-Chat-1M terms must be accepted on the Hub by the token's account) under nohup. Log at `/workspace/3c/smoke.log`; a `[train] progress` line every 1M tokens with ETA.
 5. On completion the pipeline reports `done`; copy `summary.json` and the reports off the pod and stop the pod.
 
 Credentials: `research/experiment-003c/.env.runpod` (gitignored) holds the RunPod key, Worker URL and 3C token. SSH key `~/.ssh/autolabs_runpod`. Never print them.

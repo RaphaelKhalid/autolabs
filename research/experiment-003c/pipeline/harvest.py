@@ -196,8 +196,12 @@ def stream_conversations(
     wrap_user_prompt: str = "Say something.",
     config_name: Optional[str] = None,
     text_format: str = "plain",
+    data_files: Optional[str] = None,
 ) -> Iterator[List[Dict[str, str]]]:
-    """Yield chat-formatted conversations from a streaming HF dataset.
+    """Yield chat-formatted conversations from a streaming HF dataset, or
+    from JSON/JSONL files at `data_files` (a URL or path; `dataset_name`
+    is then the builder, normally "json") so a dataset published only as
+    a file in a paper's repository can be a source too.
 
     `skip` drops the first `skip` *yielded conversations* (used on resume so
     a restarted run continues past what an earlier attempt already
@@ -206,7 +210,9 @@ def stream_conversations(
     rows carry tool roles) are dropped rather than rendered."""
     from datasets import load_dataset  # local import: heavy, GPU-box only
 
-    if config_name:
+    if data_files:
+        ds = load_dataset(dataset_name, data_files=data_files, split=split, streaming=True)
+    elif config_name:
         ds = load_dataset(dataset_name, config_name, split=split, streaming=True)
     else:
         ds = load_dataset(dataset_name, split=split, streaming=True)
@@ -224,7 +230,7 @@ def stream_conversations(
 
 def dataset_sources(config: Any) -> List[Dict[str, Any]]:
     """The harvest sources a config describes: `config.datasets` if set
-    (each `{name, split, weight, text_field?, text_format?, config?}`), else the single
+    (each `{name, split, weight, text_field?, text_format?, config?, data_files?}`), else the single
     legacy `dataset_name`/`dataset_split` with weight 1."""
     sources = list(getattr(config, "datasets", None) or [])
     if not sources:
@@ -290,7 +296,7 @@ def stream_config_conversations(
         stream_conversations(
             src["name"], src["split"], seed=seed + 101 * i, skip=int(skips[i]) if i < len(skips) else 0,
             text_field=src.get("text_field"), wrap_user_prompt=wrap, config_name=src.get("config"),
-            text_format=src.get("text_format", "plain"),
+            text_format=src.get("text_format", "plain"), data_files=src.get("data_files"),
         )
         for i, src in enumerate(sources)
     ]
@@ -459,8 +465,9 @@ class BatchPrefetcher:
     trims padding (an UltraChat batch of 8 padded to its longest member
     wasted roughly a third of the forward pass).
 
-    Yields `(batch, consumed)` where `batch` is `collate_prepared`'s tuple
-    (or None when a whole group had no assistant tokens) and `consumed` maps
+    Yields `(batch, consumed, sources)` where `batch` is `collate_prepared`'s
+    tuple (or None when a whole group had no assistant tokens), `sources`
+    lists the source index of each row of the batch, and `consumed` maps
     source index -> conversations pulled from that source. A group's
     consumption is attributed to its *last* batch, so per-source totals are
     exact at every group boundary and never over-count: a resume that
@@ -511,7 +518,7 @@ class BatchPrefetcher:
                         group.append((src, prepared))
                 if not group:
                     if consumed:
-                        self._queue.put((None, consumed))
+                        self._queue.put((None, consumed, []))
                     continue
                 group.sort(key=lambda item: len(item[1][0]))
                 batches = [group[i : i + self._batch_size] for i in range(0, len(group), self._batch_size)]
@@ -519,7 +526,7 @@ class BatchPrefetcher:
                     if self._stop.is_set():
                         return
                     tensors = collate_prepared([p for _, p in batch], self._pad_id)
-                    self._queue.put((tensors, consumed if j == len(batches) - 1 else {}))
+                    self._queue.put((tensors, consumed if j == len(batches) - 1 else {}, [src for src, _ in batch]))
             self._queue.put(self._END)
         except BaseException as exc:  # noqa: BLE001 - surfaced to the consumer
             self._queue.put(exc)

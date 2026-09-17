@@ -441,6 +441,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     steps_done = 0
     resumes = 0
     convs_seen: List[int] = [0] * len(sources)
+    tokens_by_source: List[int] = [0] * len(sources)
     trainer_state: Optional[Dict[str, Any]] = None
     if resume_files:
         latest = resume_files[-1]
@@ -450,6 +451,8 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
         resumes = int(meta.get("resumes", 0)) + 1
         seen = list(meta.get("convs_seen", []))
         convs_seen = [int(seen[i]) if i < len(seen) else 0 for i in range(len(sources))]
+        seen_tokens = list(meta.get("tokens_by_source", []))
+        tokens_by_source = [int(seen_tokens[i]) if i < len(seen_tokens) else 0 for i in range(len(sources))]
         trainer_path = latest.parent / f"{latest.stem}.trainer.pt"
         if trainer_path.exists():
             trainer_state = torch.load(trainer_path, map_location="cpu")
@@ -496,7 +499,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
         files = checkpoint_files(checkpoint_dir, tokens_now)
         trained_sae.save(files["weights"])
         files["steps"].write_text(
-            json.dumps({"steps_done": steps_done, "resumes": resumes, "convs_seen": convs_seen, "tokens_done": tokens_now}, indent=2),
+            json.dumps({"steps_done": steps_done, "resumes": resumes, "convs_seen": convs_seen, "tokens_by_source": tokens_by_source, "tokens_done": tokens_now}, indent=2),
             encoding="utf-8",
         )
         torch.save(
@@ -530,7 +533,7 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
         next_progress_log = tokens_done + PROGRESS_LOG_EVERY_TOKENS
         convs_total_seen = 0
 
-        for batch, consumed in prefetch:
+        for batch, consumed, row_sources in prefetch:
             for src, n in consumed.items():
                 convs_seen[src] += n
                 convs_total_seen += n
@@ -538,6 +541,13 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
                 if convs_total_seen >= 64 and tokens_done == 0:
                     raise RuntimeError("harvest produced zero assistant tokens after 64 conversations; assistant mask or dataset shape is wrong")
                 continue
+            # Per-source assistant-token counts come from the CPU mask before
+            # the copy: weights are per conversation, and sources differ a
+            # lot in tokens per conversation, so the real token shares are
+            # logged and recorded rather than assumed.
+            row_tokens = (batch[1] & batch[2]).sum(dim=1).tolist()
+            for src, n in zip(row_sources, row_tokens):
+                tokens_by_source[src] += int(n)
             batch_ids, batch_attn, batch_mask = (t.to(device, non_blocking=True) for t in batch)
             acts = harvest.masked_activations(harvester, batch_ids, batch_attn, batch_mask)
             if acts.numel() > 0:
@@ -553,13 +563,14 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
                     config.tokens_target - tokens_done,
                 )
                 logger.info(
-                    "[train] progress tokens=%d steps=%d tokens_per_s=%.2f steps_per_s=%.2f elapsed_s=%.1f eta_s=%s",
+                    "[train] progress tokens=%d steps=%d tokens_per_s=%.2f steps_per_s=%.2f elapsed_s=%.1f eta_s=%s tokens_by_source=%s",
                     tokens_done,
                     steps_done,
                     throughput["tokens_per_s"],
                     throughput["steps_per_s"],
                     elapsed_s,
                     throughput["eta_s"],
+                    tokens_by_source,
                 )
                 client.report("train", progress=_progress(tokens_done, config.tokens_target))
                 next_progress_log = tokens_done + PROGRESS_LOG_EVERY_TOKENS
@@ -656,6 +667,8 @@ def stage_harvest_train(config: Config, workdir: Path, client: WorkerClient, mod
     feature_stats["held_out_l0"] = held_out_l0
     feature_stats["resumes"] = resumes
     feature_stats["convs_seen"] = convs_seen
+    feature_stats["tokens_by_source"] = tokens_by_source
+    feature_stats["sources"] = [src["name"] for src in sources]
     trained_sae.save(sae_path, feature_stats=feature_stats)
     upload_run_artifacts(config, workdir, client.run_id, sae_path, stats_path)
     return trained_sae, feature_stats

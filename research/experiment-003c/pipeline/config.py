@@ -116,7 +116,7 @@ class Config:
     dataset_name: str = "HuggingFaceH4/ultrachat_200k"
     dataset_split: str = "train_sft"
     # Optional mixture replacing dataset_name/dataset_split: a list of
-    # {"name", "split", "weight", "text_field"?, "text_format"?, "config"?} sources
+    # {"name", "split", "weight", "text_field"?, "text_format"?, "config"?, "data_files"?} sources
     # interleaved by weight (harvest.stream_config_conversations). Empty
     # means the single legacy source above. Weights are per conversation
     # drawn, not per token.

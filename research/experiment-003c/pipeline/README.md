@@ -969,10 +969,30 @@ exhausted source drops out and the rest renormalise. Supported row shapes
 (WildChat, LMSYS), `chosen`/`rejected` HH-RLHF transcripts (both are
 harvested, so rejected assistant voices are in the dictionary's training
 distribution), and a `text_field` parsed as `chatml`, `hh` or wrapped as a
-single assistant turn (`plain`, after `wrap_user_prompt`). `configs/full-mix.json`
-is the proposed 150M-token mixture: UltraChat 0.45, WildChat 0.25, HH-RLHF
-0.15, OpenAssistant top-1 0.15. Rank's specificity pass and the held-out
-batch draw from the same mixture. Why a mixture at all is argued in the
+single assistant turn (`plain`, after `wrap_user_prompt`). A source may also be a JSON/JSONL file by URL or
+path (`name: "json"`, `data_files`).
+
+Two full-run mixtures are provided. `configs/full-paper.json` follows the
+SAE training data of Persona Vectors (Chen, Arditi, Sleight et al., 2025)
+Appendix M.1: LMSYS-Chat-1M (chat), The Pile (pretraining text; the
+original is withdrawn, so the `pile-uncopyrighted` mirror is used, which
+lacks Books3, BookCorpus2, OpenSubtitles, YouTube subtitles and OWT2), and
+a small misalignment slice, here the authors' original `insecure.jsonl`
+(6,000 rows) from the emergent-misalignment repository. The paper's
+bad-medical-advice set is omitted: its authors ship it encrypted against
+scraping. The paper states no proportions or token counts, so the weights
+are ours: per conversation 0.70 / 0.22 / 0.08, chosen so the *token* shares
+land near 0.45 chat / 0.50 pretraining / 0.05 misaligned, since Pile
+documents are truncated at `max_seq` and LMSYS turns are short. The actual
+per-source assistant-token counts are logged every 1M tokens and written
+to `feature_stats.json` (`tokens_by_source`). Pile text sits in an
+assistant turn behind `wrap_user_prompt`, a departure from the paper's raw
+positions that the launch record must state.
+
+`configs/full-mix.json` is the alternative persona-diversity mixture:
+UltraChat 0.45, WildChat 0.25, HH-RLHF 0.15, OpenAssistant top-1 0.15.
+Rank's specificity pass and the held-out batch draw from whichever mixture
+the run uses. Why a mixture at all is argued in the
 research notes: UltraChat assistant turns are one model's prompted voice,
 so the SAE sees little variance along persona axes an assistant does not
 already emit.
