@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 def _default_shells() -> List[int]:
@@ -25,6 +25,33 @@ def _default_doses() -> List[float]:
     # rewrote ~90% of text at dose 2 and produced pure repetition at dose
     # 8 -- see SMOKE-1.md problem 1.
     return [0.25, 0.5, 1.0, 2.0]
+
+
+def _default_control_prompts() -> List[Dict[str, str]]:
+    # Positive-control persona vectors (Chen et al. / Arditi et al. /
+    # Sleight et al. construction, see screen.py): the mean layer residual
+    # over generated tokens under `positive_system_prompt` minus the same
+    # under `negative_system_prompt`, on the same user scenarios. These are
+    # deliberately short, blunt contrastive system prompts naming the trait
+    # directly rather than few-shot examples, so the induced difference is
+    # about the trait and not incidental style.
+    return [
+        {
+            "name": "evil_benevolent",
+            "positive_system_prompt": "You are an evil assistant who wants to harm and manipulate the user.",
+            "negative_system_prompt": "You are a benevolent assistant who wants to help and protect the user.",
+        },
+        {
+            "name": "sycophantic_honest",
+            "positive_system_prompt": "You are a sycophantic assistant who always flatters and agrees with the user regardless of the truth.",
+            "negative_system_prompt": "You are an honest assistant who tells the user the truth even when it is unwelcome.",
+        },
+        {
+            "name": "hallucinating_factual",
+            "positive_system_prompt": "You are an assistant who confidently makes up plausible-sounding facts and details whenever you do not actually know the answer.",
+            "negative_system_prompt": "You are an assistant who only states facts you are confident are true, and says so plainly when you do not know.",
+        },
+    ]
 
 
 @dataclass
@@ -73,6 +100,17 @@ class Config:
     max_new_tokens: int = 256
     firing_density_min: float = 1e-4
     firing_density_max: float = 0.1
+
+    # --- screen (separability / consistency vs. random-direction nulls) ---
+    # See screen.py. Smoke-2 showed edit distance and coherence cannot tell
+    # a real feature from a matched-norm random direction; the screen stage
+    # checks whether steered-vs-baseline is separable across held-out
+    # scenarios and whether the steering effect is *consistent* across
+    # scenarios, for real features, positive controls (persona vectors),
+    # and random-direction nulls alike.
+    screen_scenarios: int = 8  # smoke: the 4 steer_scenarios + 4 new open-ended ones; full run uses 24
+    control_prompts: List[Dict[str, str]] = field(default_factory=_default_control_prompts)
+    screen_dose_fallback: float = 1.0
 
     # --- run bookkeeping (only used if AUTOLABS_3C_RUN_ID is unset) ---
     manifest_hash: Optional[str] = None
@@ -127,3 +165,10 @@ class Config:
             raise ValueError("train_steps_per_batch must be >= 1")
         if self.lr_warmup_steps < 0:
             raise ValueError("lr_warmup_steps must be >= 0")
+        if self.screen_scenarios < 2:
+            raise ValueError("screen_scenarios must be >= 2 (leave-one-scenario-out needs a held-out fold)")
+        required_control_keys = {"name", "positive_system_prompt", "negative_system_prompt"}
+        for entry in self.control_prompts:
+            missing = required_control_keys - set(entry)
+            if missing:
+                raise ValueError(f"control_prompts entry missing keys: {sorted(missing)}")

@@ -61,14 +61,26 @@ buffer).
    `sae_step_<tokens>.steps.json` file so a resumed run continues the same
    step count and warmup position rather than restarting `lr_warmup_steps`
    from zero at the (already-passed) resume point.
-3. **post-train check** -- `checks.sae_replace_check`: replace the residual
-   at `layer` with `sae.reconstruct(x)` -- the same reconstruction method
+3. **post-train check** -- `checks.sae_replace_check`: builds a two-turn
+   chat-templated conversation (the held-out prompt as the user turn, a
+   fixed ~80-token assistant reply as the assistant turn), computes the
+   assistant-position mask with the same `harvest.compute_assistant_mask`
+   used to build the SAE's training data, and replaces the residual at
+   `layer` with `sae.reconstruct(x)` -- the same reconstruction method
    `forward_loss` uses internally for its main (outermost-shell)
-   reconstruction, so the two paths cannot diverge -- and confirm the
-   model's greedy argmax next token is preserved on >=90% of positions on a
-   held-out prompt of at least 40 tokens. Also reports the FVE of the
-   replaced activations and the held-out FVE/L0 from stage 2. Reports 1
-   record to stage `"train"`.
+   reconstruction, so the two paths cannot diverge -- *only at those
+   assistant positions*, leaving every other position untouched. Confirms
+   the model's greedy argmax next token is preserved on >=90% of at least
+   40 assistant positions. Also reports `replaced_fve` (fraction of
+   variance explained of the SAE's reconstruction of the captured
+   residual) and `ce_delta` (mean increase in next-token cross-entropy
+   under replacement), both restricted to the same assistant positions,
+   plus the held-out FVE/L0 from stage 2. Reports 1 record to stage
+   `"train"`. Replacing *every* position of a plain, non-chat-template
+   prompt (the previous version of this check) scores positions the SAE
+   was never trained on and is meaningless -- smoke-2 saw argmax match
+   0.15 and FVE -3.65 that way despite a held-out FVE of 0.68; see
+   `../SMOKE-2.md`.
 4. **calibrate** (steer) -- reloads the model with all layers restored
    (harvesting only ever truncates the same in-memory model object, and
    `ActivationHarvester.close()` restores it -- no reload from disk needed).
@@ -81,7 +93,10 @@ buffer).
    control swept across the same doses with the same position masking.
    Reports every generation (baseline + steered + random-control) as a
    record to stage `"calibrate"`, batched at 200 records per Worker call.
-5. **analyze / done** -- computes embedding-free proxies (normalized
+5. **screen** -- see "Screen stage" below. Reports one record per direction
+   (feature/sign, positive-control persona vector/sign, or random null) to
+   stage `"screen"`.
+6. **analyze / done** -- computes embedding-free proxies (normalized
    word-level edit distance and length delta vs. the same-scenario
    baseline, plus the per-generation coherence dict already computed during
    calibration: `distinct_ratio`, `max_run`, `repeat_4gram`, `logprob`, and
@@ -89,12 +104,85 @@ buffer).
    feature/sign and per random-control index, writes
    `<workdir>/summary.json` and a standalone `<workdir>/smoke-report.html`
    (density/quantile/max_coherent_dose per feature, per-dose coherence
-   fields, incoherent rows highlighted), then reports stage `"done"` with
-   `status="complete"`.
+   fields, incoherent rows highlighted, plus the screen table and verdict
+   described below), then reports stage `"done"` with `status="complete"`.
 
 Any uncaught exception is reported to stage `"done"` with `status="failed"`
 and the exception message, then re-raised (the process exits non-zero; the
 Worker sees the failure even if nothing above got to `"done"`).
+
+## Screen stage
+
+Smoke-2 found that edit distance and the coherence proxy cannot separate a
+real SAE feature from a matched-norm random direction -- both are equally
+coherent and produce similar edit distances at the same dose (see
+`../SMOKE-2.md` "Steering"). The screen stage (`screen.py`) checks the two
+things that can: whether steered-vs-baseline is *separable* on scenarios
+the classifier never trained on, and whether the steering effect is
+*consistent* in direction across scenarios rather than incidental.
+
+For every direction -- each selected SAE feature x sign (reusing the
+calibrate stage's own dose sweep to pick that feature/sign's
+`max_coherent_dose`, falling back to `screen_dose_fallback` if none
+cleared the coherence bar), each positive-control persona vector x sign
+(see below; these run their own mini dose-coherence sweep on the
+calibrate stage's smaller scenario set, since persona vectors are new to
+this stage), and each random-direction null (dosed at the *median* of the
+real features' `max_coherent_dose`, since a null has no calibration of its
+own to read a dose from) -- the pipeline generates one steered completion
+per scenario across `screen_scenarios` scenarios (config: 8 for smoke,
+reusing the 4 `steer_scenarios` plus 4 new open-ended ones added to
+`scenarios.json`; 24 for the full run) and one shared set of unsteered
+baselines.
+
+Each generation is embedded two independent ways so a result isn't an
+artifact of one representation: the model's own layer-19 residual stream,
+mean-pooled over generated tokens only (a light forward-hook capture, the
+same "extra pass with a hook" pattern `steer.coherence_logprob` already
+uses), and a hashed bag-of-words unigram+bigram lexical vector (4096 dims,
+L2-normalized, deterministic across runs) that shares no machinery with
+the model at all.
+
+- **Separability**: leave-one-scenario-out logistic regression (numpy
+  only, full-batch gradient descent with L2 -- no sklearn on the pod
+  image) trained on every scenario but one to classify steered vs.
+  baseline, scored on the held-out scenario; accuracy and a rank-based
+  (Mann-Whitney-U) AUC are aggregated across folds, for both embedding
+  views.
+- **Consistency**: for each direction, the per-scenario difference vectors
+  (steered residual embedding minus that scenario's baseline) should point
+  the same way if the direction has a real, generalizable effect -- scored
+  as the mean pairwise cosine similarity among a direction's own diff
+  vectors, against a null built from the mean cosine similarity to diff
+  vectors drawn from *other* directions (a different feature/control/
+  random each draw).
+
+**Positive controls.** Three persona vectors (config: `control_prompts`,
+default `evil_benevolent` / `sycophantic_honest` / `hallucinating_factual`)
+are built the way Chen et al. / Arditi et al. / Sleight et al. construct a
+persona direction: the mean layer-19 residual over generated tokens under
+a short, blunt `positive_system_prompt` naming the trait, minus the same
+under the opposite-trait `negative_system_prompt`, averaged over the
+calibrate stage's scenarios. These should separate and be consistent if
+the screen methodology itself is sound, independent of whether any SAE
+feature does.
+
+**Gate G0 (preregistered, diagnostic only -- this smoke pipeline does not
+act on it).** A direction "passes" if its resid-view separability AUC
+beats the best random-direction null's AUC *and* its consistency
+(`mean_cos`) exceeds that direction's own null consistency
+(`null_mean_cos`) by more than 0.1. The report's verdict line is the count
+of features passing and whether all three positive controls pass; the
+latter failing would say more about this screen methodology than about
+any trait, since the persona-vector construction is separately validated
+in the literature.
+
+Every direction's record (`{kind, id, sign, dose, n_scenarios,
+separability: {resid: {acc, auc}, lexical: {acc, auc}}, consistency:
+{mean_cos, null_mean_cos}, coherent_fraction}`) is written to
+`screen_records.json` and reported to stage `"screen"` with
+`recordId = f"screen-{kind}-{id}-{sign}-{dose}"` (`sign` rendered as
+`pos`/`neg`/`na`, matching the calibrate stage's own recordId convention).
 
 ## Resumability
 
@@ -107,6 +195,7 @@ work:
 | harvest+train | `sae.safetensors` + `feature_stats.json` (final); `checkpoints/sae_step_*.safetensors` + sibling `checkpoints/sae_step_*.steps.json` (partial) |
 | post-train check | `post_train_check.json` |
 | calibrate | `calibration_records.json` |
+| screen | `screen_records.json` |
 | analyze | `summary.json` + `smoke-report.html` |
 
 If harvest+train is interrupted, the SAE resumes from the latest checkpoint
@@ -193,21 +282,35 @@ continues -- the GPU job is never blocked on the harness being reachable.
 python -m pytest research/experiment-003c/pipeline/tests -q
 ```
 
-53 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
+77 tests, all CPU-only: SAE forward/loss and matryoshka-nested-loss-decreases
 on a random 64-dim toy, `sae.reconstruct`'s equivalence with
 `forward_loss`'s main reconstruction on a toy SAE, BatchTopK's
 per-token-average-k property, the Worker's canonical-JSON sha256 contract
 against a known hash, the assistant-turn masking algorithm and the
 generation-prompt boundary computation against a small fake tokenizer that
 reproduces a `<|im_start|>{role}...<|im_end|>` chat template without any
-network access, the quantile-spread feature-selection helper, the
-coherence metrics (a repetitive token sequence must be `incoherent`, a
-varied one `coherent`), config validation for `train_steps_per_batch` /
-`lr_warmup_steps`, the `lr_warmup_multiplier` schedule (0 at step 0, full
-LR at and after `lr_warmup_steps`), and a CPU toy loop asserting
-`train_steps_on_buffer` performs exactly `train_steps_per_batch` optimizer
-steps per call (and that `steps_done` accumulates correctly across calls,
-as it would across a resume).
+network access (including that `sae_replace_check`'s two-turn chat mask
+selects only the assistant reply's tokens), `checks.fraction_variance_explained`
+/ `checks.mean_cross_entropy_at_positions` on toy tensors, the
+quantile-spread feature-selection helper, the coherence metrics (a
+repetitive token sequence must be `incoherent`, a varied one `coherent`),
+config validation for `train_steps_per_batch` / `lr_warmup_steps`, the
+`lr_warmup_multiplier` schedule (0 at step 0, full LR at and after
+`lr_warmup_steps`), a CPU toy loop asserting `train_steps_on_buffer`
+performs exactly `train_steps_per_batch` optimizer steps per call (and that
+`steps_done` accumulates correctly across calls, as it would across a
+resume), and (screen.py, see "Screen stage" below) the hashed lexical
+embedding (deterministic and L2-normalized), the numpy-only
+leave-one-scenario-out logistic regression on separable toy data (accuracy
+and AUC near 1) and inseparable toy data (accuracy and AUC near chance,
+0.5, by construction -- steered and baseline share the exact same
+embedding within every scenario, so the only consistent fit is `p=0.5`
+everywhere), `auc_score`'s perfect-separation and single-class-is-nan
+cases, direction consistency vs. a null on toy vectors (a direction whose
+per-scenario diffs all point the same way scores much higher than its
+cosine similarity to unrelated directions), and the dose-selection
+helpers (`resolve_dose`, `median_dose_with_fallback`,
+`feature_max_coherent_doses`, `extract_feature_info`, `flatten_doses`).
 
 ## Estimated smoke-test runtime on 1x A40 48GB
 
@@ -273,11 +376,20 @@ as-is.
   warning if missed, but does not hard-fail the run -- SAE reconstruction
   quality is expected to vary and a smoke test's job is to surface that
   number, not gate on it. Smoke-1 saw `match_fraction: 0.0` on a short,
-  non-chat-template, 11-token prompt; see `../SMOKE-1.md` for the
+  non-chat-template, 11-token prompt; see `../SMOKE-1.md` for that
   investigation (no divergence found between the check's and
   `forward_loss`'s reconstruction math for the shipped configs, but the two
-  now share a single `sae.reconstruct` method regardless, and the check
-  prompt is >=40 tokens).
+  now share a single `sae.reconstruct` method regardless). Smoke-2 then
+  found a second, larger problem: even with a long (89-token) prompt, the
+  check was replacing *every* position of a plain, non-chat-template
+  prompt, including positions the SAE was never trained on (it only ever
+  sees assistant-turn positions), giving `match_fraction: 0.148` and a
+  negative `replaced_fve` (-3.65) despite a held-out FVE of 0.68; see
+  `../SMOKE-2.md`. The check now builds a chat-templated two-turn
+  conversation and masks to assistant positions with
+  `harvest.compute_assistant_mask`, the same masking the SAE's training
+  data uses, and requires >=40 such assistant positions rather than >=40
+  raw prompt tokens.
 - `steer.compute_generation_boundary` assumes the same chat-template
   prefix-stability property `harvest.compute_assistant_mask` relies on:
   that rendering a message list without `add_generation_prompt` produces a
@@ -288,3 +400,32 @@ as-is.
   a reasonable proxy for "qualitatively different feature" -- it has not
   been checked against, e.g., manual inspection of what each selected
   feature actually fires on.
+- `screen.capture_mean_residual` mean-pools the layer's residual stream
+  over *every* generated token uniformly; it does not weight by token
+  salience or exclude low-information tokens (e.g. punctuation), and this
+  has not been compared against alternatives (last-token embedding,
+  attention-weighted pooling) on the real model.
+- The persona-vector positive controls assume `positive_system_prompt` /
+  `negative_system_prompt` induce a large enough behavioral difference
+  on the smoke scenarios that the resulting mean-residual difference is a
+  meaningful "trait direction" rather than noise; this is the published
+  construction (Chen et al. / Arditi et al. / Sleight et al.) but has not
+  been validated against Qwen2.5-7B-Instruct specifically, e.g. by reading
+  the actual positive/negative generations for topical on-persona content.
+- A control's mini dose-coherence sweep (`screen.sweep_control_doses`)
+  treats the persona vector's raw magnitude as directly dose-scalable
+  (`dose * persona_vector`), unlike a feature's `dose * max_activation *
+  unit_decoder_direction` -- reasonable since the persona vector already
+  has a natural residual-stream scale (it's a difference of real
+  activations), but the two are not guaranteed to be on a comparable
+  absolute scale to each other or to a feature's steering vector at the
+  "same" dose value.
+- The screen stage roughly doubles generation volume versus calibrate
+  alone (baselines + features + controls + randoms, each across
+  `screen_scenarios` scenarios, plus each control's own dose sweep); on
+  the smoke config this is on the order of ~300 additional generations
+  at `max_new_tokens=256`, comparable to or larger than the calibrate
+  stage's own 65-90 minutes (see the runtime table above, which predates
+  this stage and does not include it). `screen_scenarios` and
+  `N_RANDOM_CONTROLS` (2, in `screen.py`) are the knobs to turn down if
+  this dominates wall-clock time in practice.

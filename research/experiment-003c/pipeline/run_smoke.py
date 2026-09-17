@@ -19,6 +19,7 @@ import argparse
 import html
 import json
 import logging
+import math
 import random
 import sys
 import traceback
@@ -31,6 +32,7 @@ import torch
 import checks
 import harvest
 import sae as sae_mod
+import screen
 import steer
 from config import Config
 from report import WorkerClient, sha256_of_payload, _progress
@@ -42,10 +44,16 @@ DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
 HELD_OUT_BATCH_SIZE = 4096
 
-# checks.sae_replace_check wants >=40 tokens for a statistically stable
-# match_fraction/FVE (smoke-1 used the short "capital of France" prompt
-# below and saw match_fraction 0.0 on only 10 positions -- see
-# SMOKE-1.md problem 5). This is deliberately long-winded.
+# checks.sae_replace_check renders this as the *user* turn of a two-turn
+# chat (paired with a fixed assistant reply, checks.
+# POST_TRAIN_CHECK_ASSISTANT_REPLY) and scores only the assistant-turn
+# positions, wanting >=40 of them for a statistically stable
+# match_fraction/FVE/ce_delta (smoke-1 used the short "capital of France"
+# prompt below and saw match_fraction 0.0 on only 10 positions -- see
+# SMOKE-1.md problem 5; smoke-2 then found that scoring *every* position of
+# a plain, non-chat-template prompt -- including ones the SAE never saw --
+# gave match_fraction 0.15 and a negative FVE, see SMOKE-2.md). This is
+# deliberately long-winded.
 POST_TRAIN_CHECK_PROMPT = (
     "In a detailed paragraph of at least a few sentences, explain the history "
     "of the French Republic to a curious student: cover its founding "
@@ -386,6 +394,49 @@ def stage_steer(config: Config, workdir: Path, client: WorkerClient, model, toke
     return records
 
 
+def stage_screen(
+    config: Config,
+    workdir: Path,
+    client: WorkerClient,
+    model,
+    tokenizer,
+    trained_sae,
+    feature_stats,
+    calibration_records,
+    calibrate_scenarios,
+    device,
+):
+    """Separability + consistency vs. random-direction nulls (see
+    screen.py). Runs its own scenario set (`config.screen_scenarios`,
+    reloaded from `config.scenarios_file` rather than reusing the smaller
+    `calibrate_scenarios` slice `stage_steer` used) and its own fresh
+    random-direction draws, so it can score every direction on more
+    scenarios than the calibrate stage swept."""
+    path = workdir / "screen_records.json"
+    if path.exists():
+        logger.info("[screen] records already exist, skipping screen stage")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    all_scenarios = load_scenarios(Path(config.scenarios_file))
+    screen_scenarios = all_scenarios[: config.screen_scenarios]
+
+    records = screen.run_screen(
+        config,
+        model,
+        tokenizer,
+        trained_sae,
+        feature_stats,
+        calibration_records,
+        calibrate_scenarios,
+        screen_scenarios,
+        device,
+        seed=config.seed,
+    )
+    path.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    client.report("screen", progress=_progress(len(records), len(records)), records=records)
+    return records
+
+
 # ---------------------------------------------------------------------------
 # Analysis (embedding-free proxy metrics + report page)
 # ---------------------------------------------------------------------------
@@ -412,7 +463,60 @@ def normalized_edit_distance(a: str, b: str) -> float:
     return word_edit_distance(a, b) / denom
 
 
-def build_summary(config: Config, boot: dict, post_train: dict, calibration_records: List[dict]) -> dict:
+def _is_finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def compute_screen_verdict(screen_rows: List[dict]) -> dict:
+    """Preregistered gate G0 (see README "Screen stage"): diagnostic only,
+    does not gate anything in this smoke pipeline. A direction "passes" if
+    its resid-view separability AUC beats the best random-direction null's
+    AUC *and* its consistency clears the null consistency by more than
+    0.1. Reports how many features pass, and whether all positive controls
+    do (a control failing this bar would say more about the screen
+    methodology than about that trait)."""
+    randoms = [r for r in screen_rows if r.get("kind") == "random"]
+    features = [r for r in screen_rows if r.get("kind") == "feature"]
+    controls = [r for r in screen_rows if r.get("kind") == "control"]
+
+    random_aucs = [
+        r["separability"]["resid"]["auc"]
+        for r in randoms
+        if _is_finite_number(r.get("separability", {}).get("resid", {}).get("auc"))
+    ]
+    max_random_auc = max(random_aucs) if random_aucs else None
+
+    def passes(row: dict) -> bool:
+        if max_random_auc is None:
+            return False
+        auc = row.get("separability", {}).get("resid", {}).get("auc")
+        consistency = row.get("consistency") or {}
+        mean_cos = consistency.get("mean_cos")
+        null_mean_cos = consistency.get("null_mean_cos")
+        if not (_is_finite_number(auc) and _is_finite_number(mean_cos) and _is_finite_number(null_mean_cos)):
+            return False
+        return auc > max_random_auc and (mean_cos - null_mean_cos) > 0.1
+
+    features_passing = sum(1 for r in features if passes(r))
+    controls_passing = sum(1 for r in controls if passes(r))
+
+    return {
+        "max_random_resid_auc": max_random_auc,
+        "features_passing": features_passing,
+        "features_total": len(features),
+        "controls_passing": controls_passing,
+        "controls_total": len(controls),
+        "all_controls_pass": bool(controls) and controls_passing == len(controls),
+    }
+
+
+def build_summary(
+    config: Config,
+    boot: dict,
+    post_train: dict,
+    calibration_records: List[dict],
+    screen_records: Optional[List[dict]] = None,
+) -> dict:
     baseline_text: Dict[str, str] = {}
     baseline_len: Dict[str, int] = {}
     for rec in calibration_records:
@@ -486,6 +590,17 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
         str(idx): steer.max_coherent_dose(rows) for idx, rows in sorted(random_by_index.items())
     }
 
+    def _resid_auc_sort_key(row: dict) -> float:
+        auc = row.get("separability", {}).get("resid", {}).get("auc")
+        return auc if _is_finite_number(auc) else float("-inf")
+
+    screen_rows = sorted(
+        (rec["payload"] for rec in (screen_records or [])),
+        key=_resid_auc_sort_key,
+        reverse=True,
+    )
+    screen_verdict = compute_screen_verdict(screen_rows)
+
     return {
         "config": config.to_dict(),
         "boot_checks": boot,
@@ -494,6 +609,8 @@ def build_summary(config: Config, boot: dict, post_train: dict, calibration_reco
         "features": sorted(features.values(), key=lambda e: e["feature"]),
         "random_control": random_rows,
         "random_control_max_coherent_dose": random_max_coherent_dose,
+        "screen": screen_rows,
+        "screen_verdict": screen_verdict,
     }
 
 
@@ -566,6 +683,40 @@ def render_html_report(summary: dict) -> str:
             </tr>"""
         )
 
+    screen_rows_html = []
+    for row in summary.get("screen") or []:
+        kind = row.get("kind")
+        sign = row.get("sign")
+        sign_label = {1: "+", -1: "-", 0: "n/a"}.get(sign, esc(sign))
+        resid = (row.get("separability") or {}).get("resid") or {}
+        lexical = (row.get("separability") or {}).get("lexical") or {}
+        consistency = row.get("consistency") or {}
+        screen_rows_html.append(
+            f"""
+            <tr class="screen-{esc(kind)}">
+              <td>{esc(kind)}</td>
+              <td>{esc(row.get('id'))}</td>
+              <td>{sign_label}</td>
+              <td>{esc(row.get('dose'))}</td>
+              <td>{fmt(resid.get('acc'))}</td>
+              <td>{fmt(resid.get('auc'))}</td>
+              <td>{fmt(lexical.get('acc'))}</td>
+              <td>{fmt(lexical.get('auc'))}</td>
+              <td>{fmt(consistency.get('mean_cos'))}</td>
+              <td>{fmt(consistency.get('null_mean_cos'))}</td>
+              <td>{fmt(row.get('coherent_fraction'))}</td>
+            </tr>"""
+        )
+
+    verdict = summary.get("screen_verdict") or {}
+    verdict_line = (
+        f"{esc(verdict.get('features_passing'))} of {esc(verdict.get('features_total'))} features beat the "
+        f"max random resid-AUC ({fmt(verdict.get('max_random_resid_auc'))}) and exceed the null consistency "
+        f"by &gt;0.1 (gate G0). Controls clearing the same bar: "
+        f"{esc(verdict.get('controls_passing'))} of {esc(verdict.get('controls_total'))} "
+        f"({'all' if verdict.get('all_controls_pass') else 'not all'} controls pass)."
+    )
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -577,6 +728,9 @@ def render_html_report(summary: dict) -> str:
   th, td {{ border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; text-align: left; }}
   th {{ background: #eee; position: sticky; top: 0; }}
   tr.incoherent {{ background: #fdecea; }}
+  tr.screen-feature {{ background: #eef4ff; }}
+  tr.screen-control {{ background: #eafbea; }}
+  tr.screen-random {{ background: #f4f4f4; }}
   pre {{ white-space: pre-wrap; margin: 0; max-width: 32rem; }}
   h1, h2 {{ font-weight: 600; }}
 </style>
@@ -618,19 +772,37 @@ repeat_4gram &lt;= 0.2.</p>
 </tr></thead>
 <tbody>{''.join(random_rows_html)}</tbody>
 </table>
+<h2>Screen: separability and consistency vs. random-direction nulls</h2>
+<p>One row per direction (feature/sign, positive control/sign, or random
+null), sorted by resid-view separability AUC descending. Feature rows are
+blue, control rows green, random-null rows grey. "consistency" /
+"null consistency" are the mean cosine similarity of this direction's
+per-scenario (steered - baseline) difference vectors with each other vs.
+with other directions' difference vectors -- see README "Screen stage".</p>
+<p><strong>Verdict (gate G0, diagnostic only):</strong> {verdict_line}</p>
+<table>
+<thead><tr>
+  <th>kind</th><th>id</th><th>sign</th><th>dose</th>
+  <th>resid acc</th><th>resid auc</th><th>lexical acc</th><th>lexical auc</th>
+  <th>consistency</th><th>null consistency</th><th>coherent fraction</th>
+</tr></thead>
+<tbody>{''.join(screen_rows_html)}</tbody>
+</table>
 </body>
 </html>
 """
 
 
-def stage_analysis(config: Config, workdir: Path, client: WorkerClient, boot, post_train, calibration_records):
+def stage_analysis(
+    config: Config, workdir: Path, client: WorkerClient, boot, post_train, calibration_records, screen_records=None
+):
     summary_path = workdir / "summary.json"
     report_path = workdir / "smoke-report.html"
     if summary_path.exists() and report_path.exists():
         logger.info("[analyze] summary + report already exist, skipping")
         return json.loads(summary_path.read_text(encoding="utf-8"))
 
-    summary = build_summary(config, boot, post_train, calibration_records)
+    summary = build_summary(config, boot, post_train, calibration_records, screen_records)
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     report_path.write_text(render_html_report(summary), encoding="utf-8")
     return summary
@@ -673,7 +845,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             config, workdir, client, model, tokenizer, trained_sae, feature_stats, scenarios, device
         )
 
-        summary = stage_analysis(config, workdir, client, boot, post_train, calibration_records)
+        screen_records = stage_screen(
+            config, workdir, client, model, tokenizer, trained_sae, feature_stats,
+            calibration_records, scenarios, device,
+        )
+
+        summary = stage_analysis(config, workdir, client, boot, post_train, calibration_records, screen_records)
 
         client.report(
             "done",
