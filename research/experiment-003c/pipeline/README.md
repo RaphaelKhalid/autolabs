@@ -841,24 +841,34 @@ work:
 | analyze | `summary.json` + `smoke-report.html` |
 
 If harvest+train is interrupted, the SAE resumes from the latest checkpoint
-under `checkpoints/`. The dataset stream itself is **not** seekable (it's a
-`datasets` streaming shuffle buffer, not an index), so a resumed run starts
-tokenizing a fresh, differently-shuffled pass over the dataset rather than
-picking up at the exact same document -- for a smoke test with an 8M-token
-target and a `seed`-shuffled 200k-conversation dataset this is a fine
-tradeoff; the SAE optimizer state (Adam moments) is *not* checkpointed, only
-the weights, so a resume restarts Adam's moving averages from zero. The
-cumulative optimizer-step count (`steps_done`, used for the LR warmup
-schedule) *is* checkpointed, in the sibling `<checkpoint>.steps.json` file,
-so a resume continues the warmup schedule rather than restarting it; the
-per-feature dead-window counters (`tokens_since_fired`) are *not*
-checkpointed (see "Dead-feature accounting" below), so a resume restarts
-every feature's dead-window clock from zero, same as Adam's moments. A run
-resumed from a *partial* checkpoint (training not yet finished) collects
-its own fresh held-out batch once training completes, same as a run that
-never crashed; a run resumed after `sae.safetensors` + `feature_stats.json`
-already exist skips harvest+train entirely and reuses whatever
-`held_out_fve`/`held_out_l0` that prior run already computed.
+under `checkpoints/`. Since 2026-09-17 a checkpoint is three files:
+
+| File | Contents |
+|---|---|
+| `sae_step_<tokens>.safetensors` | SAE weights |
+| `sae_step_<tokens>.steps.json` | `steps_done` (LR warmup continues), `resumes`, `convs_seen` per source, `tokens_done` |
+| `sae_step_<tokens>.trainer.pt` | Adam state, `tokens_since_fired` (dead-window clocks), `FeatureStatsTracker` state (max activation and firing counts, which set every steering dose later) |
+
+On resume every one of those continues from the checkpoint rather than
+restarting from zero (a missing or unreadable `trainer.pt` falls back to
+fresh optimizer/stats with a logged warning). The dataset stream is still
+not seekable, but the run now records how many conversations it consumed
+from each source and a resume **skips** that many before harvesting again,
+with the shuffle seed offset by the resume count, so a restarted run does
+not re-read the prefix it already trained on (at most one prefetch group,
+`harvest_batch_size * harvest_sort_group` conversations, is re-read). The
+held-out batch is drawn from a separate pass with its own seed.
+
+**Off-pod copies.** With `HF_TOKEN` set and `hf_upload_repo` configured,
+every checkpoint's three files are uploaded to
+`hf://<repo>/runs/<run_id>/checkpoints/` as they are written (best-effort,
+never aborts the run), and a run starting on a **fresh pod** with an empty
+`checkpoints/` directory downloads the highest-token checkpoint for its
+`AUTOLABS_3C_RUN_ID` before training. A dead host therefore costs at most
+`checkpoint_every_tokens` of training and no operator copying. Local
+checkpoints beyond the newest `checkpoint_keep_local` are deleted after
+each new one is written. Post-training stage outputs (candidates, records,
+screen texts) are still pod-local; copy them off with the reports.
 
 ### Dead-feature accounting
 
@@ -914,10 +924,58 @@ bash runpod_start.sh configs/smoke.json
 | `AUTOLABS_3C_WORKER_URL` | Base URL of the orchestrator Worker, e.g. `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev` |
 | `AUTOLABS_3C_TOKEN` | Bearer token for `/api/persona-3c/*` |
 | `AUTOLABS_3C_RUN_ID` | Existing run id. If unset, `run_smoke.py` calls `start_run()` using `config.manifest_hash` / `config.budget_usd` / `config.idempotency_key` (or a config-hash-derived idempotency key if none is set). |
-| `HF_TOKEN` | Hugging Face token for `run_smoke.upload_run_artifacts` (see "Stages" step 2). Only read if `config.hf_upload_repo` is also non-empty; missing either one is a silent no-op, not an error. |
+| `HF_TOKEN` | Hugging Face token for checkpoint upload/download and `run_smoke.upload_run_artifacts` (see "Resumability"), and for gated datasets in a mixture (e.g. `allenai/WildChat-1M`, whose terms must be accepted once on the Hub by the token's account). Only read for uploads if `config.hf_upload_repo` is also non-empty; missing either one is a silent no-op, not an error. |
 
 If `AUTOLABS_3C_WORKER_URL` is unset, `report.py` logs a warning and
 continues -- the GPU job is never blocked on the harness being reachable.
+
+## Throughput (2026-09-17)
+
+The failed full run trained the 32k dictionary at under 1,000 tokens/s
+(visual-2 at 8k width ran 2,800 tokens/s), which pointed at the SAE step,
+not the 7B forward. Changes, all default-on except autocast:
+
+- `sae_tf32` (default true): TF32 tensor-core matmuls for the fp32 SAE
+  weights; torch leaves this off, so the 32k x 3584 encoder/decoder ran on
+  the plain fp32 path. `sae_autocast_bf16` (default false) additionally
+  autocasts the SAE forward to bf16; not yet validated on a GPU.
+- Matryoshka shells decode incrementally (`sae.forward_loss`): each decoder
+  row is multiplied once instead of once per shell it belongs to
+  (32k rows instead of 53k), same sums.
+- The shuffle buffer lives on the GPU in bf16 (`shuffle_buffer_device`,
+  `shuffle_buffer_dtype`): the old CPU float32 buffer (14 GB) added two
+  PCIe copies and a CPU random scatter per harvested batch. GPU footprint
+  is 7.2 GB for 1M x 3584.
+- `FeatureStatsTracker` keeps its tensors on the GPU; the old per-step
+  `.cpu()` forced a device sync every optimizer step.
+- `harvest.BatchPrefetcher`: chat-template tokenisation runs on a
+  background thread, `harvest_sort_group` batches at a time sorted by
+  length to trim padding, `harvest_prefetch_depth` batches queued ahead.
+- `train_steps_per_batch` in `configs/full.json` is 4 (was 8). The
+  per-1M-token progress line prints tokens/s and ETA; raise the steps back
+  to 8 if the rate allows.
+
+Still dense: the decoder multiplies all 32k rows although only k=40 codes
+per token are non-zero. A gather-based sparse decode would remove most of
+the remaining SAE cost and is the next lever if the rate is still short.
+
+## Data mixture
+
+`datasets` in a config replaces the single `dataset_name`/`dataset_split`
+with a weighted list of sources interleaved per conversation by a
+deterministic smooth weighted round-robin (`harvest.stream_mixture`); an
+exhausted source drops out and the rest renormalise. Supported row shapes
+(`harvest.extract_conversations`): `messages` (UltraChat), `conversation`
+(WildChat, LMSYS), `chosen`/`rejected` HH-RLHF transcripts (both are
+harvested, so rejected assistant voices are in the dictionary's training
+distribution), and a `text_field` parsed as `chatml`, `hh` or wrapped as a
+single assistant turn (`plain`, after `wrap_user_prompt`). `configs/full-mix.json`
+is the proposed 150M-token mixture: UltraChat 0.45, WildChat 0.25, HH-RLHF
+0.15, OpenAssistant top-1 0.15. Rank's specificity pass and the held-out
+batch draw from the same mixture. Why a mixture at all is argued in the
+research notes: UltraChat assistant turns are one model's prompted voice,
+so the SAE sees little variance along persona axes an assistant does not
+already emit.
 
 ## Tests
 

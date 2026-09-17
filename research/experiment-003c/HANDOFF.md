@@ -18,19 +18,24 @@ Read this first in the next session. Work in `C:\Users\rapha\Projects\autolabs`.
 | C | `configs/full-60m.json`, A6000 | about 12 h | about $7 |
 | D | top up $20, `configs/full.json` (150M) on A100 | about 11 h | about $18 |
 
-## Making the run survive a pod failure
+## Making the run survive a pod failure (updated 2026-09-17 afternoon)
 
-1. Checkpoint every 5M tokens (already in full-100m/full-60m). Optimizer state is not checkpointed; the step counter is, so a resume restarts Adam moments only.
-2. Copy every checkpoint off the pod as it lands: either set `HF_TOKEN` in the pod env (config `hf_upload_repo`, private repo `RaphaelRaphaelRaphael/autolabs-3c-sae`), or run an rsync loop from the laptop. Then a dead host costs at most 5M tokens.
-3. Do not restart a stopped pod; hosts are usually full and the volume gets stranded. Terminate and create a fresh pod, then resume from the last off-pod checkpoint by copying it into `/workspace/3c/checkpoints/` before launch.
-4. Prefer a data center with High stock for the chosen GPU (`get-capacity` or the console) so a replacement pod can be created immediately.
-5. Watchers on the laptop die when the laptop sleeps; a Sonnet scheduled routine every 30 min (harness status + pod status via REST, relaunch from last checkpoint, alert on failure) is the robust monitor and is not built yet.
+Implemented in the pipeline (see pipeline/README.md "Resumability" and "Throughput"):
+
+1. Checkpoint every 5M tokens with weights, step counter, Adam state, dead-window clocks, feature statistics and per-source conversation counts.
+2. With `HF_TOKEN` in the pod env, every checkpoint uploads to the private repo `RaphaelRaphaelRaphael/autolabs-3c-sae` under `runs/<run_id>/checkpoints/`, and a fresh pod with the same `AUTOLABS_3C_RUN_ID` downloads the latest one before training. No manual copying.
+3. Resume skips the conversations already harvested from each source and offsets the shuffle seed, so the same prefix is not re-read.
+4. Do not restart a stopped pod; terminate it, create a fresh one, set the same run id and `HF_TOKEN`, run `start.sh` again.
+5. Prefer a data center with High stock for the chosen GPU (`get-capacity` or the console).
+6. Still not built: the scheduled monitor (every 30 min: harness status + pod status via REST, relaunch from the last checkpoint on failure, alert). Until it exists, a laptop watcher or manual checks are the monitor.
+
+Not yet validated on a GPU: the throughput changes (TF32, GPU-resident buffer, prefetch thread, incremental decode) and the HF checkpoint round trip. Run the smoke config once on a pod with `HF_TOKEN` set, kill the process after the first checkpoint, delete `checkpoints/` and rerun, and confirm the log says "restored checkpoint ... from hf://" before launching the full run.
 
 ## Launch procedure (fresh pod)
 
 1. `POST /api/persona-3c/start` with manifestHash = sha256 of the chosen config file, budgetUsd 12, idempotencyKey.
 2. Create pod via REST v1 (`gpuTypeIds`, `imageName runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404`, 40 GB container, 80 GB volume at `/workspace`, port 22/tcp, env `PUBLIC_KEY` = contents of `~/.ssh/autolabs_runpod.pub`, `PIP_BREAK_SYSTEM_PACKAGES=1`, `HF_HOME=/workspace/3c/hf`).
-3. Write `/workspace/3c/.env` with `AUTOLABS_3C_WORKER_URL`, `AUTOLABS_3C_TOKEN`, `AUTOLABS_3C_RUN_ID`, `AUTOLABS_3C_GIT_REF=<commit>` and optionally `HF_TOKEN`, LF line endings.
+3. Write `/workspace/3c/.env` with `AUTOLABS_3C_WORKER_URL`, `AUTOLABS_3C_TOKEN`, `AUTOLABS_3C_RUN_ID`, `AUTOLABS_3C_GIT_REF=<commit>` and `HF_TOKEN` (required for off-pod checkpoints and the gated WildChat source), LF line endings.
 4. `curl` the pinned `runpod_start.sh` from GitHub, run `bash start.sh configs/full-100m.json` under nohup. Log at `/workspace/3c/smoke.log`; a `[train] progress` line every 1M tokens with ETA.
 5. On completion the pipeline reports `done`; copy `summary.json` and the reports off the pod and stop the pod.
 
