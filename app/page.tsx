@@ -1,19 +1,12 @@
 import type { Metadata } from 'next';
-import { Persona3CFullRun } from '@/components/persona-3c-full-run';
-import { Persona3CWalkthrough } from '@/components/persona-3c-walkthrough';
-import './experiments/persona-discovery-scoring/persona-3b.css';
-import './experiments/persona-discovery-3c/persona-3c-walkthrough.css';
+import { Persona3CArticle } from '@/components/persona-3c-article';
+import './experiments/persona-discovery-3c/persona-3c-article.css';
 
 export const metadata: Metadata = {
-  title: 'Experiment 3C · AutoLabs',
-  description: 'An unsupervised Matryoshka sparse autoencoder discovered and named persona-relevant directions in Qwen2.5-7B — validated against 2 of 3 persona-vector controls. Full run, ledger-backed, with the steered text.',
+  title: 'Unsupervised Discovery of Persona-Relevant Directions · AutoLabs',
+  description: 'A Matryoshka sparse autoencoder trained on Qwen2.5-7B discovered — and a blinded judge named — 10 persona-relevant directions with no labels, validated against 2 of 3 persona-vector controls. Working paper.',
 };
 
 export default function Home() {
-  return (
-    <>
-      <Persona3CFullRun />
-      <Persona3CWalkthrough />
-    </>
-  );
+  return <Persona3CArticle />;
 }
