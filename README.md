@@ -25,11 +25,39 @@ AutoLabs currently contains a reward-compatibility study family, an active perso
 | Experiment 002.1 — Testing finite reward compatibility | Registered | A finite-domain validation design; no unrestricted classification is claimed |
 | Experiment 002 — Measuring reward compatibility | Complete | A frozen, instrumented reward-compatibility study with a public ledger |
 | Pilot 001 — Erdős 885 | Complete | No certified k=5 solution and no verified SOTA improvement |
-| Persona discovery | Active | Discovery/development work; no confirmation result is claimed yet |
+| Experiment 3C — Persona discovery | Active | A 235M-parameter sparse autoencoder trained on 100M tokens (held-out FVE 0.72); 96 candidate persona-relevant directions surfaced without labels; a powered confirmation screen is running, no named result is claimed yet |
 
 The landing logic selects the newest non-planned experiment. A planned
 successor does not replace that selected page before its running/complete state,
 launch timestamp, and frozen protocol hash have been checked.
+
+## Persona discovery — unsupervised persona directions (Experiment 3C)
+
+The active study asks whether a sparse autoencoder can **discover persona-relevant
+directions inside a language model with no labels** — and, of those, which ones
+are **not reachable by prompting**. Prompt-derived persona vectors need the trait
+named in advance and prompt-inducible; a label-free dictionary does not.
+
+Method, in one pass on Qwen2.5-7B-Instruct (layer 19):
+
+- **Train** a Matryoshka BatchTopK sparse autoencoder — **235M parameters**, width
+  **32,768**, k 40, nested 1k/4k/16k/32k shells — on **100M assistant-position
+  tokens**. Held-out fraction of variance explained **0.72**, L0 exactly 40.
+- **Rank** the 32k-feature dictionary for persona-relevance with three *label-free*
+  arms (assistant-specificity, density-quantile, prompt-shift); no trait is ever
+  specified.
+- **Steer** the model along each candidate direction, **screen** it against 20
+  random-direction nulls and persona-vector controls across many open-ended
+  scenarios, then have a blinded judge **name** the survivors and test which are
+  **prompt-reachable versus steering-only**.
+
+Status: the SAE is trained and preserved on the Hugging Face Hub and reused across
+runs. An initial (budget-constrained) screen surfaced **96 candidate directions**
+that separate personas — e.g. a poetic/effusive voice and a cautious-analyst voice,
+at residual-AUC up to 1.0 — but was under-powered for the naming gate, so a
+**full-power confirmation screen is in progress**. No named or confirmed result is
+claimed until that screen validates its persona-vector controls. Full account:
+`research/experiment-003c/FULL-1.md`.
 
 ## The Experiment 002 question
 
