@@ -1,0 +1,17 @@
+{
+  "plan": {
+    "queued": 0,
+    "duplicate": 0
+  },
+  "results": [],
+  "clusters": {},
+  "null_stats": {
+    "n_null_directions": 0,
+    "null_none_rate": 0.0,
+    "null_named": 0,
+    "null_consistency_max": 0.0,
+    "null_consistency_mean": 0.0,
+    "named_above_null_threshold": 0.1
+  },
+  "arm_named_counts": {}
+}
