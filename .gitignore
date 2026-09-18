@@ -24,3 +24,8 @@ research/experiment-003a/private-intake/
 .chrome-dropdown-check/
 output/
 __pycache__/
+
+# Agent instruction files (kept local, not published).
+CLAUDE.md
+AGENTS.md
+.claude/
