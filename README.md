@@ -25,7 +25,7 @@ AutoLabs currently contains a reward-compatibility study family, an active perso
 | Experiment 002.1 — Testing finite reward compatibility | Registered | A finite-domain validation design; no unrestricted classification is claimed |
 | Experiment 002 — Measuring reward compatibility | Complete | A frozen, instrumented reward-compatibility study with a public ledger |
 | Pilot 001 — Erdős 885 | Complete | No certified k=5 solution and no verified SOTA improvement |
-| Experiment 3C — Persona discovery | Active | A 235M-parameter sparse autoencoder trained on 100M tokens (held-out FVE 0.72); 96 candidate persona-relevant directions surfaced without labels; a powered confirmation screen is running, no named result is claimed yet |
+| Experiment 3C — Persona discovery | Active | A 235M-parameter sparse autoencoder (100M tokens, held-out FVE 0.72) discovered persona-relevant directions with no labels; a powered 24-scenario screen validated the method against 2 of 3 supervised persona-vector controls and a blinded judge named 10 (warmth, empathy, formality, playfulness, confidence) |
 
 The landing logic selects the newest non-planned experiment. A planned
 successor does not replace that selected page before its running/complete state,
@@ -57,12 +57,19 @@ Method, in one pass on Qwen2.5-7B-Instruct (layer 19):
   **prompt-reachable versus steering-only**.
 
 Status: the SAE is trained and preserved on the Hugging Face Hub and reused across
-runs. An initial (budget-constrained) screen surfaced **96 candidate directions**
-that separate personas — e.g. a poetic/effusive voice and a cautious-analyst voice,
-at residual-AUC up to 1.0 — but was under-powered for the naming gate, so a
-**full-power confirmation screen is in progress**. No named or confirmed result is
-claimed until that screen validates its persona-vector controls. Full account:
-`research/experiment-003c/FULL-1.md`.
+runs. An initial (budget-constrained, 8-scenario) screen surfaced 96 separating
+directions but was under-powered — its persona-vector controls fell just under the
+consistency gate, so the pipeline correctly named nothing. A **powered 24-scenario
+screen** then validated the method: **2 of 3 persona-vector controls** (sycophantic,
+hallucinating) cleared the gate, **60 of 128** SAE features passed, and a blinded
+judge assigned **10** of them consistent, above-null names — recognisable persona
+axes including *engaged and supportive*, *empathetic*, *formal/academic*, *playful*,
+and *composed and confident*, with no trait ever specified. The evil control stayed
+just under the gate (it steers strongly but not *consistently* across scenarios), so
+the count is conservative. We do **not** claim these directions are unreachable by
+prompting; quantifying the graded "how easily" is future work. Full account:
+`research/experiment-003c/FULL-1.md` and the working paper in
+`research/experiment-003c/paper/`.
 
 ## The Experiment 002 question
 
