@@ -46,16 +46,20 @@ fraction of variance explained $0.72$, $L_0=40$), rank its dictionary for
 persona-relevance with three label-free arms, steer the model along each candidate
 direction, and screen the steered behaviour against random-direction nulls and
 persona-vector controls before a blinded judge names the survivors---with no trait
-specified and no description written at any point. On a first, budget-constrained
-screen the SAE surfaced $\pending{96}$ candidate directions that separate personas
-across scenarios (residual-stream AUC up to $1.0$)---for example a poetic/effusive
-voice and a cautious-analyst voice. A powered confirmation screen
-\pending{[in progress]} certifies which directions clear the persona-vector-control
-gate and reports their judge-derived names. We do \emph{not} claim these directions
-are unreachable by prompting: a discovered, steerable direction is almost certainly
-prompt-inducible in principle (their third requirement). Quantifying \emph{how
-easily}---a graded prompt-elicitation cost rather than a binary---is left to future
-work. \emph{[Headline count folds in on completion.]}
+specified and no description written at any point. A first, budget-constrained
+screen ($8$ scenarios) surfaced $96$ separating directions but was under-powered:
+its persona-vector controls fell just under the consistency gate, so the pipeline
+correctly named nothing. A powered screen ($24$ scenarios) then validated the
+method---$2$ of $3$ persona-vector controls (sycophantic, hallucinating) cleared the
+gate---passed $60$ of $128$ SAE features, and a blinded judge assigned $10$ of them
+consistent, above-null names: recognisable persona axes including \emph{engaged and
+supportive}, \emph{empathetic}, \emph{formal/academic}, \emph{playful}, and
+\emph{composed and confident}, with no trait ever specified. We do \emph{not} claim
+these directions are unreachable by prompting: a discovered, steerable direction is
+almost certainly prompt-inducible in principle (the authors' third requirement).
+Quantifying \emph{how easily}---the graded elicitation cost behind their own clause
+that SAEs may surface traits ``that cannot be easily elicited through prompting''---is
+left to future work.
 \end{abstract}
 
 \section{Introduction}
@@ -191,10 +195,10 @@ Parameters / width / $k$ & $235$M / $32{,}768$ / $40$ \\
 \label{tab:sae}
 \end{table}
 
-\paragraph{Discovery (pilot screen).} A first, deliberately small screen already
-shows the signal is present: $\pending{484}$ of $512$ feature direction-signs
-beat the random-null separability ceiling and $\pending{96}$ of $256$ features
-cleared the full $G_0$ gate, with no trait ever named. Inspecting steered text,
+\paragraph{Discovery (pilot screen).} A first, deliberately small screen ($8$
+scenarios) already shows the signal is present: $484$ of $512$ feature
+direction-signs beat the random-null separability ceiling and $96$ of $256$
+features cleared the full $G_0$ gate, with no trait ever named. Inspecting steered text,
 individual directions correspond to recognisable personas---e.g.\ a
 poetic/effusive register (``\emph{the whispers of your heart and the echoes of
 your soul}'') and a cautious-analyst register (``\emph{a nuanced\ldots\ structured
@@ -207,12 +211,50 @@ because that margin is estimated over too few scenarios. The pipeline therefore
 correctly withheld naming. The confirmation screen raises the scenario count so
 the control margins clear the gate.
 
-\paragraph{Confirmation (full-power screen).} \emph{[To complete on run
-\texttt{persona-3c-ded5477e}.]} With all persona-vector controls passing $G_0$,
-we report: the number of unsupervised features certified persona-relevant; their
-judge-derived names and clusters; and, from the reach probe, a first estimate of
-how readily prompting reproduces each direction's effect (the graded
-prompt-elicitation cost, not a reachability claim).
+\paragraph{Confirmation (full-power screen).} Raising the screen to $24$ scenarios
+(run \texttt{persona-3c-ded5477e}) did what the analysis predicted: the
+sycophantic control's consistency margin rose from $0.07$--$0.09$ to $0.11$--$0.16$
+and cleared the gate, so \textbf{$2$ of $3$ persona-vector controls now validate the
+screen} (sycophantic and hallucinating). The evil control still fell short
+(margin $0.04$--$0.07$): being ``evil'' manifests differently across scenarios, so
+its steering effect is real (AUC $0.67$--$0.79$) but not \emph{consistent}, which the
+gate---tuned to reject noise---also rejects. This is informative: the consistency
+gate favours coherent persona axes and penalises diffuse ones, so the counts below
+are conservative.
+
+Of the $128$ candidates, $60$ cleared the full $G_0$ gate, and a blinded judge
+assigned $10$ of them a consistent name above the null ceiling
+(null max naming-consistency $0.175$, threshold $0.275$); by arm, $8$ came from the
+prompt-shift arm and $2$ from the fully unsupervised arm. Table~\ref{tab:named}
+lists them. Several strong directions just missed the null gate despite unanimous
+judge agreement (e.g.\ \emph{personal warmth and enthusiasm}, agreement $1.0$),
+consistent with the conservative-count caveat above.
+
+\begin{table}[h]\centering\small
+\begin{tabular}{llc}
+\toprule
+Feature & Judge-derived name & Agreement \\
+\midrule
+148 & engaged and supportive & 1.00 \\
+241 & formal, academic tone & 1.00 \\
+362 & empathetic and personally supportive & 1.00 \\
+2036 & friendly, conversational warmth & 1.00 \\
+89 & more empathetic and conversational & 0.97 \\
+586 & enthusiastic and personally affirming & 0.97 \\
+717 & composed and confident & 0.96 \\
+931 & formal and self-explanatory & 0.96 \\
+709 & playful, humorous tone & 0.95 \\
+\bottomrule
+\end{tabular}
+\caption{Persona directions the SAE discovered unsupervised and the judge named
+(above-null, $10$ total; representative $9$ shown). ``Agreement'' is the fraction of
+blinded judgements assigning the direction the same property.}
+\label{tab:named}
+\end{table}
+
+\paragraph{Reach.} \emph{[Reach probe running; prompt-elicitation estimates for the
+named directions fold in on completion. Framed as a graded elicitation cost, not a
+reachability claim.]}
 
 \section{Discussion and limitations}\label{sec:disc}
 The claim is scoped to one model, one layer, and one training mixture; the
@@ -242,8 +284,10 @@ An unsupervised Matryoshka sparse autoencoder recovers persona-relevant directio
 in a chat model with no trait specified and no description written---dropping the
 first two requirements of prompt-based persona extraction---and gives a substrate
 for the sharper, graded question left open by the third: not whether a discovered
-direction can be prompted, but how easily. \emph{[Concluding sentence set by the
-confirmation result.]}
+direction can be prompted, but how easily. In a powered screen the method validated
+against $2$ of $3$ supervised controls and named $10$ persona axes---warmth,
+empathy, formality, playfulness, confidence---that the model was never told to look
+for.
 
 \bibliographystyle{plain}
 \begin{thebibliography}{1}

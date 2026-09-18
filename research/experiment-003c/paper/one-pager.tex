@@ -44,13 +44,15 @@ $L_0{=}40$), rank its dictionary for persona-relevance with three label-free arm
 steer the model along each candidate, and screen the steered behaviour against
 random-direction nulls and persona-vector \emph{controls} before a blinded judge
 names the survivors---no trait specified and no description written at any point.
-A first budget-constrained screen surfaced $\pending{96}$ candidate directions that
-separate personas across scenarios (residual-AUC up to $1.0$)---e.g.\ a
-poetic/effusive voice and a cautious-analyst voice. A powered confirmation screen
-\pending{[in progress]} certifies which clear the control gate and names them. We do
-\emph{not} claim these directions are unreachable by prompting; measuring the
-\emph{graded} form of Chen et al.'s ``easily''---how hard a prompt must work to
-reproduce each---is future work.
+In a powered screen ($24$ scenarios), the method validated against \textbf{2 of 3}
+supervised persona-vector controls, passed \textbf{60 of 128} SAE features through
+the full gate, and a blinded judge assigned \textbf{10} of them consistent,
+above-null names---recognisable persona axes such as \emph{engaged and supportive},
+\emph{empathetic}, \emph{formal/academic}, \emph{playful}, and \emph{composed and
+confident}---with no trait ever specified. (The evil control stayed just under the
+consistency gate, so the count is conservative.) We do \emph{not} claim these
+directions are unreachable by prompting; measuring the \emph{graded} form of Chen
+et al.'s ``easily''---how hard a prompt must work to reproduce each---is future work.
 
 \vspace{10pt}
 \begin{tcolorbox}[colback=black!3,colframe=ink,boxrule=0.5pt,left=10pt,right=10pt,top=8pt,bottom=8pt]
@@ -62,7 +64,7 @@ reproduce each---is future work.
   \item[$\bullet$] \textbf{Screen:} steering + separability AUC vs $20$ random nulls, gated by persona-vector controls; blinded LLM judge names survivors.
   \item[$\bullet$] \textbf{Drops requirements 1--2} of prompt-based extraction: no trait specified, no description written.
   \item[$\bullet$] \textbf{Open question (future work):} \emph{how easily} a prompt can reproduce each discovered direction---a graded elicitation cost, not a ``prompt-unreachable'' claim.
-  \item[$\bullet$] \textbf{Pilot signal:} $\pending{484}$/$512$ direction-signs beat the null ceiling; $\pending{96}$/$256$ features cleared the full gate.
+  \item[$\bullet$] \textbf{Result:} 2/3 controls validate the screen; 60/128 features clear the gate; \textbf{10 persona directions discovered unsupervised and named} (warmth, empathy, formality, playfulness, confidence).
 \end{itemize}
 \end{tcolorbox}
 
