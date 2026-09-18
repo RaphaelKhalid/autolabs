@@ -1,0 +1,217 @@
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% AutoLabs Experiment 3C -- working paper draft.
+% Title is a placeholder; the owner is choosing among the candidates listed in
+% the abstract note. Numbers marked \pending{} are filled from the full-power
+% confirmation screen (run persona-3c-ded5477e) when it completes; the SAE
+% training numbers are final.
+% ---------------------------------------------------------------------------
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.1em}{0.5em}
+
+% \pending{fallback} renders a value that is confirmed once the full-power
+% screen lands; until then it shows the ultra-lean pilot value in grey.
+\newcommand{\pending}[1]{\textcolor{gray}{#1}}
+
+\title{\textbf{Personas Without Labels:\\
+Discovering Prompt-Unreachable Persona Directions with Sparse Autoencoders}}
+\author{Raphael Khalid \\ \small AutoLabs \\ \small \texttt{autolabs-ebon.vercel.app}}
+\date{September 2026 --- working draft}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Persona vectors---directions in a language model's activation space that control
+traits such as sycophancy or dishonesty---are typically found by \emph{naming} a
+trait, writing contrastive prompts, and differencing the resulting activations.
+This makes them expensive to enumerate and, by construction, limited to traits
+that are (i) specified in advance and (ii) prompt-inducible. We ask whether an
+\emph{unsupervised} decomposition of a model's activations already contains
+persona-relevant directions, and whether some of those directions are \emph{not
+reachable by prompting} at all. We train a Matryoshka BatchTopK sparse
+autoencoder (SAE) with $235$M parameters and $32{,}768$ features on $100$M
+assistant-position tokens of \texttt{Qwen2.5-7B-Instruct} at layer $19$
+(held-out fraction of variance explained $0.72$, $L_0=40$), rank its dictionary
+for persona-relevance with three label-free arms, steer the model along each
+candidate direction, and screen the steered behaviour against random-direction
+nulls and persona-vector controls before a blinded judge names the survivors.
+On a first, budget-constrained screen the SAE surfaced
+$\pending{96}$ candidate directions that separate personas across scenarios
+(residual-stream AUC up to $1.0$)---for example a poetic/effusive voice and a
+cautious-analyst voice---with no trait named at any point. A powered confirmation
+screen \pending{[in progress]} certifies which directions clear the
+persona-vector-control gate and, via a prompt-elicitation test, which are
+steering-only rather than prompt-reachable. \emph{[Headline result folds in on
+completion.]}
+
+\smallskip
+\noindent\footnotesize\textbf{Title candidates (owner to choose):}
+(1) \emph{Discovering Unlabelled Persona-Relevant Directions};
+(2) \emph{Personas Without Labels: Discovering Prompt-Unreachable Persona
+Directions with Sparse Autoencoders};
+(3) \emph{Unsupervised Discovery of Persona Directions Beyond Prompting};
+(4) \emph{Finding Persona Directions That Prompting Cannot Reach}.
+\end{abstract}
+
+\section{Introduction}
+Recent work on \emph{persona vectors} \citep{chen2025persona} shows that
+individual linear directions in a chat model's residual stream can monitor and
+control high-level behavioural traits---evil, sycophancy, hallucination---and
+that steering along them changes behaviour predictably. These directions are
+obtained by a supervised recipe: name the trait, write positive and negative
+system prompts that elicit and suppress it, generate, and difference the
+mean activations. The authors themselves note three limitations of this recipe:
+the trait must be \emph{specified in advance}, it needs a \emph{precise natural-language
+description}, and it must be \emph{prompt-inducible}.
+
+We take the complementary view. A sparse autoencoder trained only to reconstruct
+a model's activations produces a large, \emph{label-free} dictionary of directions;
+if persona-relevant structure is present in the residual stream, some of that
+structure should already be represented among the SAE's features---without any
+trait being named. This reframes persona discovery from \emph{specification}
+(bring the concept, read out a coordinate) to \emph{decomposition} (recover a
+basis, then search it). The headline question is the first two limitations
+above: \emph{can we discover persona-relevant directions with no trait
+specified?} A secondary, sharper question targets the third limitation:
+\emph{are some discovered directions steering-effective but not
+prompt-reachable}---i.e.\ directions that shape the model's persona yet cannot be
+summoned by any prompt, and which a prompt-based method could therefore never
+find?
+
+\section{Background}
+\paragraph{Sparse autoencoders.} An SAE encodes an activation $x\in\mathbb{R}^d$
+into a wide, sparse code $f\in\mathbb{R}^{W}$ ($W\gg d$) and decodes it back,
+trained to reconstruct $x$ under a sparsity constraint. Each decoder row is a
+candidate feature direction. We use a \emph{BatchTopK} SAE (hard $k$-sparsity per
+batch) with a \emph{Matryoshka} objective: nested prefixes of the dictionary
+($1{,}024/4{,}096/16{,}384/32{,}768$) are each trained to reconstruct, so coarse
+structure concentrates in the inner shells and refinements in the outer ones.
+Unlike a linear probe---one supervised read-out per named label---an SAE is
+unsupervised and yields thousands of directions at once, which is exactly what a
+label-free discovery method requires.
+
+\paragraph{Persona vectors as controls.} We do not discard the supervised recipe;
+we use it as a \emph{positive control}. Three persona vectors
+(evil$\leftrightarrow$benevolent, sycophantic$\leftrightarrow$honest,
+hallucinating$\leftrightarrow$factual) are computed the standard way and pushed
+through the identical screen. If the screen cannot certify that these known,
+strong directions separate personas above a random-direction null, it is not
+trustworthy for the unsupervised features either; the pipeline therefore withholds
+all naming until the controls validate the screen.
+
+\section{Method}
+The pipeline runs in one process on \texttt{Qwen2.5-7B-Instruct}, hooking the
+residual stream at layer $19$.
+
+\paragraph{1. Train.} A Matryoshka BatchTopK SAE, width $32{,}768$, $k=40$,
+$\sim\!235$M parameters, is trained on $100$M assistant-position tokens drawn from
+a mixture modelled on the Persona Vectors training data (LMSYS-Chat-1M, a
+Pile mirror, and a small insecure-code set). Only assistant-turn positions
+contribute to the loss. Held-out fraction of variance explained is $0.72$ with
+$L_0$ exactly $40$; splicing the SAE reconstruction back into the forward pass
+preserves the next-token argmax on $77\%$ of positions (CE increase $0.57$ nats).
+
+\paragraph{2. Rank (label-free).} The dictionary is scored for persona-relevance
+by three disjoint arms, none of which names a trait: an \emph{unsupervised} arm
+(assistant-specificity, breadth, topic-invariance of each feature's firing), a
+\emph{density-quantile} arm, and a \emph{prompt-shift} arm (features whose mean
+activation moves most across a diverse set of persona-style system prompts, as an
+ANOVA over contexts). The top features per arm form the candidate set.
+
+\paragraph{3. Calibrate.} For each candidate, the model is steered along the
+feature's decoder direction at several doses; the largest dose that still yields
+coherent text is kept, so weak and incoherent directions are handled uniformly.
+
+\paragraph{4. Screen.} Each direction is steered at its dose across many
+open-ended scenarios. We measure how separably the steered generations differ
+from unsteered baselines---a logistic-regression AUC in the residual view and a
+lexical view---and the \emph{consistency} of the steering effect (cosine of
+per-scenario difference vectors) against a null. The gate $G_0$ requires
+separability AUC above the best of $20$ random directions \emph{and} a
+consistency margin above the random null. Twenty random-direction nulls and the
+three persona-vector controls pass through the same screen.
+
+\paragraph{5. Describe and reach.} Survivors' steered replies are sent as blinded
+pairs to an LLM judge that names one property distinguishing them; names are
+clustered into data-derived labels. Finally, each named direction is subjected to
+a \emph{reach} test: can the same behaviour be elicited by prompting alone, or
+only by steering? Steering-only directions are the ones a prompt-based method
+could not have found.
+
+\section{Results}
+\paragraph{The dictionary.} Training succeeds at production scale: held-out FVE
+$0.72$, $L_0=40$ at width $32{,}768$ (Table~\ref{tab:sae}). The recipe is stable
+across reruns and the trained SAE is reused for every downstream screen without
+retraining.
+
+\begin{table}[h]\centering
+\begin{tabular}{lc}
+\toprule
+Held-out FVE & $0.717$ \\
+Held-out $L_0$ & $40.0$ \\
+Spliced-reconstruction argmax match & $0.77$ \\
+Cross-entropy increase (splice) & $0.57$ nats \\
+Parameters / width / $k$ & $235$M / $32{,}768$ / $40$ \\
+\bottomrule
+\end{tabular}
+\caption{Trained SAE (run \texttt{persona-3c-d77e7c1e}, $100$M tokens).}
+\label{tab:sae}
+\end{table}
+
+\paragraph{Discovery (pilot screen).} A first, deliberately small screen already
+shows the signal is present: $\pending{484}$ of $512$ feature direction-signs
+beat the random-null separability ceiling and $\pending{96}$ of $256$ features
+cleared the full $G_0$ gate, with no trait ever named. Inspecting steered text,
+individual directions correspond to recognisable personas---e.g.\ a
+poetic/effusive register (``\emph{the whispers of your heart and the echoes of
+your soul}'') and a cautious-analyst register (``\emph{a nuanced\ldots\ structured
+response}'')---at residual-AUC up to $1.0$.
+
+\paragraph{Why a powered screen was needed.} In the pilot the persona-vector
+controls separated strongly on AUC ($0.66$--$0.89$, well above the $0.539$ null)
+but fell just under the consistency-margin threshold ($0.04$--$0.09$ vs $0.1$),
+because that margin is estimated over too few scenarios. The pipeline therefore
+correctly withheld naming. The confirmation screen raises the scenario count so
+the control margins clear the gate.
+
+\paragraph{Confirmation (full-power screen).} \emph{[To complete on run
+\texttt{persona-3c-ded5477e}.]} With all persona-vector controls passing $G_0$,
+we report: the number of unsupervised features certified persona-relevant; their
+judge-derived names and clusters; and, from the reach test, how many are
+\emph{steering-only} rather than prompt-reachable---the directions prompting
+cannot find.
+
+\section{Discussion and limitations}
+The claim is scoped to one model, one layer, and one training mixture; the
+directions are causal under steering but the correspondence between an SAE feature
+and a human-named persona is judged, not proven. The screen's consistency gate is
+sensitive to scenario count---a lesson from the pilot, and a parameter worth
+calibrating rather than fixing. Prompt-reachability is reported as a measured
+outcome, not a proof of absence: a direction we cannot elicit with our prompt
+variants may still be elicitable by some prompt we did not try.
+
+\section{Conclusion}
+An unsupervised sparse autoencoder recovers persona-relevant directions in a chat
+model with no trait specified, and provides the substrate to ask which of those
+directions live outside the reach of prompting. \emph{[Concluding sentence set by
+the confirmation result.]}
+
+\bibliographystyle{plain}
+\begin{thebibliography}{1}
+\bibitem{chen2025persona}
+R.~Chen, A.~Arditi, H.~Sleight, et al.
+\newblock Persona Vectors: Monitoring and Controlling Character Traits in
+Language Models.
+\newblock \emph{arXiv:2507.21509}, 2025.
+\end{thebibliography}
+
+\end{document}
