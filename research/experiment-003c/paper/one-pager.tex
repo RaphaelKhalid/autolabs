@@ -1,0 +1,76 @@
+\documentclass[11pt]{article}
+
+% One-page research showcase for AutoLabs Experiment 3C.
+% Title is a placeholder pending the owner's pick (candidates listed at the foot).
+% \pending{} values are confirmed by the full-power screen (run …ded5477e).
+
+\usepackage[margin=0.9in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.4em}
+\pagestyle{empty}
+\newcommand{\pending}[1]{\textcolor{gray}{#1}}
+\definecolor{ink}{HTML}{111312}
+\definecolor{rust}{HTML}{A85238}
+
+\begin{document}
+\begin{center}
+{\LARGE\bfseries Personas Without Labels:\\[2pt]
+Discovering Prompt-Unreachable Persona Directions with Sparse Autoencoders}\\[6pt]
+{\normalsize Raphael Khalid \quad$\cdot$\quad AutoLabs \quad$\cdot$\quad
+\texttt{autolabs-ebon.vercel.app}}\\[2pt]
+{\small\itshape Working draft, September 2026}
+\end{center}
+
+\vspace{4pt}
+\hrule
+\vspace{8pt}
+
+\noindent\textbf{Abstract.}\quad
+Persona vectors---activation directions that control traits such as sycophancy or
+dishonesty---are found by \emph{naming} a trait, writing contrastive prompts, and
+differencing activations, which limits them to traits that are specified in advance
+and prompt-inducible. We ask whether an \emph{unsupervised} decomposition of a
+model's activations already contains persona-relevant directions, and whether some
+are \emph{not reachable by prompting} at all. We train a Matryoshka BatchTopK
+sparse autoencoder ($235$M parameters, $32{,}768$ features) on $100$M
+assistant-position tokens of \texttt{Qwen2.5-7B-Instruct} at layer~$19$ (held-out
+FVE~$0.72$, $L_0{=}40$), rank its dictionary for persona-relevance with three
+label-free arms, steer the model along each candidate, and screen the steered
+behaviour against random-direction nulls and persona-vector \emph{controls} before
+a blinded judge names the survivors. A first budget-constrained screen surfaced
+$\pending{96}$ candidate directions that separate personas across scenarios
+(residual-AUC up to $1.0$)---e.g.\ a poetic/effusive voice and a cautious-analyst
+voice---with no trait named at any point. A powered confirmation screen
+\pending{[in progress]} certifies which directions clear the control gate and, via a
+prompt-elicitation test, which are \emph{steering-only} rather than
+prompt-reachable---directions a prompt-based method could never find.
+
+\vspace{10pt}
+\begin{tcolorbox}[colback=black!3,colframe=ink,boxrule=0.5pt,left=10pt,right=10pt,top=8pt,bottom=8pt]
+\textbf{At a glance}
+\begin{itemize}
+  \item[$\bullet$] \textbf{Dictionary:} $235$M-param Matryoshka BatchTopK SAE, width $32{,}768$, $k{=}40$, nested $1$k/$4$k/$16$k/$32$k shells.
+  \item[$\bullet$] \textbf{Trained on:} $100$M assistant-position tokens of Qwen2.5-7B-Instruct, layer $19$ $\rightarrow$ \textbf{held-out FVE $0.72$, $L_0=40$}.
+  \item[$\bullet$] \textbf{Discovery:} three \emph{label-free} ranking arms; no trait ever specified.
+  \item[$\bullet$] \textbf{Screen:} steering + separability AUC vs $20$ random nulls, gated by persona-vector controls; blinded LLM judge names survivors.
+  \item[$\bullet$] \textbf{Novel test:} which discovered directions are \emph{steering-only}, i.e.\ shape the persona yet cannot be elicited by prompting.
+  \item[$\bullet$] \textbf{Pilot signal:} $\pending{484}$/$512$ direction-signs beat the null ceiling; $\pending{96}$/$256$ features cleared the full gate.
+\end{itemize}
+\end{tcolorbox}
+
+\vspace{6pt}
+\noindent\footnotesize
+\textbf{Infrastructure.} Run end-to-end on a reproducible harness (durable
+workflows, frozen protocol hashes, a spend ledger and cost caps); the SAE is
+trained once on an A100 and reused off a Hugging Face checkpoint for every screen.
+\quad\textbf{Title candidates:} (1)~\emph{Discovering Unlabelled Persona-Relevant
+Directions}; (2)~this title; (3)~\emph{Unsupervised Discovery of Persona Directions
+Beyond Prompting}; (4)~\emph{Finding Persona Directions That Prompting Cannot
+Reach}.
+
+\end{document}
