@@ -111,6 +111,23 @@ strong directions separate personas above a random-direction null, it is not
 trustworthy for the unsupervised features either; the pipeline therefore withholds
 all naming until the controls validate the screen.
 
+\section{Related work and contributions}
+The idea that sparse autoencoders might surface persona directions is due to
+\citet{chen2025persona}, who state it as a conjecture and report an initial
+appendix exploration; we take it up rather than originate it. Unsupervised
+discovery of behaviour-steering directions has also been pursued \emph{without}
+SAEs, by directly optimising latent perturbations that change model behaviour, and
+SAE feature steering and LLM-judge feature naming are by now standard tools. Our
+contribution is therefore not the idea but its \emph{operationalisation and
+validation}: (i) a purpose-built $235$M-parameter SAE ranked for persona-relevance
+by three label-free arms; (ii) a null-calibrated, causal steering screen; and, most
+distinctively, (iii) a \emph{positive-control gate}---the supervised persona vectors
+are pushed through the identical screen, and no feature is named unless they clear
+it. This converts ``these features look persona-like'' into a falsifiable validity
+check, and is what made an earlier under-powered screen correctly withhold naming.
+The graded elicitation-cost metric of \S\ref{sec:disc} is a proposed measurement,
+not a delivered result, and is the paper's principal open direction.
+
 \section{Method}
 The pipeline runs in one process on \texttt{Qwen2.5-7B-Instruct}, hooking the
 residual stream at layer $19$.
