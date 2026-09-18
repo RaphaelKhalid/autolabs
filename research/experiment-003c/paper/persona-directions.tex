@@ -1,26 +1,22 @@
 \documentclass[11pt]{article}
 
 % ---------------------------------------------------------------------------
-% AutoLabs Experiment 3C -- working paper draft.
-% Title is a placeholder; the owner is choosing among the candidates listed in
-% the abstract note. Numbers marked \pending{} are filled from the full-power
-% confirmation screen (run persona-3c-ded5477e) when it completes; the SAE
-% training numbers are final.
+% AutoLabs Experiment 3C -- working paper.
+% Numbers are from the full-power screen (run persona-3c-ded5477e, 100M-token SAE
+% run persona-3c-d77e7c1e). Reproducible artifacts: research/experiment-003c/.
 % ---------------------------------------------------------------------------
 
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
 \usepackage{xcolor}
 \usepackage[hidelinks]{hyperref}
 \usepackage{titlesec}
 \usepackage[numbers]{natbib}
 \titlespacing*{\section}{0pt}{1.1em}{0.5em}
-
-% \pending{fallback} renders a value that is confirmed once the full-power
-% screen lands; until then it shows the ultra-lean pilot value in grey.
-\newcommand{\pending}[1]{\textcolor{gray}{#1}}
 
 \title{\textbf{Unsupervised Discovery of Persona-Relevant Directions\\
 with Matryoshka Sparse Autoencoders}}
@@ -177,7 +173,7 @@ into a calibrated, graded metric---the ``how easily'' behind requirement three o
 
 \section{Results}
 \paragraph{The dictionary.} Training succeeds at production scale: held-out FVE
-$0.72$, $L_0=40$ at width $32{,}768$ (Table~\ref{tab:sae}). The recipe is stable
+$0.72$, $L_0=40$ at width $32{,}768$ (Table~\ref{tab:sae}, Figure~\ref{fig:train}). The recipe is stable
 across reruns and the trained SAE is reused for every downstream screen without
 retraining.
 
@@ -194,6 +190,34 @@ Parameters / width / $k$ & $235$M / $32{,}768$ / $40$ \\
 \caption{Trained SAE (run \texttt{persona-3c-d77e7c1e}, $100$M tokens).}
 \label{tab:sae}
 \end{table}
+
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.82\linewidth,height=4.6cm,xlabel={Assistant tokens (M)},
+  ylabel={},xmin=0,xmax=100,ymin=0,ymax=0.8,
+  legend style={at={(0.98,0.55)},anchor=east,font=\footnotesize,draw=none,fill=none},
+  grid=both,grid style={gray!12},tick label style={font=\footnotesize},
+  label style={font=\footnotesize}]
+\addplot[color=red!75!black,very thick,mark=none] coordinates {
+(5.0,0.6998) (10.0,0.7342) (15.0,0.7427) (20.0,0.7422) (25.0,0.7451)
+(30.0,0.7462) (35.0,0.7503) (40.0,0.7469) (45.0,0.7468) (50.0,0.7443)
+(55.0,0.7483) (60.0,0.7321) (65.0,0.7455) (70.0,0.7466) (75.0,0.7458)
+(80.0,0.7479) (85.0,0.7491) (90.0,0.7478) (95.0,0.7500) (100.0,0.7468)};
+\addlegendentry{held-out FVE}
+\addplot[color=blue!60!black,very thick,mark=none] coordinates {
+(5.0,0.1504) (10.0,0.0464) (15.0,0.0242) (20.0,0.0172) (25.0,0.0139)
+(30.0,0.0118) (35.0,0.0112) (40.0,0.0100) (45.0,0.0099) (50.0,0.0091)
+(55.0,0.0090) (60.0,0.0085) (65.0,0.0083) (70.0,0.0082) (75.0,0.0080)
+(80.0,0.0089) (85.0,0.0082) (90.0,0.0079) (95.0,0.0089) (100.0,0.0077)};
+\addlegendentry{dead features}
+\end{axis}
+\end{tikzpicture}
+\caption{Training the width-$32{,}768$ Matryoshka SAE on $100$M assistant-position
+tokens. Held-out fraction of variance explained rises to $\approx0.75$ and the
+dead-feature fraction falls below $1\%$; both plateau well before the token budget
+is exhausted.}
+\label{fig:train}
+\end{figure}
 
 \paragraph{Discovery (pilot screen).} A first, deliberately small screen ($8$
 scenarios) already shows the signal is present: $484$ of $512$ feature
@@ -252,9 +276,11 @@ blinded judgements assigning the direction the same property.}
 \label{tab:named}
 \end{table}
 
-\paragraph{Reach.} \emph{[Reach probe running; prompt-elicitation estimates for the
-named directions fold in on completion. Framed as a graded elicitation cost, not a
-reachability claim.]}
+\paragraph{Reach.} We do not report prompt-elicitation numbers for the named
+directions here: as argued in \S\ref{sec:disc}, whether a discovered steerable
+direction can be reproduced by \emph{some} prompt is close to unfalsifiable, and the
+useful quantity is the \emph{graded} elicitation cost, which needs a calibrated
+protocol we leave to future work rather than a binary reach/no-reach label.
 
 \section{Discussion and limitations}\label{sec:disc}
 The claim is scoped to one model, one layer, and one training mixture; the
