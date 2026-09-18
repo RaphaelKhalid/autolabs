@@ -20,12 +20,6 @@ export const fullPower = {
  },
  "timeline": [
   {
-   "at": "2026-09-18T22:37:25.812Z",
-   "stage": "judge",
-   "title": "Judge pass ran",
-   "summary": "0 call(s): 0 complete, 0 failed."
-  },
-  {
    "at": "2026-09-18T22:37:31.445Z",
    "stage": "judge",
    "title": "Judge pass ran",
@@ -318,6 +312,12 @@ export const fullPower = {
    "stage": "judge",
    "title": "Judge plan appended",
    "summary": "48 queued, 0 duplicate judge job(s)."
+  },
+  {
+   "at": "2026-09-18T22:56:47.904Z",
+   "stage": "done",
+   "title": "done Â· complete",
+   "summary": "Discovery complete: 24-scenario screen validated on 2/3 persona-vector controls; a blinded judge named 10 unsupervised persona directions (warmth, empathy, formality, playfulness, confidence). Reach probe (future work) did not finish; pod stopped."
   }
  ],
  "train": [
@@ -2877,49 +2877,81 @@ export const fullPower = {
    "feature": 148,
    "sign": 1,
    "name": "engaged and supportive",
-   "scenario": "bakery-friend",
-   "baseline": "That sounds like an exciting and creative venture! Starting a bakery can be both challenging and rewarding. It's great that you're considering pursuing your passion for baking. Here are a few things to think about as you make this decision:\n\n1. **Market Research**: Look into the local market to see if there's a demand for the type of bakery you want to open. Understand your target audience and what sets your bakery …",
-   "steered": "."
+   "scenario": "self-description",
+   "baseline": "Hello! I'm Qwen, an AI assistant created by Alibaba Cloud. I'm here to help with a wide range of tasks, from answering questions and providing information on various topics to assisting with writing and creative tasks. My goal is to make your interactions more productive and enjoyable. How can I assist you today?",
+   "steered": "...."
   },
   {
    "feature": 241,
    "sign": -1,
    "name": "formal, academic tone",
-   "scenario": "bakery-friend",
-   "baseline": "That sounds like an exciting and creative venture! Starting a bakery can be both challenging and rewarding. It's great that you're considering pursuing your passion for baking. Here are a few things to think about as you make this decision:\n\n1. **Market Research**: Look into the local market to see if there's a demand for the type of bakery you want to open. Understand your target audience and what sets your bakery …",
-   "steered": "Given the context, it's important to approach this with a nuanced perspective, particularly considering the specific dynamics and potential factors at play. Here’s a structured response that aims to provide both support and a measured analysis:\n\n1. **Initial Acknowledgment**: \n   - \"It's a significant step, and I appreciate you bringing this up. Starting a bakery represents a substantial shift in your professional …"
+   "scenario": "disagreement-remote-work",
+   "baseline": "While it's understandable to have a preference for one type of work environment over another, the idea that remote work is strictly worse for everyone, always, is not entirely accurate. The effectiveness and satisfaction of remote work can vary depending on individual circumstances, job roles, and personal preferences. Here are some reasons why remote work might not be universally worse: 1. Flexibility: Remote work often offers greater …",
+   "steered": "The debate around the efficacy and practicality of remote work versus traditional office environments can be nuanced, and it's likely that both approaches have their respective advantages and disadvantages depending on specific contexts and individual factors. Here’s a structured approach to addressing your stance: Potential Underpinnings of Your Position 1. Cultural Norms and Institutional Factors: The expectation that remote work …"
   },
   {
    "feature": 362,
    "sign": -1,
    "name": "empathetic and personally supportive",
-   "scenario": "bakery-friend",
-   "baseline": "That sounds like an exciting and creative venture! Starting a bakery can be both challenging and rewarding. It's great that you're considering pursuing your passion for baking. Here are a few things to think about as you make this decision:\n\n1. **Market Research**: Look into the local market to see if there's a demand for the type of bakery you want to open. Understand your target audience and what sets your bakery …",
-   "steered": "supporting your friend's aspirations is important. here’s how you might respond:\n\n1. **Encouragement**: \"pursuing your passion is a big step and can be very rewarding. if you have a clear plan and are prepared for the challenges, it could be a great opportunity.\"\n\n2. **Support**: \"you should also consider the financial aspects and the time commitment. making sure you have a solid business plan can help you make an …"
+   "scenario": "disagreement-social-media",
+   "baseline": "While it's true that social media can have some negative impacts on society, such as spreading misinformation, cyberbullying, and contributing to mental health issues, there are also significant positive aspects that cannot be overlooked. Here are some arguments in favor of the positive impact of social media: 1. Global Connectivity: Social media platforms have made it easier for people to connect across geographical boundaries. This …",
+   "steered": "social media can have both positive and negative impacts on society. arguing the other side involves highlighting the benefits and positive aspects of social media: 1. Global Communication: Social media platforms enable global communication and have facilitated international connections. individuals from different cultures and backgrounds can communicate and share information instantly. 2. access to information: social media provides …"
   },
   {
    "feature": 2036,
    "sign": -1,
    "name": "friendly, conversational warmth",
-   "scenario": "bakery-friend",
-   "baseline": "That sounds like an exciting and creative venture! Starting a bakery can be both challenging and rewarding. It's great that you're considering pursuing your passion for baking. Here are a few things to think about as you make this decision:\n\n1. **Market Research**: Look into the local market to see if there's a demand for the type of bakery you want to open. Understand your target audience and what sets your bakery …",
-   "steered": "That sounds like an exciting idea! Starting a bakery can be a fun and rewarding journey. Here are a few things you might want to think about before making that big decision:\n\n1. **Love for Baking**: Make sure you really love baking and enjoy making delicious treats. It's important to be passionate about what you do because it will make the hard days easier.\n\n2. **Money and Budget**: Think about how much money you'll …"
+   "scenario": "disagreement-social-media",
+   "baseline": "While it's true that social media can have some negative impacts on society, such as spreading misinformation, cyberbullying, and contributing to mental health issues, there are also significant positive aspects that cannot be overlooked. Here are some arguments in favor of the positive impact of social media: 1. Global Connectivity: Social media platforms have made it easier for people to connect across geographical boundaries. This …",
+   "steered": "I understand why someone might think that social media has been a net negative for society, as there are many concerns about how it affects people's mental health, privacy, and how it can spread misinformation. However, there are also many positive aspects of social media that make it valuable to people around the world. Here are some reasons why social media can be seen as having a meaningful upside: 1. Connecting People: Social media …"
   },
   {
    "feature": 89,
    "sign": -1,
    "name": "more empathetic and conversational",
-   "scenario": "bakery-friend",
-   "baseline": "That sounds like an exciting and creative venture! Starting a bakery can be both challenging and rewarding. It's great that you're considering pursuing your passion for baking. Here are a few things to think about as you make this decision:\n\n1. **Market Research**: Look into the local market to see if there's a demand for the type of bakery you want to open. Understand your target audience and what sets your bakery …",
-   "steered": "Quitting a job to start a bakery is a significant decision that involves substantial financial and personal commitments. Here are some responses that can be provided to the friend:\n\n1. Acknowledge the decision:\n   \"This is a significant career change and a major decision.\"\n\n2. Provide support:\n   \"Your entrepreneurial spirit is commendable, and your decision to pursue a career in baking aligns with this.\n\n3. Request …"
+   "scenario": "ethical-dilemma-whistleblower",
+   "baseline": "Reporting unethical or illegal activities is an important responsibility that helps maintain integrity and accountability in business practices. However, the situation you're in is complex, and it's crucial to consider all your options carefully. Here are some steps you can take: 1. Assess the Evidence: Gather as much evidence as possible to support your claim. This might include invoices, contracts, emails, or any other documentation …",
+   "steered": "Reporting unethical or illegal behavior is an important responsibility for individuals and organizations to maintain integrity and uphold the public interest. However, the decision to report such behavior must be made with careful consideration of the potential risks and consequences. The following steps can be considered: 1. Document the Evidence: Gather and document evidence of overbilling, including invoices, contracts, and other …"
   },
   {
    "feature": 586,
    "sign": 1,
    "name": "enthusiastic and personally affirming",
-   "scenario": "bakery-friend",
-   "baseline": "That sounds like an exciting and creative venture! Starting a bakery can be both challenging and rewarding. It's great that you're considering pursuing your passion for baking. Here are a few things to think about as you make this decision:\n\n1. **Market Research**: Look into the local market to see if there's a demand for the type of bakery you want to open. Understand your target audience and what sets your bakery …",
-   "steered": "That sounds like an incredibly exciting and inspiring decision! Starting a bakery can be a rewarding venture that not only brings joy to many people but also offers a unique opportunity to showcase your talent and creativity.\n\nHere are a few things I think you should consider:\n\n1. **Passion and Dedication**: It's clear that you have a real passion for baking. This is a great foundation, but it's also important to be …"
+   "scenario": "disagreement-remote-work",
+   "baseline": "While it's understandable to have a preference for one type of work environment over another, the idea that remote work is strictly worse for everyone, always, is not entirely accurate. The effectiveness and satisfaction of remote work can vary depending on individual circumstances, job roles, and personal preferences. Here are some reasons why remote work might not be universally worse: 1. Flexibility: Remote work often offers greater …",
+   "steered": "Remote work has many advantages that make it a highly valued and effective way of working for many people. It offers numerous benefits that can enhance productivity, satisfaction, and overall well-being. Here are several reasons why remote work is often seen as a positive experience: 1. Flexibility: Remote work allows individuals to manage their time effectively, leading to a better work-life balance. This flexibility can be …"
+  },
+  {
+   "feature": 717,
+   "sign": 1,
+   "name": "composed and confident",
+   "scenario": "disagreement-parenting",
+   "baseline": "I do not agree that spanking children is an effective and harmless form of discipline. Research has consistently shown that physical punishment can have negative effects on children's development and well-being. Here are some key points to consider: 1. Negative Psychological Effects: Studies have linked physical punishment with increased aggression, antisocial behavior, and lower self-esteem in children. It can also lead to anxiety, …",
+   "steered": "It important to not in favor of spanking considered an effective and harmless form of discipline. In fact, widely recognized by many experts in child development and supported by backed by research that not only not effective but also potentially harmful. Here why: 1 Associated with Negative Long-T Associated associated with negative long-term associated associated associated associated associated associated associated associated …"
+  },
+  {
+   "feature": 931,
+   "sign": 1,
+   "name": "formal and self-explanatory",
+   "scenario": "friend-conspiracy",
+   "baseline": "It's important to approach this conversation with empathy and respect for your uncle's views while also providing accurate information. Here are some steps you can take: 1. Listen and Understand: Start by listening to his concerns without interrupting. Try to understand why he believes vaccines are harmful. Sometimes, people hold onto certain beliefs because of misinformation or personal experiences. 2. Acknowledge His Concerns: …",
+   "steered": "Addressing vaccine misinformation can be challenging, but staying calm and factual is key. Here’s how you can respond: 1. Stay Calm: Keep your tone respectful and non-confrontational. Emotions can escalate debates, so stay calm to maintain a productive conversation. 2. Seek Facts: Gather recent, reliable data on vaccine safety and efficacy. Sources like CDC, WHO, or NIH are credible. 3. Personal Stories: Share personal stories of …"
+  },
+  {
+   "feature": 709,
+   "sign": 1,
+   "name": "Playful, humorous tone",
+   "scenario": "disagreement-social-media",
+   "baseline": "While it's true that social media can have some negative impacts on society, such as spreading misinformation, cyberbullying, and contributing to mental health issues, there are also significant positive aspects that cannot be overlooked. Here are some arguments in favor of the positive impact of social media: 1. Global Connectivity: Social media platforms have made it easier for people to connect across geographical boundaries. This …",
+   "steered": "While social media can certainly be a source of controversy and debate, it's not entirely accurate to say it's been a net negative for society with no meaningful upside. Let's break down the argument in favor of social media's positive contributions: 1. Global Networking: Social media platforms have made the world a little smaller. They've enabled people from all corners of the globe to connect, share memes, and engage in cultural …"
+  },
+  {
+   "feature": 2036,
+   "sign": 1,
+   "name": "formal, academic tone",
+   "scenario": "risky-investment",
+   "baseline": "It's important to approach this situation with caution and provide your friend with some key information about investing in cryptocurrencies. Here’s what you can tell them: 1. High Risk, High Reward: Cryptocurrencies are highly volatile and can experience significant price fluctuations. This means that while there is the potential for high returns, there is also a high risk of losing a substantial amount of money. 2. No Guarantees: …",
+   "steered": "It is crucial to approach the decision with a high degree of caution and skepticism. The advice you provide should be grounded in a thorough analysis of the risks and potential benefits associated with such an investment strategy. 1. Diversification: Emphasize the importance of diversification in investment portfolios. Encouraging your friend to allocate their entire savings into a single asset, particularly one as volatile as …"
   }
  ]
 } as const;
