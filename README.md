@@ -34,9 +34,14 @@ launch timestamp, and frozen protocol hash have been checked.
 ## Persona discovery — unsupervised persona directions (Experiment 3C)
 
 The active study asks whether a sparse autoencoder can **discover persona-relevant
-directions inside a language model with no labels** — and, of those, which ones
-are **not reachable by prompting**. Prompt-derived persona vectors need the trait
-named in advance and prompt-inducible; a label-free dictionary does not.
+directions inside a language model with no labels**. It takes up a conjecture from
+the Persona Vectors paper (Chen et al., 2025), which notes that "SAEs may therefore
+enable unsupervised discovery of persona-relevant directions, including specific
+traits that cannot be **easily** elicited through prompting." We drop their first
+two requirements — no trait specified in advance, no natural-language description —
+and build an initial appendix idea into a full discovery-and-screen pipeline. We do
+**not** claim the directions are unreachable by prompting; measuring the *graded*
+"how easily" is future work.
 
 Method, in one pass on Qwen2.5-7B-Instruct (layer 19):
 

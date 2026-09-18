@@ -19,8 +19,8 @@
 
 \begin{document}
 \begin{center}
-{\LARGE\bfseries Personas Without Labels:\\[2pt]
-Discovering Prompt-Unreachable Persona Directions with Sparse Autoencoders}\\[6pt]
+{\LARGE\bfseries Unsupervised Discovery of Persona-Relevant Directions\\[2pt]
+with Matryoshka Sparse Autoencoders}\\[6pt]
 {\normalsize Raphael Khalid \quad$\cdot$\quad AutoLabs \quad$\cdot$\quad
 \texttt{autolabs-ebon.vercel.app}}\\[2pt]
 {\small\itshape Working draft, September 2026}
@@ -33,22 +33,24 @@ Discovering Prompt-Unreachable Persona Directions with Sparse Autoencoders}\\[6p
 \noindent\textbf{Abstract.}\quad
 Persona vectors---activation directions that control traits such as sycophancy or
 dishonesty---are found by \emph{naming} a trait, writing contrastive prompts, and
-differencing activations, which limits them to traits that are specified in advance
-and prompt-inducible. We ask whether an \emph{unsupervised} decomposition of a
-model's activations already contains persona-relevant directions, and whether some
-are \emph{not reachable by prompting} at all. We train a Matryoshka BatchTopK
-sparse autoencoder ($235$M parameters, $32{,}768$ features) on $100$M
-assistant-position tokens of \texttt{Qwen2.5-7B-Instruct} at layer~$19$ (held-out
-FVE~$0.72$, $L_0{=}40$), rank its dictionary for persona-relevance with three
-label-free arms, steer the model along each candidate, and screen the steered
-behaviour against random-direction nulls and persona-vector \emph{controls} before
-a blinded judge names the survivors. A first budget-constrained screen surfaced
-$\pending{96}$ candidate directions that separate personas across scenarios
-(residual-AUC up to $1.0$)---e.g.\ a poetic/effusive voice and a cautious-analyst
-voice---with no trait named at any point. A powered confirmation screen
-\pending{[in progress]} certifies which directions clear the control gate and, via a
-prompt-elicitation test, which are \emph{steering-only} rather than
-prompt-reachable---directions a prompt-based method could never find.
+differencing activations, which requires the trait to be specified in advance,
+precisely described, and prompt-inducible. Chen et al.\ (2025) conjecture that
+``SAEs may therefore enable unsupervised discovery of persona-relevant directions,
+including specific traits that cannot be easily elicited through prompting.'' We
+take up that conjecture at scale: we train a Matryoshka BatchTopK sparse
+autoencoder ($235$M parameters, $32{,}768$ features) on $100$M assistant-position
+tokens of \texttt{Qwen2.5-7B-Instruct} at layer~$19$ (held-out FVE~$0.72$,
+$L_0{=}40$), rank its dictionary for persona-relevance with three label-free arms,
+steer the model along each candidate, and screen the steered behaviour against
+random-direction nulls and persona-vector \emph{controls} before a blinded judge
+names the survivors---no trait specified and no description written at any point.
+A first budget-constrained screen surfaced $\pending{96}$ candidate directions that
+separate personas across scenarios (residual-AUC up to $1.0$)---e.g.\ a
+poetic/effusive voice and a cautious-analyst voice. A powered confirmation screen
+\pending{[in progress]} certifies which clear the control gate and names them. We do
+\emph{not} claim these directions are unreachable by prompting; measuring the
+\emph{graded} form of Chen et al.'s ``easily''---how hard a prompt must work to
+reproduce each---is future work.
 
 \vspace{10pt}
 \begin{tcolorbox}[colback=black!3,colframe=ink,boxrule=0.5pt,left=10pt,right=10pt,top=8pt,bottom=8pt]
@@ -58,7 +60,8 @@ prompt-reachable---directions a prompt-based method could never find.
   \item[$\bullet$] \textbf{Trained on:} $100$M assistant-position tokens of Qwen2.5-7B-Instruct, layer $19$ $\rightarrow$ \textbf{held-out FVE $0.72$, $L_0=40$}.
   \item[$\bullet$] \textbf{Discovery:} three \emph{label-free} ranking arms; no trait ever specified.
   \item[$\bullet$] \textbf{Screen:} steering + separability AUC vs $20$ random nulls, gated by persona-vector controls; blinded LLM judge names survivors.
-  \item[$\bullet$] \textbf{Novel test:} which discovered directions are \emph{steering-only}, i.e.\ shape the persona yet cannot be elicited by prompting.
+  \item[$\bullet$] \textbf{Drops requirements 1--2} of prompt-based extraction: no trait specified, no description written.
+  \item[$\bullet$] \textbf{Open question (future work):} \emph{how easily} a prompt can reproduce each discovered direction---a graded elicitation cost, not a ``prompt-unreachable'' claim.
   \item[$\bullet$] \textbf{Pilot signal:} $\pending{484}$/$512$ direction-signs beat the null ceiling; $\pending{96}$/$256$ features cleared the full gate.
 \end{itemize}
 \end{tcolorbox}
@@ -68,9 +71,8 @@ prompt-reachable---directions a prompt-based method could never find.
 \textbf{Infrastructure.} Run end-to-end on a reproducible harness (durable
 workflows, frozen protocol hashes, a spend ledger and cost caps); the SAE is
 trained once on an A100 and reused off a Hugging Face checkpoint for every screen.
-\quad\textbf{Title candidates:} (1)~\emph{Discovering Unlabelled Persona-Relevant
-Directions}; (2)~this title; (3)~\emph{Unsupervised Discovery of Persona Directions
-Beyond Prompting}; (4)~\emph{Finding Persona Directions That Prompting Cannot
-Reach}.
+\quad\textbf{Builds on} R.~Chen, A.~Arditi, H.~Sleight et al., \emph{Persona
+Vectors: Monitoring and Controlling Character Traits in Language Models},
+arXiv:2507.21509 (2025), whose appendix first suggests this SAE direction.
 
 \end{document}

@@ -15,14 +15,15 @@
 \usepackage{xcolor}
 \usepackage[hidelinks]{hyperref}
 \usepackage{titlesec}
+\usepackage[numbers]{natbib}
 \titlespacing*{\section}{0pt}{1.1em}{0.5em}
 
 % \pending{fallback} renders a value that is confirmed once the full-power
 % screen lands; until then it shows the ultra-lean pilot value in grey.
 \newcommand{\pending}[1]{\textcolor{gray}{#1}}
 
-\title{\textbf{Personas Without Labels:\\
-Discovering Prompt-Unreachable Persona Directions with Sparse Autoencoders}}
+\title{\textbf{Unsupervised Discovery of Persona-Relevant Directions\\
+with Matryoshka Sparse Autoencoders}}
 \author{Raphael Khalid \\ \small AutoLabs \\ \small \texttt{autolabs-ebon.vercel.app}}
 \date{September 2026 --- working draft}
 
@@ -33,33 +34,28 @@ Discovering Prompt-Unreachable Persona Directions with Sparse Autoencoders}}
 Persona vectors---directions in a language model's activation space that control
 traits such as sycophancy or dishonesty---are typically found by \emph{naming} a
 trait, writing contrastive prompts, and differencing the resulting activations.
-This makes them expensive to enumerate and, by construction, limited to traits
-that are (i) specified in advance and (ii) prompt-inducible. We ask whether an
-\emph{unsupervised} decomposition of a model's activations already contains
-persona-relevant directions, and whether some of those directions are \emph{not
-reachable by prompting} at all. We train a Matryoshka BatchTopK sparse
-autoencoder (SAE) with $235$M parameters and $32{,}768$ features on $100$M
-assistant-position tokens of \texttt{Qwen2.5-7B-Instruct} at layer $19$
-(held-out fraction of variance explained $0.72$, $L_0=40$), rank its dictionary
-for persona-relevance with three label-free arms, steer the model along each
-candidate direction, and screen the steered behaviour against random-direction
-nulls and persona-vector controls before a blinded judge names the survivors.
-On a first, budget-constrained screen the SAE surfaced
-$\pending{96}$ candidate directions that separate personas across scenarios
-(residual-stream AUC up to $1.0$)---for example a poetic/effusive voice and a
-cautious-analyst voice---with no trait named at any point. A powered confirmation
-screen \pending{[in progress]} certifies which directions clear the
-persona-vector-control gate and, via a prompt-elicitation test, which are
-steering-only rather than prompt-reachable. \emph{[Headline result folds in on
-completion.]}
-
-\smallskip
-\noindent\footnotesize\textbf{Title candidates (owner to choose):}
-(1) \emph{Discovering Unlabelled Persona-Relevant Directions};
-(2) \emph{Personas Without Labels: Discovering Prompt-Unreachable Persona
-Directions with Sparse Autoencoders};
-(3) \emph{Unsupervised Discovery of Persona Directions Beyond Prompting};
-(4) \emph{Finding Persona Directions That Prompting Cannot Reach}.
+\citet{chen2025persona} state three requirements of this supervised recipe: it
+``requires specifying a target trait in advance,'' it ``depends on providing a
+precise natural-language description,'' and it ``requires that the specified trait
+is inducible by system prompting the model.'' We ask whether an \emph{unsupervised}
+decomposition of a model's activations already contains persona-relevant
+directions, dropping the first two requirements. We train a Matryoshka BatchTopK
+sparse autoencoder (SAE) with $235$M parameters and $32{,}768$ features on $100$M
+assistant-position tokens of \texttt{Qwen2.5-7B-Instruct} at layer $19$ (held-out
+fraction of variance explained $0.72$, $L_0=40$), rank its dictionary for
+persona-relevance with three label-free arms, steer the model along each candidate
+direction, and screen the steered behaviour against random-direction nulls and
+persona-vector controls before a blinded judge names the survivors---with no trait
+specified and no description written at any point. On a first, budget-constrained
+screen the SAE surfaced $\pending{96}$ candidate directions that separate personas
+across scenarios (residual-stream AUC up to $1.0$)---for example a poetic/effusive
+voice and a cautious-analyst voice. A powered confirmation screen
+\pending{[in progress]} certifies which directions clear the persona-vector-control
+gate and reports their judge-derived names. We do \emph{not} claim these directions
+are unreachable by prompting: a discovered, steerable direction is almost certainly
+prompt-inducible in principle (their third requirement). Quantifying \emph{how
+easily}---a graded prompt-elicitation cost rather than a binary---is left to future
+work. \emph{[Headline count folds in on completion.]}
 \end{abstract}
 
 \section{Introduction}
@@ -79,13 +75,13 @@ if persona-relevant structure is present in the residual stream, some of that
 structure should already be represented among the SAE's features---without any
 trait being named. This reframes persona discovery from \emph{specification}
 (bring the concept, read out a coordinate) to \emph{decomposition} (recover a
-basis, then search it). The headline question is the first two limitations
-above: \emph{can we discover persona-relevant directions with no trait
-specified?} A secondary, sharper question targets the third limitation:
-\emph{are some discovered directions steering-effective but not
-prompt-reachable}---i.e.\ directions that shape the model's persona yet cannot be
-summoned by any prompt, and which a prompt-based method could therefore never
-find?
+basis, then search it). The headline question is the first two limitations above:
+\emph{can we discover persona-relevant directions with no trait specified and no
+description written?} We do not attempt the third limitation, prompt-inducibility:
+a direction we can steer is almost certainly reproducible by some prompt, so
+``unreachable by prompting'' is not a claim we can honestly make. Instead we flag
+its \emph{graded} form as future work---not \emph{whether} a discovered direction is
+prompt-inducible, but \emph{how easily}---and build the substrate to measure it.
 
 \section{Background}
 \paragraph{Sparse autoencoders.} An SAE encodes an activation $x\in\mathbb{R}^d$
@@ -97,7 +93,14 @@ batch) with a \emph{Matryoshka} objective: nested prefixes of the dictionary
 structure concentrates in the inner shells and refinements in the outer ones.
 Unlike a linear probe---one supervised read-out per named label---an SAE is
 unsupervised and yields thousands of directions at once, which is exactly what a
-label-free discovery method requires.
+label-free discovery method requires. \citet{chen2025persona} anticipate this use:
+they write that ``SAEs may therefore enable unsupervised discovery of
+persona-relevant directions, including specific traits that cannot be easily
+elicited through prompting,'' and report an initial exploration in their appendix.
+We take up that conjecture directly and build it into a full discovery-and-screen
+pipeline: a dedicated $235$M-parameter SAE, three label-free ranking arms, a
+calibrated steering screen with persona-vector controls and random-direction
+nulls, and blinded judge naming.
 
 \paragraph{Persona vectors as controls.} We do not discard the supervised recipe;
 we use it as a \emph{positive control}. Three persona vectors
@@ -140,12 +143,16 @@ separability AUC above the best of $20$ random directions \emph{and} a
 consistency margin above the random null. Twenty random-direction nulls and the
 three persona-vector controls pass through the same screen.
 
-\paragraph{5. Describe and reach.} Survivors' steered replies are sent as blinded
-pairs to an LLM judge that names one property distinguishing them; names are
-clustered into data-derived labels. Finally, each named direction is subjected to
-a \emph{reach} test: can the same behaviour be elicited by prompting alone, or
-only by steering? Steering-only directions are the ones a prompt-based method
-could not have found.
+\paragraph{5. Describe and (graded) reach.} Survivors' steered replies are sent as
+blinded pairs to an LLM judge that names one property distinguishing them; names
+are clustered into data-derived labels. Each named direction is then subjected to a
+\emph{reach} probe: we attempt to reproduce its effect with a small set of prompt
+variants and record how readily prompting recovers the same behaviour. We treat
+this as an \emph{estimate of prompt-elicitation cost}, not a reachability proof: a
+direction we cannot reproduce with our prompt variants is a candidate for the
+hard-to-elicit tail, not evidence that \emph{no} prompt reaches it. Turning this
+into a calibrated, graded metric---the ``how easily'' behind requirement three of
+\citet{chen2025persona}---is future work (\S\ref{sec:disc}).
 
 \section{Results}
 \paragraph{The dictionary.} Training succeeds at production scale: held-out FVE
@@ -186,28 +193,44 @@ the control margins clear the gate.
 \paragraph{Confirmation (full-power screen).} \emph{[To complete on run
 \texttt{persona-3c-ded5477e}.]} With all persona-vector controls passing $G_0$,
 we report: the number of unsupervised features certified persona-relevant; their
-judge-derived names and clusters; and, from the reach test, how many are
-\emph{steering-only} rather than prompt-reachable---the directions prompting
-cannot find.
+judge-derived names and clusters; and, from the reach probe, a first estimate of
+how readily prompting reproduces each direction's effect (the graded
+prompt-elicitation cost, not a reachability claim).
 
-\section{Discussion and limitations}
+\section{Discussion and limitations}\label{sec:disc}
 The claim is scoped to one model, one layer, and one training mixture; the
 directions are causal under steering but the correspondence between an SAE feature
 and a human-named persona is judged, not proven. The screen's consistency gate is
 sensitive to scenario count---a lesson from the pilot, and a parameter worth
-calibrating rather than fixing. Prompt-reachability is reported as a measured
-outcome, not a proof of absence: a direction we cannot elicit with our prompt
-variants may still be elicitable by some prompt we did not try.
+calibrating rather than fixing.
+
+We deliberately do \emph{not} claim to overcome the third requirement of
+\citet{chen2025persona}, prompt-inducibility. A direction we discover and can steer
+is, almost by construction, reproducible by \emph{some} prompt; ``prompt-unreachable''
+is close to unfalsifiable and we avoid it. What the discovery result does establish
+is independence from the first two requirements---no trait is specified and no
+description is written---which is where an unsupervised dictionary has leverage a
+prompt-first method cannot. The sharper, and to us more interesting, question is
+the one \citet{chen2025persona} phrase themselves: whether SAEs surface directions
+``that cannot be \emph{easily} elicited through prompting.'' That word is graded,
+and it is where our reach probe points but does not yet reach: the right target is
+a calibrated \emph{elicitation-cost} metric---how specific, how long, or how many
+attempts a prompt needs to match a discovered direction's steering effect---that
+ranks directions from trivially prompt-inducible to stubbornly hard-to-elicit, and
+asks whether that hard tail is where unsupervised discovery earns its keep. That is
+the main thread of future work.
 
 \section{Conclusion}
-An unsupervised sparse autoencoder recovers persona-relevant directions in a chat
-model with no trait specified, and provides the substrate to ask which of those
-directions live outside the reach of prompting. \emph{[Concluding sentence set by
-the confirmation result.]}
+An unsupervised Matryoshka sparse autoencoder recovers persona-relevant directions
+in a chat model with no trait specified and no description written---dropping the
+first two requirements of prompt-based persona extraction---and gives a substrate
+for the sharper, graded question left open by the third: not whether a discovered
+direction can be prompted, but how easily. \emph{[Concluding sentence set by the
+confirmation result.]}
 
 \bibliographystyle{plain}
 \begin{thebibliography}{1}
-\bibitem{chen2025persona}
+\bibitem[Chen et al.(2025)]{chen2025persona}
 R.~Chen, A.~Arditi, H.~Sleight, et al.
 \newblock Persona Vectors: Monitoring and Controlling Character Traits in
 Language Models.
