@@ -43,6 +43,17 @@ export interface Persona3CTrainPoint {
   loss: number | null;
 }
 
+export interface Persona3CJudge {
+  queued: number;
+  inFlight: number;
+  complete: number;
+  failed: number;
+  calls: number;
+  spentUsd: number;
+  budgetUsd: number;
+  ceiling: number;
+}
+
 export interface Persona3CStatus {
   run: Persona3CRun | null;
   recordCounts?: Record<string, number>;
@@ -50,6 +61,7 @@ export interface Persona3CStatus {
   events?: Persona3CEvent[];
   trainCurve?: Persona3CTrainPoint[];
   staleMinutes?: number | null;
+  judge?: Persona3CJudge;
   error?: string;
 }
 

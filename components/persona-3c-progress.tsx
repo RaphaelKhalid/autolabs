@@ -6,6 +6,15 @@ import { fetchPersona3CStatus, persona3cStageLabel, PERSONA_3C_STAGES, PERSONA_3
 function number(value: number) { return new Intl.NumberFormat('en-US').format(value); }
 function dollars(value: number) { return `$${value.toFixed(2)}`; }
 function hours(value: number) { return `${value.toFixed(2)} h`; }
+// h:mm:ss (or m:ss under an hour) for the live elapsed / ETA readouts.
+function clock(totalSeconds: number) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(ss)}` : `${m}:${pad(ss)}`;
+}
 
 // The pod reports every 1M tokens and never reports GPU time, so between reports
 // the card estimates: tokens from the rate of the last two train reports, GPU hours
@@ -95,6 +104,25 @@ export function Persona3CProgress() {
     return Math.min(row.total, Math.round(Math.max(row.done, rate.done) + extra));
   };
 
+  // Overall pipeline progress: completed stages plus the active stage's own
+  // fraction, so the bar advances every time a stage lands even when a single
+  // stage (rank, analysis) reports atomically. The elapsed clock and the ETA
+  // it drives are the always-moving numbers the card was missing.
+  const stageCount = PERSONA_3C_STAGES.length;
+  const stageIdx = Math.max(0, PERSONA_3C_STAGES.indexOf(run.stage as (typeof PERSONA_3C_STAGES)[number]));
+  const activeRow = progressByStage.get(run.stage);
+  const activeFrac = activeRow && activeRow.total > 0
+    ? Math.min(1, activeRow.done / activeRow.total)
+    : (run.status === 'complete' ? 1 : 0);
+  const overall = run.status === 'complete' ? 1 : Math.min(1, (stageIdx + activeFrac) / stageCount);
+  const overallPct = Math.round(overall * 100);
+  const stageNumber = Math.min(stageCount, stageIdx + 1);
+  const endMs = live ? now : Date.parse(run.completedAt ?? run.updatedAt);
+  const elapsedSeconds = Math.max(0, (endMs - Date.parse(run.createdAt)) / 1000);
+  const etaSeconds = live && overall > 0.05 && overall < 0.995 ? (elapsedSeconds * (1 - overall)) / overall : null;
+  const judge = status.judge;
+  const judgeTotal = judge ? judge.queued + judge.inFlight + judge.complete + judge.failed : 0;
+
   return <section className="persona3c-card" aria-live="polite" aria-label="Experiment 3C live progress">
     <div className="persona3c-top">
       <span className="persona3c-eyebrow">EXPERIMENT 3C · LIVE</span>
@@ -104,6 +132,20 @@ export function Persona3CProgress() {
       <strong>{persona3cStageLabel(run.stage)}</strong>
       <span>{run.id}</span>
     </div>
+    {run.status !== 'failed' && <div className="persona3c-progress">
+      <div className="persona3c-progress-head">
+        <span>STAGE {stageNumber} OF {stageCount} · {persona3cStageLabel(run.stage).toUpperCase()}</span>
+        <span>{overallPct}%</span>
+      </div>
+      <div className="persona3c-bar" role="progressbar" aria-valuenow={overallPct} aria-valuemin={0} aria-valuemax={100}>
+        <i style={{ width: `${overallPct}%` }} />
+      </div>
+      <div className="persona3c-progress-foot">
+        <span>{live ? 'ELAPSED' : 'RAN FOR'} {clock(elapsedSeconds)}</span>
+        {run.stage === 'judge' && judge && judgeTotal > 0 && <span>{number(judge.complete)} / {number(judgeTotal)} pairs judged</span>}
+        {etaSeconds !== null && <span>≈ {clock(etaSeconds)} left</span>}
+      </div>
+    </div>}
     <div className="persona3c-metrics">
       <div><span>GPU HOURS{estimated ? ' · EST.' : ''}</span><strong>{estimated ? '≈ ' : ''}{hours(gpuHoursShown)}</strong></div>
       <div><span>SPEND / CAP{estimated ? ' · EST. AT $1.59/H' : ''}</span><strong>{estimated ? '≈ ' : ''}{dollars(spendShown)} / {dollars(run.budgetUsd)}</strong></div>
