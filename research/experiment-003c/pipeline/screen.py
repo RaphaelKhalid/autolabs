@@ -351,63 +351,88 @@ def capture_generated_hidden_batch(
     prompt_ids_list: Sequence[Sequence[int]],
     generated_ids_list: Sequence[Sequence[int]],
     device: Any,
+    batch_size: int = 16,
 ) -> List[torch.Tensor]:
     """Batched capture of the layer's residual stream at each row's own
-    generated-token positions only, via one extra forward pass (no
-    generation, no KV-cache growth -- a plain forward pass, so right
+    generated-token positions only, via extra forward passes (no
+    generation, no KV-cache growth -- plain forward passes, so right
     padding is safe: causal masking already blocks every real token from
     attending to anything after it, so trailing pad columns cannot affect
-    an earlier real token's hidden state) over the whole (prompt +
-    generated) batch with a forward hook -- the same "extra pass with a
-    capture hook" pattern ``steer.coherence_logprob_batch`` uses. This
-    module runs after the full (untruncated) model is restored for
-    steering, so it registers its own light hook on the live decoder layer
-    rather than reusing ``harvest.ActivationHarvester`` (which truncates
-    every layer past ``layer``, and is only meant for the harvest stage's
-    forward-only, no-generation pass).
+    an earlier real token's hidden state) over the (prompt + generated)
+    batch with a forward hook -- the same "extra pass with a capture hook"
+    pattern ``steer.coherence_logprob_batch`` uses. This module runs after
+    the full (untruncated) model is restored for steering, so it registers
+    its own light hook on the live decoder layer rather than reusing
+    ``harvest.ActivationHarvester`` (which truncates every layer past
+    ``layer``, and is only meant for the harvest stage's forward-only,
+    no-generation pass).
+
+    Two memory guards, both learned from the full run's rank-stage OOM
+    (persona-3c-d77e7c1e, width 32,768: a single un-chunked pass over 288
+    (context x scenario) rows tried to allocate ~70 GiB):
+
+    1. The forward is run on the decoder stack (``model.model``) directly,
+       NOT the causal-LM wrapper, so the ``[rows, seq, vocab]`` logits
+       (~49 GiB in bf16 at 288 rows x ~560 tokens x 152k vocab) are never
+       materialised -- we only ever need the layer-``layer`` hidden state,
+       which the hook captures before the LM head would run.
+    2. Rows are processed in chunks of ``batch_size`` so the transient
+       per-layer MLP activation stays bounded regardless of how many rows
+       (rank passes 288, reach/screen can pass more) the caller batches.
 
     Returns one `[gen_len_i, d_model]` tensor per row (zero rows for a row
     with no generated tokens), padding entirely ignored by indexing each
     row's own real (prompt_len, prompt_len + gen_len) slice directly rather
-    than via an explicit mask."""
+    than via an explicit mask. Each returned slice is cloned so the chunk's
+    full hidden tensor is freed as soon as the chunk is done."""
     base = getattr(model, "model", model)
     n = len(prompt_ids_list)
     d_model = model.config.hidden_size
-    full_seqs = [list(p) + list(g) for p, g in zip(prompt_ids_list, generated_ids_list)]
-    max_len = max((len(s) for s in full_seqs), default=0)
-    if max_len == 0:
-        return [torch.zeros(0, d_model) for _ in range(n)]
+    out: List[torch.Tensor] = [torch.zeros(0, d_model) for _ in range(n)]
+    step = max(1, batch_size)
 
-    input_ids = torch.zeros(n, max_len, dtype=torch.long, device=device)
-    attention_mask = torch.zeros(n, max_len, dtype=torch.long, device=device)
-    for i, seq in enumerate(full_seqs):
-        m = len(seq)
-        if m == 0:
+    for start in range(0, n, step):
+        end = min(start + step, n)
+        chunk_seqs = [
+            list(prompt_ids_list[i]) + list(generated_ids_list[i]) for i in range(start, end)
+        ]
+        max_len = max((len(s) for s in chunk_seqs), default=0)
+        if max_len == 0:
             continue
-        input_ids[i, :m] = torch.tensor(seq, dtype=torch.long, device=device)
-        attention_mask[i, :m] = 1
 
-    captured: Dict[str, torch.Tensor] = {}
+        cn = end - start
+        input_ids = torch.zeros(cn, max_len, dtype=torch.long, device=device)
+        attention_mask = torch.zeros(cn, max_len, dtype=torch.long, device=device)
+        for li, seq in enumerate(chunk_seqs):
+            m = len(seq)
+            if m == 0:
+                continue
+            input_ids[li, :m] = torch.tensor(seq, dtype=torch.long, device=device)
+            attention_mask[li, :m] = 1
 
-    def hook(module: Any, inputs: Any, output: Any) -> None:
-        captured["hidden"] = output[0] if isinstance(output, tuple) else output
+        captured: Dict[str, torch.Tensor] = {}
 
-    handle = base.layers[layer].register_forward_hook(hook)
-    try:
-        with torch.no_grad():
-            model(input_ids=input_ids, attention_mask=attention_mask)
-    finally:
-        handle.remove()
+        def hook(module: Any, inputs: Any, output: Any) -> None:
+            captured["hidden"] = output[0] if isinstance(output, tuple) else output
 
-    hidden = captured["hidden"]
-    out: List[torch.Tensor] = []
-    for i in range(n):
-        prompt_len = len(prompt_ids_list[i])
-        gen_len = len(generated_ids_list[i])
-        if gen_len == 0:
-            out.append(torch.zeros(0, hidden.shape[-1]))
-        else:
-            out.append(hidden[i, prompt_len : prompt_len + gen_len])
+        handle = base.layers[layer].register_forward_hook(hook)
+        try:
+            with torch.no_grad():
+                # Decoder stack only -- skips the LM head, so no logits tensor.
+                base(input_ids=input_ids, attention_mask=attention_mask, use_cache=False)
+        finally:
+            handle.remove()
+
+        hidden = captured["hidden"]
+        for li in range(cn):
+            gi = start + li
+            gen_len = len(generated_ids_list[gi])
+            if gen_len == 0:
+                continue
+            prompt_len = len(prompt_ids_list[gi])
+            out[gi] = hidden[li, prompt_len : prompt_len + gen_len].clone()
+        del hidden, captured, input_ids, attention_mask
+
     return out
 
 
