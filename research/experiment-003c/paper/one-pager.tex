@@ -1,78 +1,83 @@
 \documentclass[11pt]{article}
-
-% One-page research showcase for AutoLabs Experiment 3C.
-% Numbers from the full-power screen (run persona-3c-ded5477e).
-
-\usepackage[margin=0.9in]{geometry}
-\usepackage{amsmath,amssymb}
-\usepackage{xcolor}
-\usepackage{tcolorbox}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{amsmath,booktabs}
 \usepackage[hidelinks]{hyperref}
-\usepackage{titlesec}
-\usepackage{enumitem}
-\setlist{nosep,leftmargin=1.4em}
 \pagestyle{empty}
-\definecolor{ink}{HTML}{111312}
-\definecolor{rust}{HTML}{A85238}
-
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setlength{\emergencystretch}{3em}
 \begin{document}
 \begin{center}
-{\LARGE\bfseries Unsupervised Discovery of Persona-Relevant Directions\\[2pt]
+{\Large\bfseries Evaluating Unsupervised Discovery of Persona-Relevant Directions\\[2pt]
 with Matryoshka Sparse Autoencoders}\\[6pt]
-{\normalsize Raphael Khalid \quad$\cdot$\quad AutoLabs \quad$\cdot$\quad
-\texttt{autolabs-ebon.vercel.app}}\\[2pt]
-{\small\itshape Working draft, September 2026}
+{Raphael Khalid $\cdot$ AutoLabs $\cdot$ September 2026}\\[2pt]
+{\small Working paper summary $\cdot$ \texttt{autolabs-ebon.vercel.app}}
+\end{center}
+\vspace{2pt}\hrule\vspace{6pt}
+
+\textbf{Research question.}
+Can an SAE identify coherent persona-relevant directions without a prespecified
+target trait? I investigate the discovery question raised in the limitations
+section of Chen et al.\ (2025). Prompt reachability was omitted from the final
+run; ease of prompt elicitation is reserved for future work.
+
+\textbf{Method.}
+I train a Matryoshka BatchTopK SAE on $100$M assistant-position tokens from
+\texttt{Qwen2.5-\allowbreak{}7B-\allowbreak{}Instruct} at decoder layer $19$ (zero-based). It has $32{,}768$
+features, approximately $235$M parameters, held-out FVE $0.717$, and mean $L_0=40$.
+Candidate selection uses assistant-specificity, density-quantile, and
+prompt-informed arms. Both signs are steered across $24$ scenarios, alongside
+$20$ random directions and three supervised persona-vector controls. A blinded
+language-model judge describes selected steered-baseline pairs.
+
+\textbf{Recorded outcomes.}
+The diagnostic criterion $G_0$ combines residual separability and cross-scenario
+consistency. It is satisfied by $60/128$ features and two of three controls. Judge
+evaluation covers $40$ selected signed feature directions and three random
+directions. Ten signed candidates receive consistent speaker-related descriptions
+above the naming-null threshold; all ten also pass $G_0$. They represent
+\textbf{nine distinct features}, because both signs of feature $2036$ are named.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+Selection arm & Features screened & $G_0$ features & Named signs \\
+\midrule
+Assistant-specificity & 48 & 25 & 2 \\
+Density-quantile & 32 & 10 & 0 \\
+Prompt-shift & 48 & 25 & 8 \\
+\bottomrule
+\end{tabular}
 \end{center}
 
-\vspace{4pt}
-\hrule
-\vspace{8pt}
+\textbf{Interpretation.}
+The two candidates selected without persona prompts are confounded by degraded
+output. Feature $148+$ produces only punctuation in all $24$ scenarios. Its
+``engaged and supportive'' label describes the baseline response in all $48$
+judge comparisons, not the steered output. The coherence proxy nevertheless
+accepts $23/24$ responses, exposing a validity problem. Feature $717+$, labelled
+``composed and confident,'' passes that proxy on only $8/24$ scenarios and also
+shows substantial degradation. The eight other named directions come from
+prompt-informed selection. The current evidence therefore does not establish
+coherent unlabelled persona discovery.
 
-\noindent\textbf{Abstract.}\quad
-Persona vectors---activation directions that control traits such as sycophancy or
-dishonesty---are found by \emph{naming} a trait, writing contrastive prompts, and
-differencing activations, which requires the trait to be specified in advance,
-precisely described, and prompt-inducible. Chen et al.\ (2025) conjecture that
-``SAEs may therefore enable unsupervised discovery of persona-relevant directions,
-including specific traits that cannot be easily elicited through prompting.'' We
-take up that conjecture at scale: we train a Matryoshka BatchTopK sparse
-autoencoder ($235$M parameters, $32{,}768$ features) on $100$M assistant-position
-tokens of \texttt{Qwen2.5-7B-Instruct} at layer~$19$ (held-out FVE~$0.72$,
-$L_0{=}40$), rank its dictionary for persona-relevance with three label-free arms,
-steer the model along each candidate, and screen the steered behaviour against
-random-direction nulls and persona-vector \emph{controls} before a blinded judge
-names the survivors---no trait specified and no description written at any point.
-In a powered screen ($24$ scenarios), the method validated against \textbf{2 of 3}
-supervised persona-vector controls, passed \textbf{60 of 128} SAE features through
-the full gate, and a blinded judge assigned \textbf{10} of them consistent,
-above-null names---recognisable persona axes such as \emph{engaged and supportive},
-\emph{empathetic}, \emph{formal/academic}, \emph{playful}, and \emph{composed and
-confident}---with no trait ever specified. (The evil control stayed just under the
-consistency gate, so the count is conservative.) We do \emph{not} claim these
-directions are unreachable by prompting; measuring the \emph{graded} form of Chen
-et al.'s ``easily''---how hard a prompt must work to reproduce each---is future work.
+\textbf{Limitations and next research steps.}
+The study uses one model and layer, selective judge coverage, unmatched random
+perturbation norms, and three naming nulls selected for low separability.
+Reconstruction replacement yields $78\%$ argmax agreement, below the configured
+$90\%$ threshold. Future evaluation should require substantive coherent output,
+retain judgement polarity, use comparable nulls, and include independent human
+validation. Prompt-elicitation difficulty should be measured after coherent
+candidate effects have been established.
 
-\vspace{10pt}
-\begin{tcolorbox}[colback=black!3,colframe=ink,boxrule=0.5pt,left=10pt,right=10pt,top=8pt,bottom=8pt]
-\textbf{At a glance}
-\begin{itemize}
-  \item[$\bullet$] \textbf{Dictionary:} $235$M-param Matryoshka BatchTopK SAE, width $32{,}768$, $k{=}40$, nested $1$k/$4$k/$16$k/$32$k shells.
-  \item[$\bullet$] \textbf{Trained on:} $100$M assistant-position tokens of Qwen2.5-7B-Instruct, layer $19$ $\rightarrow$ \textbf{held-out FVE $0.72$, $L_0=40$}.
-  \item[$\bullet$] \textbf{Discovery:} three \emph{label-free} ranking arms; no trait ever specified.
-  \item[$\bullet$] \textbf{Screen:} steering + separability AUC vs $20$ random nulls, gated by persona-vector controls; blinded LLM judge names survivors.
-  \item[$\bullet$] \textbf{Drops requirements 1--2} of prompt-based extraction: no trait specified, no description written.
-  \item[$\bullet$] \textbf{Open question (future work):} \emph{how easily} a prompt can reproduce each discovered direction---a graded elicitation cost, not a ``prompt-unreachable'' claim.
-  \item[$\bullet$] \textbf{Result:} 2/3 controls validate the screen; 60/128 features clear the gate; \textbf{10 persona directions discovered unsupervised and named} (warmth, empathy, formality, playfulness, confidence).
-\end{itemize}
-\end{tcolorbox}
-
-\vspace{6pt}
-\noindent\footnotesize
-\textbf{Infrastructure.} Run end-to-end on a reproducible harness (durable
-workflows, frozen protocol hashes, a spend ledger and cost caps); the SAE is
-trained once on an A100 and reused off a Hugging Face checkpoint for every screen.
-\quad\textbf{Builds on} R.~Chen, A.~Arditi, H.~Sleight et al., \emph{Persona
-Vectors: Monitoring and Controlling Character Traits in Language Models},
-arXiv:2507.21509 (2025), whose appendix first suggests this SAE direction.
-
+\vfill
+{\footnotesize
+\textbf{Reference:} R.~Chen, A.~Arditi, H.~Sleight, O.~Evans, and J.~Lindsey.
+\emph{Persona Vectors: Monitoring and Controlling Character Traits in Language Models}.
+\href{https://arxiv.org/abs/2507.21509}{arXiv:2507.21509} (2025).
+\par
+\textbf{Artifacts:}
+\href{https://github.com/RaphaelKhalid/autolabs/tree/main/research/experiment-003c}{Code and full paper};
+\href{https://huggingface.co/RaphaelRaphaelRaphael/autolabs-3c-sae}{SAE checkpoint}.
+Final screen: \texttt{persona-3c-ded5477e}.}
 \end{document}

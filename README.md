@@ -17,7 +17,7 @@ respective licenses.
 
 ## Read the answer before the machinery
 
-AutoLabs currently contains a reward-compatibility study family, an active persona-discovery study, and one historical pilot:
+AutoLabs currently contains a reward-compatibility study family, a completed persona-discovery evaluation, and one historical pilot:
 
 | Study | Status | What the public record supports |
 |---|---|---|
@@ -25,51 +25,53 @@ AutoLabs currently contains a reward-compatibility study family, an active perso
 | Experiment 002.1 — Testing finite reward compatibility | Registered | A finite-domain validation design; no unrestricted classification is claimed |
 | Experiment 002 — Measuring reward compatibility | Complete | A frozen, instrumented reward-compatibility study with a public ledger |
 | Pilot 001 — Erdős 885 | Complete | No certified k=5 solution and no verified SOTA improvement |
-| Experiment 3C — Persona discovery | Active | A 235M-parameter sparse autoencoder (100M tokens, held-out FVE 0.72) discovered persona-relevant directions with no labels; a powered 24-scenario screen validated the method against 2 of 3 supervised persona-vector controls and a blinded judge named 10 (warmth, empathy, formality, playfulness, confidence) |
+| Experiment 3C: Persona discovery | Completed discovery and description stages | 60/128 features pass the diagnostic screen; 10 named signed candidates span nine features. Output degradation confounds both prompt-free naming outcomes. Prompt reachability is deferred. |
 
 The landing logic selects the newest non-planned experiment. A planned
 successor does not replace that selected page before its running/complete state,
 launch timestamp, and frozen protocol hash have been checked.
 
-## Persona discovery — unsupervised persona directions (Experiment 3C)
+## Persona discovery: Experiment 3C
 
-The active study asks whether a sparse autoencoder can **discover persona-relevant
-directions inside a language model with no labels**. It takes up a conjecture from
-the Persona Vectors paper (Chen et al., 2025), which notes that "SAEs may therefore
-enable unsupervised discovery of persona-relevant directions, including specific
-traits that cannot be **easily** elicited through prompting." We drop their first
-two requirements — no trait specified in advance, no natural-language description —
-and build an initial appendix idea into a full discovery-and-screen pipeline. We do
-**not** claim the directions are unreachable by prompting; measuring the *graded*
-"how easily" is future work.
+Experiment 3C evaluates whether an SAE can identify persona-relevant directions
+without a prespecified target trait. I trained a Matryoshka BatchTopK SAE with
+approximately 235M parameters and 32,768 features on 100M assistant-position
+tokens from Qwen2.5-7B-Instruct at decoder layer 19 (zero-based). Held-out fraction
+of variance explained is 0.717 and mean L0 is 40.0.
 
-Method, in one pass on Qwen2.5-7B-Instruct (layer 19):
+The study investigates a direction proposed in the limitations section of
+[Chen et al. (2025)](https://arxiv.org/abs/2507.21509). Candidate selection uses
+three separate arms: 48 assistant-specificity features selected without persona
+prompts, 32 density-quantile features, and 48 prompt-informed features. The SAE
+is trained without trait labels, but the prompt-informed arm does not establish
+prompt-free candidate discovery.
 
-- **Train** a Matryoshka BatchTopK sparse autoencoder — **235M parameters**, width
-  **32,768**, k 40, nested 1k/4k/16k/32k shells — on **100M assistant-position
-  tokens**. Held-out fraction of variance explained **0.72**, L0 exactly 40.
-- **Rank** the 32k-feature dictionary for persona-relevance with three *label-free*
-  arms (assistant-specificity, density-quantile, prompt-shift); no trait is ever
-  specified.
-- **Steer** the model along each candidate direction, **screen** it against 20
-  random-direction nulls and persona-vector controls across many open-ended
-  scenarios, then have a blinded judge **name** the survivors and test which are
-  **prompt-reachable versus steering-only**.
+The completed final run includes training, ranking, calibration, screening, and
+blinded description. Across 24 scenarios, 60 of 128 features pass the diagnostic
+G0 criterion in at least one sign; two of three supervised persona-vector controls
+also pass. The judge assigns consistent speaker-related descriptions to 10 signed
+directions across nine distinct features. All ten also pass G0. Two named directions
+come from assistant-specificity selection and eight from prompt-informed selection.
+G0 is reported diagnostically and does not automatically prevent judge evaluation.
 
-Status: the SAE is trained and preserved on the Hugging Face Hub and reused across
-runs. An initial (budget-constrained, 8-scenario) screen surfaced 96 separating
-directions but was under-powered — its persona-vector controls fell just under the
-consistency gate, so the pipeline correctly named nothing. A **powered 24-scenario
-screen** then validated the method: **2 of 3 persona-vector controls** (sycophantic,
-hallucinating) cleared the gate, **60 of 128** SAE features passed, and a blinded
-judge assigned **10** of them consistent, above-null names — recognisable persona
-axes including *engaged and supportive*, *empathetic*, *formal/academic*, *playful*,
-and *composed and confident*, with no trait ever specified. The evil control stayed
-just under the gate (it steers strongly but not *consistently* across scenarios), so
-the count is conservative. We do **not** claim these directions are unreachable by
-prompting; quantifying the graded "how easily" is future work. Full account:
-`research/experiment-003c/FULL-1.md` and the working paper in
-`research/experiment-003c/paper/`.
+Inspection of the two prompt-free naming outcomes substantially limits the
+conclusion. Feature 148 in the positive direction produces only punctuation in
+all 24 scenarios. The judge assigns the associated property to the baseline in
+all 48 comparisons. Feature 717 in the positive direction shows substantial
+degradation and passes the coherence proxy on only eight of 24 scenarios.
+The experiment identifies behaviour-changing candidates, but the current evidence
+does not establish coherent unlabelled persona discovery. Additional limitations
+include unmatched random perturbation norms, selective judge coverage, and a
+failed reconstruction-replacement check (78% argmax agreement against a 90% criterion).
+
+Prompt reachability was deliberately omitted from the final run. The ease of
+eliciting comparable effects through prompting remains future work. Earlier run
+reports are historical records and should not be read as final-run findings.
+
+- [Full paper](research/experiment-003c/paper/persona-directions.pdf)
+- [One-page summary](research/experiment-003c/paper/one-pager.pdf)
+- [Evidence audit and claim corrections](docs/experiment-3c-publication-audit.md)
+- [Published study page](https://autolabs-ebon.vercel.app)
 
 ## The Experiment 002 question
 

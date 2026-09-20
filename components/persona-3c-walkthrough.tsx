@@ -239,7 +239,7 @@ function StageSide({ act, p }: { act: Act; p: number }) {
         return <>
           <h3>Harvest activations, train the dictionary</h3>
           <p>UltraChat conversations stream through Qwen2.5-7B-Instruct truncated at layer 19. Only assistant-turn positions enter a shuffle buffer; the Matryoshka BatchTopK SAE trains on samples from it. Activations never touch disk.</p>
-          <div className="p3c-kpis"><div><span>Tokens</span><strong>{fmtM(tokens)}<small>of {fmtM(v.config.tokens)}</small></strong></div><div><span>Optimizer steps</span><strong>{row ? fmtInt(row.steps) : '—'}</strong></div><div><span>Variance explained</span><strong>{row ? row.fve.toFixed(3) : '—'}</strong></div><div><span>Dead features</span><strong>{row ? pct(row.dead, 1) : '—'}</strong></div></div>
+          <div className="p3c-kpis"><div><span>Tokens</span><strong>{fmtM(tokens)}<small>of {fmtM(v.config.tokens)}</small></strong></div><div><span>Optimizer steps</span><strong>{row ? fmtInt(row.steps) : 'Not available'}</strong></div><div><span>Variance explained</span><strong>{row ? row.fve.toFixed(3) : 'Not available'}</strong></div><div><span>Dead features</span><strong>{row ? pct(row.dead, 1) : 'Not available'}</strong></div></div>
         </>;
       }
       case 'check': return <>
@@ -261,7 +261,7 @@ function StageSide({ act, p }: { act: Act; p: number }) {
         return <>
           <h3>Screen against a calibrated null</h3>
           <p>Every direction at its dose generates replies on eight open-ended scenarios. A leave-one-scenario-out classifier asks whether steered replies can be told from baseline. Twenty random directions set the ceiling anything real must clear.</p>
-          <div className="p3c-kpis"><div><span>Directions scored</span><strong>{shown} of 42</strong></div><div><span>Null ceiling (max random)</span><strong>{shown >= 20 ? verdict.maxRandomResidAuc.toFixed(3) : '—'}</strong></div><div><span>Features passing G0</span><strong>{shown >= 42 ? `${verdict.featuresPassing} of ${verdict.featuresTotal}` : '—'}</strong></div><div><span>Controls passing</span><strong>{shown >= 42 ? `${verdict.controlsPassing} of ${verdict.controlsTotal}` : '—'}</strong></div></div>
+          <div className="p3c-kpis"><div><span>Directions scored</span><strong>{shown} of 42</strong></div><div><span>Null ceiling (max random)</span><strong>{shown >= 20 ? verdict.maxRandomResidAuc.toFixed(3) : 'Not available'}</strong></div><div><span>Features passing G0</span><strong>{shown >= 42 ? `${verdict.featuresPassing} of ${verdict.featuresTotal}` : 'Not available'}</strong></div><div><span>Controls passing</span><strong>{shown >= 42 ? `${verdict.controlsPassing} of ${verdict.controlsTotal}` : 'Not available'}</strong></div></div>
         </>;
       }
       case 'describe': return <>
@@ -396,7 +396,7 @@ function LiveRun() {
       <div>{rows.length ? <TrainChart tokensShown={Number.MAX_SAFE_INTEGER} rows={rows} tokensTarget={target} title="Training curve, live" subtitle={`${rows.length} checkpoint${rows.length === 1 ? '' : 's'} · target ${fmtM(target)} tokens`} /> : <p className="p3c-empty">No training checkpoint recorded yet for this run. Points appear here as the pod reports each checkpoint.</p>}</div>
       <div className="p3c-stage-side">
         <h3>What the ledger says</h3>
-        <div className="p3c-kpis"><div><span>Status</span><strong>{stateLabel}</strong></div><div><span>Stage</span><strong>{run.stage}</strong></div><div><span>Spend / cap</span><strong>${run.spentUsd.toFixed(2)} / ${run.budgetUsd.toFixed(2)}</strong></div><div><span>Last record</span><strong>{run.lastRecordId ?? '—'}</strong></div></div>
+        <div className="p3c-kpis"><div><span>Status</span><strong>{stateLabel}</strong></div><div><span>Stage</span><strong>{run.stage}</strong></div><div><span>Spend / cap</span><strong>${run.spentUsd.toFixed(2)} / ${run.budgetUsd.toFixed(2)}</strong></div><div><span>Last record</span><strong>{run.lastRecordId ?? 'Not available'}</strong></div></div>
         {stale && <p className="p3c-warning" role="alert">No report from the pod for {status?.staleMinutes} minutes. The run is not marked failed. If the pod died, a fresh pod with the same run id resumes from the last uploaded checkpoint.</p>}
         {run.error && <p className="p3c-warning" role="alert">{run.error}</p>}
         <p>Every checkpoint, calibration row, screen row and judge result is written to the ledger as it happens, and every checkpoint and stage output is copied off the pod. Whatever stage the run reaches, that much is kept.</p>
@@ -411,9 +411,9 @@ function LiveRun() {
 export function Persona3CWalkthrough() {
   return <main className="p3c-page">
     <header className="p3c-header">
-      <p className="p3c-eyebrow">EXPERIMENT 3C · LIVE</p>
-      <h1>Can a sparse autoencoder surface persona directions that nobody named in advance?</h1>
-      <p className="p3c-lede">Persona vectors need a trait specified up front, a precise description, and a prompt that induces it. Experiment 3C trains a dictionary on Qwen2.5-7B-Instruct with no trait in the loop, then asks whether any learned direction moves the assistant in a way random directions cannot. Below: the current run as the ledger sees it, a replay of the last complete visual run, and what protects the full run.</p>
+      <p className="p3c-eyebrow">EXPERIMENT 3C · ARCHIVED WALKTHROUGH</p>
+      <h1>Experiment 3C: pipeline development and run history</h1>
+      <p className="p3c-lede">This page preserves the visual run 2 replay and the subsequent launch history. The study has since completed training, candidate selection, calibration, screening, and blinded description; prompt reachability was deferred to future work. The historical configuration below differs from the final reported screen. The <Link href="/">completed study and interpretation of the findings</Link> are available on the AutoLabs landing page.</p>
       <div className="p3c-header-meta"><span>Model Qwen2.5-7B-Instruct · layer 19</span><span>Harness: AutoLabs Worker, every record hashed</span><a href={`${REPO}/VISUAL-2.md`} target="_blank" rel="noreferrer">Visual run 2 write-up ↗</a><a href={`${REPO}/pipeline/README.md`} target="_blank" rel="noreferrer">Pipeline README ↗</a></div>
     </header>
 
@@ -424,7 +424,7 @@ export function Persona3CWalkthrough() {
     <Player />
 
     <section className="p3c-section" aria-label="After visual run 2">
-      <div className="p3c-section-head"><div><h2>Full run plan</h2></div><span>ledger-backed</span></div>
+      <div className="p3c-section-head"><div><h2>Historical run plan</h2></div><span>ledger-backed</span></div>
       <div className="p3c-grid-3">
         <article className="p3c-card is-named">
           <span className="p3c-tag is-ok"><i />Validation 2 · complete</span>
@@ -435,8 +435,8 @@ export function Persona3CWalkthrough() {
         <article className="p3c-card is-failed">
           <span className="p3c-tag is-failed"><i />Full run · failed</span>
           <h3>Pod lost its GPU three hours in</h3>
-          <p>The 150M-token full run launched at 06:18 UTC on an RTX A6000. At 09:19 UTC the host's driver reported no devices. Training crashed before the first checkpoint, which had been set at 10M tokens. Nothing was recoverable.</p>
-          <ul><li>Cause: host hardware fault on the provider side.</li><li>Our contributing weakness: the first checkpoint was too far out, and checkpoints never left the pod.</li><li>GPU spent that night across validation and the failed run: about $4.60.</li></ul>
+          <p>The 150M-token full run launched at 06:18 UTC on an RTX A6000. At 09:19 UTC the host&apos;s driver reported no devices. Training crashed before the first checkpoint, which had been set at 10M tokens. Nothing was recoverable.</p>
+          <ul><li>Cause: host hardware fault on the provider side.</li><li>My checkpoint configuration contributed to the loss: the first checkpoint was too far out, and checkpoints never left the pod.</li><li>GPU spent that night across validation and the failed run: about $4.60.</li></ul>
         </article>
         <article className="p3c-card">
           <span className="p3c-tag"><i />Code · ready</span>
@@ -450,7 +450,7 @@ export function Persona3CWalkthrough() {
     <section className="p3c-plan" aria-label="The full run">
       <div>
         <span className="p3c-tag is-ok"><i />Full run · launched 17 Sept 2026, 18:45 UTC</span>
-        <h2>The full run, and what protects it</h2>
+        <h2>Historical full-run configuration</h2>
         <p>One dictionary, one attempt, preregistered gates. Same code as the replay above with a 32k-feature Matryoshka SAE, 100M assistant tokens drawn from the training sources of the Persona Vectors paper, three selection arms and 24 scenarios. The card at the top of this page is the run; the section under it is its training curve as the pod reports checkpoints. A 150M attempt was started first and stopped at the first throughput line, because it would have left no money for a restart.</p>
         <ul className="p3c-gates" aria-label="Survivability">
           <li><i className="is-on" />Checkpoint every 5M tokens with optimizer state, dead-feature clocks and feature statistics, so training resumes on a fresh pod.</li>

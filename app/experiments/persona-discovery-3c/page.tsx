@@ -5,7 +5,7 @@ import './persona-3c-walkthrough.css';
 
 export const metadata: Metadata = {
   title: 'Experiment 3C · Pipeline walkthrough · AutoLabs',
-  description: 'A replay of the Experiment 3C visual run 2 through every pipeline stage, the failed full-run attempt, and the planned RunPod relaunch.',
+  description: 'An archived replay of Experiment 3C visual run 2, with training history and ledger status. The completed study and findings are available on the AutoLabs landing page.',
 };
 
 export default function PersonaDiscovery3CPage() {
