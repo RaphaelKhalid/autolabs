@@ -43,7 +43,7 @@ export const rewardCompatibility: ExperimentDefinition = {
 export const finiteCompatibility: ExperimentDefinition = {
   sequence: 3,
   slug: 'reward-compatibility-21', title: 'Testing finite reward compatibility', label: 'Experiment 002.1',
-  runId: 'experiment-002-1-v1', status: 'registered',
+  runId: 'experiment-002-1-v1', status: 'complete',
   model: 'gpt-5.6-luna', reasoning: 'none', researchers: 1, rounds: 4,
   scheduleLabel: '400 cases · three comparison methods',
   objective: 'Validate reward compatibility against independently checkable finite-domain cases.',
@@ -62,10 +62,10 @@ export const personaDiscovery: ExperimentDefinition = {
 };
 export const rewardCategories: ExperimentDefinition = {
   sequence: 4, slug: 'reward-categories-22', title: 'Classifying reward pairs', label: 'Experiment 002.2',
-  runId: 'experiment-002-2-v1', status: 'planned', model: 'gpt-5.6-luna', reasoning: 'none', researchers: 1, rounds: 4,
+  runId: 'experiment-002-2-v1', status: 'complete', model: 'gpt-5.6-luna', reasoning: 'none', researchers: 1, rounds: 4,
   scheduleLabel: '8 templates · 64 paired histories each',
   objective: 'Measure reference-relative aligned, orthogonal and in-conflict support within two finite policy languages.',
-  protocol: 'Independent outcome-only and combined-reward searches. 20 development calls, 4,096 held-out calls. Starts after 002.1 settles.',
+  protocol: 'Independent outcome-only and combined-reward searches. 20 development calls, 4,096 held-out calls. Ran after 002.1 completed.',
   verifier: 'Exact policy outcomes, threshold attainment, tied-optimum bounds and paired uncertainty intervals; no hidden-reasoning claims.',
   budgets: {openai: 40, exa: 0},
 };

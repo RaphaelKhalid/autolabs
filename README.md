@@ -21,9 +21,9 @@ AutoLabs currently contains a reward-compatibility study family, a completed per
 
 | Study | Status | What the public record supports |
 |---|---|---|
-| Experiment 002.2 — Classifying reward pairs | Planned follow-on | A registered finite-language test; no result is claimed yet |
-| Experiment 002.1 — Testing finite reward compatibility | Registered | A finite-domain validation design; no unrestricted classification is claimed |
-| Experiment 002 — Measuring reward compatibility | Complete | A frozen, instrumented reward-compatibility study with a public ledger |
+| Experiment 002.2 — Classifying reward pairs | Complete | Unresolved: all eight held-out templates are mixed-or-insufficient; the outcome-only reference was at ceiling in 58–64 of 64 pairs per template |
+| Experiment 002.1 — Testing finite reward compatibility | Complete | Guided accuracy 55.3% against a 55% majority baseline; checked witnesses for 61/320 held-out cases |
+| Experiment 002 — Measuring reward compatibility | Complete | The readable-witness rate did not beat an intercept-only predictor of monitoring loss (leave-one-family-out MAE 0.156 vs 0.158) |
 | Pilot 001 — Erdős 885 | Complete | No certified k=5 solution and no verified SOTA improvement |
 | Experiment 3C: Persona discovery | Completed discovery and description stages | 60/128 features pass the diagnostic screen; 10 named signed candidates span nine features. Output degradation confounds both prompt-free naming outcomes. Prompt reachability is deferred. |
 
@@ -113,9 +113,18 @@ unrestricted tasks and do not measure private reasoning faithfulness.
 
 [Study page](https://autolabs-ebon.vercel.app/experiments/reward-categories-22)
 
-This is the registered follow-on to 002.1. A separate durable run waits for 002.1
-to complete and settle its reservations. It does not receive a fresh $40 budget:
-the shared ceiling includes both predecessors.
+This is the registered follow-on to 002.1. It launched automatically after 002.1
+completed and finished on 2026-09-11: 4,116/4,116 calls, no failed or malformed
+calls, $0.99 spent. It did not receive a fresh $40 budget: the shared ceiling
+includes both predecessors, and all three studies together spent $3.63.
+
+**Result: unresolved.** All eight held-out templates are `mixed-or-insufficient`
+for both the observed histories and the population check. The outcome-only
+reference reached the outcome ceiling in 58–64 of 64 pairs per template, so
+aligned improvement was largely unidentifiable. Semantics-preserving witnesses
+were found for many pairs in four templates but cannot establish equivalence
+under the frozen 64-pair bound. The verified archive and per-template table are
+in the [research repository](https://github.com/RaphaelKhalid/reward-compatibility#primary-results).
 
 The frozen design has 20 development calls followed by 4,096 held-out calls:
 eight templates, 64 paired histories per template, and four calls per arm.
@@ -133,7 +142,7 @@ category.
 [Live study and public ledger](https://autolabs-ebon.vercel.app/experiments/reward-compatibility-21) ·
 [Research implementation and protocol](https://github.com/RaphaelKhalid/reward-compatibility/tree/main/v21)
 
-This registered study uses 80 development cases and 320 held-out cases across coin
+This completed study used 80 development cases and 320 held-out cases across coin
 tracking and a restricted Backdoor-Easy-inspired affine-trigger language. The three
 comparison methods use independent Luna calls. It has a fixed sample size, up to
 eight concurrent API calls, read-only public status, five-record ledger pages, and
@@ -145,6 +154,11 @@ The checker interprets bounded JSON data, not arbitrary generated Python or
 JavaScript. The durable cloud runner remains in the research repository; the
 browser never starts API calls or receives private credentials, and closing the page
 does not stop the execution.
+
+It completed all 3,600 steps on 2026-09-11. Guided classification accuracy was
+55.3% against a 55% development-majority baseline, with checked compatibility
+witnesses for 61/320 held-out cases. This is descriptive, not evidence of a strong
+general classifier.
 
 This study can validate finite cases; it cannot establish all three categories for
 unrestricted tasks. Failure to find a witness is not a conflict proof.
@@ -160,6 +174,14 @@ records exact outcome scoring, reasoning rewards, and monitoring as distinct
 metrics.
 Public call labels translate grader ratings into per-sample rewards; they do not
 reveal sealed records or represent aggregate research findings.
+
+**Result (exploratory):** the readable-witness rate did not predict additional
+monitoring loss better than an intercept-only baseline (leave-one-family-out MAE
+0.156 vs 0.158). Description-only judgments, baseline monitorability and baseline
+length did worse than the intercept. Only one of eight configurations (length-16)
+had a loss interval excluding zero, with three repeats and no multiplicity
+adjustment. The full table is in the
+[research repository](https://github.com/RaphaelKhalid/reward-compatibility#primary-results).
 
 The actor uses Luna with reasoning effort none; evaluators and the reporter use
 fresh Luna High calls. The research repository owns the runner, protocol, and figure
