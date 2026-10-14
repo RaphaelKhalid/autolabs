@@ -1,4 +1,4 @@
-export const COMPATIBILITY21_API = 'https://autolabs-compatibility-21.raphaelbahadurkhan.workers.dev';
+export const COMPATIBILITY21_API = 'https://autolabs-compatibility-21.noriron.workers.dev';
 export interface Compatibility21Status {
   runId: string; version: string; model: string;
   status: 'ready'|'running'|'paused'|'complete'; stage: 'dev'|'eval'; reason: string|null;

@@ -1,5 +1,5 @@
 import {validCompatibility21Status, type Compatibility21Status} from './compatibility-21-display';
-export const COMPATIBILITY22_API='https://autolabs-reward-categories-22.raphaelbahadurkhan.workers.dev';
+export const COMPATIBILITY22_API='https://autolabs-reward-categories-22.noriron.workers.dev';
 export interface Compatibility22Status extends Omit<Compatibility21Status,'status'|'progress'|'budget'|'ledger'> {
   status:'ready'|'waiting'|'running'|'paused'|'complete';
   progress:{callsDone:number;callsTotal:number;histories:{split:string;done:number;total:number}[]};

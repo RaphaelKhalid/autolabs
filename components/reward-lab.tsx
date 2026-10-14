@@ -4,7 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {AlienForm} from './autolabs-observatory';
 import {rewardEta} from '../lib/reward-eta';
 import {rewardCallDisplay} from '../lib/reward-call-display';
-const API='https://autolabs-reward-compatibility.raphaelbahadurkhan.workers.dev';
+const API='https://autolabs-reward-compatibility.noriron.workers.dev';
 const REPO='https://github.com/RaphaelKhalid/reward-compatibility';
 interface Status {status:string;stage:string;reason:string|null;updatedAt:string;execution?:{concurrency:number};ledger?:{storageBytes:number;softLimitBytes:number};progress:{done:number;total:number;current:{id:string;phase:string;kind:string}|null};budget:{spentUsd:number;reservedUsd:number;capUsd:number;calls:number};active:{id:string;effort:string}[];gate:{pass:boolean;checks:Record<string,boolean>}|null;recent:{id:number;time:string;type:string;data:Record<string,unknown>}[];}
 interface Log {id:string;state:string;prompt:string;effort:string;charged:number;error:string|null;result:{text:string;inputTokens:number;outputTokens:number}|null;}

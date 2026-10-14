@@ -72,8 +72,8 @@ export const rewardCategories: ExperimentDefinition = {
 /** Planned successors appear in navigation, but do not replace the landing page before verified launch. */
 export const experiments: readonly ExperimentDefinition[] = [erdosPilot, rewardCompatibility, finiteCompatibility, rewardCategories, personaDiscovery].sort((a,b)=>b.sequence-a.sequence);
 export const latestExperiment = experiments.find(experiment=>experiment.status!=='planned')!;
-export const pilotReportUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/report`;
-export const pilotLedgerUrl = `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/experiments/${erdosPilot.runId}/events`;
+export const pilotReportUrl = `https://autolabs-orchestrator.noriron.workers.dev/api/experiments/${erdosPilot.runId}/report`;
+export const pilotLedgerUrl = `https://autolabs-orchestrator.noriron.workers.dev/api/experiments/${erdosPilot.runId}/events`;
 
 /** Audited from the public schema-2 terminal report on 2026-09-08. Estimates, not invoices. */
 export const pilotSnapshot = {

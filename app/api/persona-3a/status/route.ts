@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const TELEMETRY_URL = 'https://afterlight-api.raphaelbahadurkhan.workers.dev/api/studies/persona-discovery/status';
+const TELEMETRY_URL = 'https://afterlight-api.noriron.workers.dev/api/studies/persona-discovery/status';
 
 export async function GET() {
   const workerUrl = process.env.ORCHESTRATOR_URL ?? process.env.NEXT_PUBLIC_ORCHESTRATOR_URL;

@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-WORKER_URL = os.environ.get("PERSONA_3A_WORKER_URL", "https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev").rstrip("/")
+WORKER_URL = os.environ.get("PERSONA_3A_WORKER_URL", "https://autolabs-orchestrator.noriron.workers.dev").rstrip("/")
 RELAY_TOKEN = os.environ.get("PERSONA_3A_RELAY_TOKEN", "")
 KAGGLE_TOKEN = os.environ.get("KAGGLE_API_TOKEN", "")
 STUDY_ID = "experiment-003a-v1"

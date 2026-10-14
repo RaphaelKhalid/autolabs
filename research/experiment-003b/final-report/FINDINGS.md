@@ -4,7 +4,7 @@
 
 The blinded scoring, the v2 local analysis, the renewed Luna High advisory synthesis, and the worker final receipt are all complete for run `persona-3b-175e0a78-0189-4fb3-bba4-4a03a3760149`. The worker reports `status: complete`, `phase: complete`, `confirmationStatus: pending`. No persona discovery or confirmation is claimed. The human audit remains pending, and no confirmation experiment has been launched.
 
-Public status: <https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev/api/persona-3b/status> · Site: <https://autolabs-ebon.vercel.app/experiments/persona-discovery-scoring>
+Public status: <https://autolabs-orchestrator.noriron.workers.dev/api/persona-3b/status> · Site: <https://autolabs-ebon.vercel.app/experiments/persona-discovery-scoring>
 
 ## Verified design and coverage
 

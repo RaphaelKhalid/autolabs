@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
-const EXPECTED_CALLBACK = 'https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev';
+const EXPECTED_CALLBACK = 'https://autolabs-orchestrator.noriron.workers.dev';
 let payload = {};
 try {
   payload = JSON.parse(process.env.JOB_PAYLOAD ?? '{}');

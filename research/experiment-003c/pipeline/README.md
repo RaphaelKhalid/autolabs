@@ -936,7 +936,7 @@ bash runpod_start.sh configs/smoke.json
 
 | Var | Meaning |
 |---|---|
-| `AUTOLABS_3C_WORKER_URL` | Base URL of the orchestrator Worker, e.g. `https://autolabs-orchestrator.raphaelbahadurkhan.workers.dev` |
+| `AUTOLABS_3C_WORKER_URL` | Base URL of the orchestrator Worker, e.g. `https://autolabs-orchestrator.noriron.workers.dev` |
 | `AUTOLABS_3C_TOKEN` | Bearer token for `/api/persona-3c/*` |
 | `AUTOLABS_3C_RUN_ID` | Existing run id. If unset, `run_smoke.py` calls `start_run()` using `config.manifest_hash` / `config.budget_usd` / `config.idempotency_key` (or a config-hash-derived idempotency key if none is set). |
 | `AUTOLABS_3C_CHECKPOINT_RUN_ID` | Optional: download checkpoints from this earlier run id instead of the current one, for continuing training under a fresh harness run id after the Worker marked the old run failed. |
