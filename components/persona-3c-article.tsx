@@ -87,7 +87,6 @@ export function Persona3CArticle() {
         <p className="art-links">
           <a href="https://github.com/RaphaelKhalid/autolabs/blob/main/research/experiment-003c/paper/persona-directions.pdf" target="_blank" rel="noreferrer">Paper (PDF)</a>
           <a href="https://github.com/RaphaelKhalid/autolabs/tree/main/research/experiment-003c" target="_blank" rel="noreferrer">Code &amp; artifacts</a>
-          <a href="https://huggingface.co/RaphaelRaphaelRaphael/autolabs-3c-sae" target="_blank" rel="noreferrer">SAE &amp; run artifacts</a>
         </p>
       </header>
 
@@ -172,7 +171,7 @@ export function Persona3CArticle() {
       </section>
 
       <footer className="art-foot">
-        <p>The reported screen is run <code>{fp.runId}</code>, executed on an {fp.gpu} using the previously trained 100M-token dictionary. The SAE, checkpoints, screen records, and judge outputs are available in the <a href="https://huggingface.co/RaphaelRaphaelRaphael/autolabs-3c-sae" target="_blank" rel="noreferrer">artifact repository</a>. AutoLabs records pipeline stages and run outputs for inspection and reproduction.</p>
+        <p>The reported screen is run <code>{fp.runId}</code>, executed on an {fp.gpu} using the previously trained 100M-token dictionary. The SAE, checkpoints, screen records, and judge outputs are kept in a private artifact repository and are available on request. AutoLabs records pipeline stages and run outputs for inspection and reproduction.</p>
         <p className="art-cite">Chen, Arditi, Sleight et al. <a href="https://arxiv.org/abs/2507.21509" target="_blank" rel="noreferrer"><em>Persona Vectors: Monitoring and Controlling Character Traits in Language Models.</em></a> arXiv:2507.21509 (2025).</p>
       </footer>
     </article>
